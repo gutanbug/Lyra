@@ -398,3 +398,11 @@ $RECYCLE.BIN/
 
 
 # Custom Ignore files -------------
+
+# Electron
+dist-electron/
+release/
+
+# API collections
+*.postman.txt
+*.postman_collection.json

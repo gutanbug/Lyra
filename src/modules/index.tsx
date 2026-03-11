@@ -1,6 +1,8 @@
 // Providers
 import ModalProvider from 'modules/contexts/modal'
 import SnackbarProvider from 'modules/contexts/snackbar'
+import AccountProvider from 'modules/contexts/account'
+import { SplitViewProvider } from 'modules/contexts/splitView'
 
 /*
 	Combine Providers
@@ -31,7 +33,9 @@ export const combineProvider = (providers: Array<IProviderOrWithValue>) => {
 */
 const AppProvider = ({ children }) => {
 	const CombinedProvider = combineProvider([
-		ModalProvider, 
+		AccountProvider,
+		SplitViewProvider,
+		ModalProvider,
 		SnackbarProvider
 	])
 

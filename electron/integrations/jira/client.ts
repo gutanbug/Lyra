@@ -129,6 +129,11 @@ function normalizeIssue(raw: Record<string, unknown>): Record<string, unknown> {
     result.issuelinks = fields.issuelinks;
   }
 
+  // 첨부파일
+  if (Array.isArray(fields.attachment)) {
+    result.attachment = fields.attachment;
+  }
+
   // Epic Link 커스텀 필드 폴백 (classic Jira 프로젝트용)
   if (!result.parent) {
     for (const [key, value] of Object.entries(fields)) {
@@ -148,10 +153,11 @@ export class JiraClient {
   private wikiClient: AxiosInstance;
   private searchCache = new Map<string, CacheEntry<unknown>>();
   private metadataCache = new Map<string, CacheEntry<unknown>>();
-
   private wikiV1Client: AxiosInstance;
+  private credentials: JiraCredentials;
 
   constructor(credentials: JiraCredentials) {
+    this.credentials = credentials;
     const baseUrl = credentials.baseUrl.replace(/\/$/, '');
     const authConfig = {
       auth: { username: credentials.email, password: credentials.apiToken },
@@ -337,5 +343,23 @@ export class JiraClient {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * 첨부파일 콘텐츠를 base64 Data URL로 반환 (인증 프록시)
+   */
+  async getAttachmentContent(contentUrl: string): Promise<string> {
+    const { data, headers } = await withRetry429(() =>
+      axios.get(contentUrl, {
+        responseType: 'arraybuffer',
+        auth: {
+          username: this.credentials.email,
+          password: this.credentials.apiToken,
+        },
+      })
+    );
+    const mimeType = headers['content-type'] || 'application/octet-stream';
+    const base64 = Buffer.from(data).toString('base64');
+    return `data:${mimeType};base64,${base64}`;
   }
 }

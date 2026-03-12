@@ -2,10 +2,10 @@ import * as actions from 'modules/actions/snackbar'
 import { reducer } from 'modules/contexts/snackbar'
 
 describe('snackbar', () => {
-	let state = reducer(undefined, {});
+	let state = reducer(undefined, { type: 'snackbar/DELETE_SNACKBAR' } as any);
 
 	beforeEach(() => {
-		state = reducer(undefined, {});
+		state = reducer(undefined, { type: 'snackbar/DELETE_SNACKBAR' } as any);
 	});
 
 	it('should create actions', () => {
@@ -31,10 +31,10 @@ describe('snackbar', () => {
 		it('should change init snackbar.', () => {
 			state = reducer(state, actions.appendSnackbar({
 				text: 'snackbar test',
-				type: 'success',
+				type: 'SUCCESS',
 			}));
 			expect(state.text).toBe('snackbar test');
-			expect(state.type).toBe('success');
+			expect(state.type).toBe('SUCCESS');
 		});
 
 		it('should change delete snackbar.', () => {

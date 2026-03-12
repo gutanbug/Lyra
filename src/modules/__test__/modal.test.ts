@@ -2,10 +2,10 @@ import * as actions from 'modules/actions/modal'
 import { reducer } from 'modules/contexts/modal'
 
 describe('modal', () => {
-	let state = reducer(undefined, {});
+	let state = reducer(undefined, { type: 'modal/CLEAR_MODAL' } as any);
 
 	beforeEach(() => {
-		state = reducer(undefined, {});
+		state = reducer(undefined, { type: 'modal/CLEAR_MODAL' } as any);
 	});
 
 	it('should create actions.', () => {

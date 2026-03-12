@@ -1,9 +1,18 @@
-export type ServiceType = 'jira' | 'notion' | 'trello' | 'confluence' | 'slack' | string;
+export type ServiceType = 'atlassian' | 'jira' | 'notion' | 'trello' | 'confluence' | 'slack' | string;
 
-export interface JiraCredentials {
+/** Atlassian 계정 (Jira, Confluence 등 공유) */
+export interface AtlassianCredentials {
   baseUrl: string;
   email: string;
   apiToken: string;
+}
+
+/** @deprecated AtlassianCredentials 사용 */
+export type JiraCredentials = AtlassianCredentials;
+
+/** Atlassian 서비스 타입인지 확인 (atlassian, jira, confluence) */
+export function isAtlassianAccount(serviceType: string): boolean {
+  return serviceType === 'atlassian' || serviceType === 'jira' || serviceType === 'confluence';
 }
 
 export interface NotionCredentials {
@@ -17,7 +26,7 @@ export interface TrelloCredentials {
 }
 
 export type ServiceCredentials =
-  | JiraCredentials
+  | AtlassianCredentials
   | NotionCredentials
   | TrelloCredentials
   | Record<string, unknown>;

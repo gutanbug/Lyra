@@ -42,6 +42,7 @@ export interface NormalizedDetail {
   priorityName: string;
   created: string;
   updated: string;
+  duedate: string;
 }
 
 export interface NormalizedComment {
@@ -75,6 +76,7 @@ export interface ChildIssue {
   summary: string;
   statusName: string;
   statusCategory: string;
+  assigneeName: string;
   issueTypeName: string;
   priorityName: string;
 }
@@ -89,6 +91,17 @@ export interface ConfluenceLink {
 export interface ConfluencePageContent {
   title: string;
   body: string;
+}
+
+export interface JiraAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  contentUrl: string;
+  thumbnailUrl?: string;
+  created: string;
+  author: string;
 }
 
 export interface JiraProject {

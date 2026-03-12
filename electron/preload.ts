@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       ipcRenderer.invoke('settings:getSelectedProjects', accountId),
     setSelectedProjects: (accountId: string, keys: string[]) =>
       ipcRenderer.invoke('settings:setSelectedProjects', accountId, keys),
+    getSelectedSpaces: (accountId: string) =>
+      ipcRenderer.invoke('settings:getSelectedSpaces', accountId),
+    setSelectedSpaces: (accountId: string, keys: string[]) =>
+      ipcRenderer.invoke('settings:setSelectedSpaces', accountId, keys),
   },
   account: {
     getAll: () => ipcRenderer.invoke('account:getAll'),

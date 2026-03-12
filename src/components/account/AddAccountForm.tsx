@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import type { AccountInput, JiraCredentials } from 'types/account';
+import type { AccountInput, AtlassianCredentials } from 'types/account';
+import { isAtlassianAccount } from 'types/account';
 import { accountController, integrationController } from 'controllers/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
@@ -147,7 +148,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
   const isEdit = !!editAccount;
   const { dispatch: snackbarDispatch } = React.useContext(snackbarContext);
   const [services, setServices] = useState<{ type: string; displayName: string; icon?: string }[]>([]);
-  const [serviceType, setServiceType] = useState(editAccount?.serviceType || 'jira');
+  const [serviceType, setServiceType] = useState(editAccount?.serviceType || 'atlassian');
   const [serviceSelectOpen, setServiceSelectOpen] = useState(false);
   const selectRef = React.useRef<HTMLDivElement>(null);
 
@@ -170,7 +171,20 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
   const [isValidating, setIsValidating] = useState(false);
 
   React.useEffect(() => {
-    integrationController.getAvailable().then(setServices);
+    integrationController.getAvailable().then((raw) => {
+      const hasAtlassian = raw.some((s) => isAtlassianAccount(s.type));
+      if (hasAtlassian) {
+        const merged: typeof raw = [
+          { type: 'atlassian', displayName: 'Atlassian', icon: 'atlassian' },
+        ];
+        for (const s of raw) {
+          if (!isAtlassianAccount(s.type)) merged.push(s);
+        }
+        setServices(merged);
+      } else {
+        setServices(raw);
+      }
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -180,7 +194,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
       return;
     }
 
-    if (serviceType === 'jira') {
+    if (isAtlassianAccount(serviceType)) {
       if (!baseUrl.trim() || !email.trim() || (!isEdit && !apiToken.trim())) {
         newSnackbar(snackbarDispatch, '모든 필드를 입력해주세요.', 'WARNING');
         return;
@@ -189,7 +203,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
 
     setIsSubmitting(true);
     try {
-      const credentials: JiraCredentials = {
+      const credentials: AtlassianCredentials = {
         baseUrl: baseUrl.trim().replace(/\/$/, ''),
         email: email.trim(),
         apiToken: apiToken.trim() || (editCreds as any)?.apiToken || '',
@@ -232,14 +246,14 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
   };
 
   const handleValidate = async () => {
-    if (serviceType !== 'jira' || !baseUrl.trim() || !email.trim() || !apiToken.trim()) {
+    if (!isAtlassianAccount(serviceType) || !baseUrl.trim() || !email.trim() || !apiToken.trim()) {
       newSnackbar(snackbarDispatch, '모든 필드를 입력해주세요.', 'WARNING');
       return;
     }
 
     setIsValidating(true);
     try {
-      const credentials: JiraCredentials = {
+      const credentials: AtlassianCredentials = {
         baseUrl: baseUrl.trim().replace(/\/$/, ''),
         email: email.trim(),
         apiToken: apiToken.trim(),
@@ -305,16 +319,16 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         표시 이름
         <Input
           type="text"
-          placeholder="예: 회사 Jira"
+          placeholder="예: 회사 Atlassian"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
       </Label>
 
-      {serviceType === 'jira' && (
+      {isAtlassianAccount(serviceType) && (
         <>
           <Label>
-            Jira URL
+            Atlassian URL
             <Input
               type="url"
               placeholder="https://your-domain.atlassian.net"
@@ -347,7 +361,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? (isEdit ? '수정 중...' : '추가 중...') : (isEdit ? '수정' : '추가')}
         </Button>
-        {serviceType === 'jira' && (
+        {isAtlassianAccount(serviceType) && (
           <Button type="button" onClick={handleValidate} disabled={isValidating}>
             {isValidating ? '확인 중...' : '연결 확인'}
           </Button>

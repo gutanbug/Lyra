@@ -87,7 +87,7 @@ export function confluenceToHtml(raw: string): string {
   // ── ac:image → img ──
   html = html.replace(
     /<ac:image[^>]*>[\s\S]*?<ri:attachment ri:filename="([^"]*)"[^>]*\/>[\s\S]*?<\/ac:image>/gi,
-    (_match, filename) => `<span class="adf-media-placeholder">[첨부: ${escapeHtml(filename)}]</span>`
+    (_match, filename) => `<img class="confluence-attachment-img" data-attachment-filename="${escapeHtml(filename)}" alt="${escapeHtml(filename)}" />`
   );
 
   // ── ac:link → a 태그 ──
@@ -107,6 +107,22 @@ export function confluenceToHtml(raw: string): string {
   html = html.replace(/<\/?ri:[^>]*\/?>/gi, '');
 
   return html;
+}
+
+/**
+ * HTML 내 data-attachment-filename img 태그에 실제 src를 삽입
+ */
+export function resolveConfluenceAttachments(html: string, attachmentUrlMap: Record<string, string>): string {
+  return html.replace(
+    /<img\s+([^>]*data-attachment-filename="([^"]*)"[^>]*)\/?\s*>/g,
+    (fullMatch, attrs, filename) => {
+      const src = attachmentUrlMap[filename];
+      if (src) {
+        return `<img src="${src}" ${attrs} />`;
+      }
+      return `<span class="adf-media-placeholder">[첨부: ${filename}]</span>`;
+    }
+  );
 }
 
 function escapeHtml(text: string): string {

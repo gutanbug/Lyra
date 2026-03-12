@@ -40,6 +40,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:setSelectedProjects', (_, accountId: string, keys: string[]) =>
     SettingsManager.setSelectedProjects(accountId, keys)
   );
+  ipcMain.handle('settings:getSelectedSpaces', (_, accountId: string) =>
+    SettingsManager.getSelectedSpaces(accountId)
+  );
+  ipcMain.handle('settings:setSelectedSpaces', (_, accountId: string, keys: string[]) =>
+    SettingsManager.setSelectedSpaces(accountId, keys)
+  );
 
   // === 사용 가능한 서비스 목록 ===
   ipcMain.handle('integration:getAvailable', () =>

@@ -6,6 +6,7 @@ import { integrationController } from 'controllers/account';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { confluenceToHtml, resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
 import { transition } from 'lib/styles/styles';
+import { useRichContentLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import { ExternalLink } from 'lucide-react';
 import { isAtlassianAccount } from 'types/account';
 import type { JiraCredentials } from 'types/account';
@@ -114,6 +115,7 @@ const ConfluencePageDetailView = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attachmentUrlMap, setAttachmentUrlMap] = useState<Record<string, string>>({});
+  const handleContentClick = useRichContentLinkHandler();
 
   const goToList = useCallback(() => history.push('/confluence'), [history]);
 
@@ -337,7 +339,7 @@ const ConfluencePageDetailView = () => {
         {/* 본문 */}
         {page.bodyHtml && (
           <Section>
-            <RichContent dangerouslySetInnerHTML={{ __html: resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap) }} />
+            <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap) }} />
           </Section>
         )}
 
@@ -358,7 +360,7 @@ const ConfluencePageDetailView = () => {
                       <CommentAuthor>{comment.author}</CommentAuthor>
                       <CommentDate>{formatDate(comment.created)}</CommentDate>
                     </CommentHeader>
-                    <CommentBody dangerouslySetInnerHTML={{ __html: resolveConfluenceAttachments(comment.bodyHtml, attachmentUrlMap) }} />
+                    <CommentBody onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveConfluenceAttachments(comment.bodyHtml, attachmentUrlMap) }} />
                   </CommentItem>
                 ))}
               </CommentList>

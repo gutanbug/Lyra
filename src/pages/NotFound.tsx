@@ -36,7 +36,7 @@ const Btn = styled.button`
 	font-size: 0.8rem;
 	line-height: 26px;
 	margin: 15px auto;
-	border-radius: 4px;
+	border-radius: 20px;
 	border: 1px solid ${palette.gray4};
 	text-align: center;
 	cursor: pointer;

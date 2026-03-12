@@ -1,3 +1,5 @@
+export { accountController, integrationController } from './account';
+
 /**
  * Fetch API Return Class
  * @class

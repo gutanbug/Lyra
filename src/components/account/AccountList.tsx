@@ -72,10 +72,13 @@ const Button = styled.button<{ $variant?: 'primary' | 'danger' }>`
   `}
 `;
 
-const Empty = styled.p`
-  color: ${theme.textSecondary};
-  padding: 2rem;
-  text-align: center;
+const Empty = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 25rem);
+  color: ${theme.textMuted};
+  font-size: 0.95rem;
 `;
 
 const AccountIconWrap = styled.span`
@@ -121,7 +124,7 @@ const AccountList = ({ onEdit }: AccountListProps) => {
 
   if (accounts.length === 0) {
     return (
-      <Empty>등록된 계정이 없습니다.</Empty>
+      <Empty>계정을 추가하고 활성화해주세요.</Empty>
     );
   }
 
@@ -141,7 +144,7 @@ const AccountList = ({ onEdit }: AccountListProps) => {
               )}
             </Name>
             <Meta>
-              {account.serviceType}
+              {account.serviceType.charAt(0).toUpperCase() + account.serviceType.slice(1)}
               {'baseUrl' in account.credentials &&
                 ` · ${(account.credentials as { baseUrl?: string }).baseUrl}`}
             </Meta>

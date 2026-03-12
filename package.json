@@ -94,6 +94,7 @@
     },
     "linux": {
       "icon": "build-resources/icon.png",
+      "maintainer": "Lyra <gutanbug53@gmail.com>",
       "target": [
         "AppImage",
         "deb"

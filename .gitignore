@@ -406,3 +406,10 @@ release/
 # API collections
 *.postman.txt
 *.postman_collection.json
+
+# Claude
+/.claude
+CLAUDE.md
+
+# Intellij
+/.idea

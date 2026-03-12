@@ -7,10 +7,12 @@ import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { adfToText } from 'lib/utils/adfToText';
-import { str, obj, isEpicType, isSubTaskType, getStatusColor, escapeJql, KEY_PATTERN } from 'lib/utils/jiraUtils';
+import { str, obj, isEpicType, isSubTaskType, getStatusColor, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
+import { isAtlassianAccount } from 'types/account';
+import { useTabs } from 'modules/contexts/splitView';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 function normalizeIssue(raw: Record<string, unknown>): NormalizedIssue {
@@ -131,7 +133,7 @@ function buildProjectClause(projectKeys: string[]): string {
   return `project IN (${projectKeys.map((k) => `"${k}"`).join(',')})`;
 }
 
-function buildSearchJql(searchQuery: string, projectKeys: string[]): string {
+function buildSearchJql(searchQuery: string, projectKeys: string[], allProjectKeys: string[] = []): string {
   const clauses: string[] = [];
 
   const pc = buildProjectClause(projectKeys);
@@ -144,6 +146,17 @@ function buildSearchJql(searchQuery: string, projectKeys: string[]): string {
   if (KEY_PATTERN.test(term)) {
     clauses.push(`key = "${escapeJql(term)}"`);
     return clauses.join(' AND ');
+  }
+
+  // 숫자만 입력된 경우: 프로젝트 prefix를 붙여서 검색
+  // 선택된 프로젝트가 있으면 그것만, 없으면 전체 프로젝트 사용
+  if (NUMBER_ONLY_PATTERN.test(term)) {
+    const prefixes = projectKeys.length > 0 ? projectKeys : allProjectKeys;
+    if (prefixes.length > 0) {
+      const keys = prefixes.map((pk) => `"${pk}-${term}"`);
+      clauses.push(keys.length === 1 ? `key = ${keys[0]}` : `key IN (${keys.join(',')})`);
+      return clauses.join(' AND ');
+    }
   }
 
   // 일반 검색: 각 단어를 여러 필드에서 OR 매칭
@@ -212,6 +225,24 @@ const cache: DashboardCache = {
 const JiraDashboard = () => {
   const { activeAccount } = useAccount();
   const history = useHistory();
+  const { addTab } = useTabs();
+
+  // 우클릭 컨텍스트 메뉴 (새 탭으로 열기)
+  const [itemContextMenu, setItemContextMenu] = useState<{ x: number; y: number; path: string; label: string } | null>(null);
+
+  const handleItemContextMenu = (e: React.MouseEvent, path: string, label: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // zoom: 1.2 보정 — fixed 포지션이 zoom 컨테이너 안에 있으므로 좌표를 나눠야 정확
+    const zoom = 1.2;
+    setItemContextMenu({ x: e.clientX / zoom, y: e.clientY / zoom, path, label });
+  };
+
+  const handleOpenInNewTab = () => {
+    if (!itemContextMenu) return;
+    addTab('jira', itemContextMenu.path, itemContextMenu.label);
+    setItemContextMenu(null);
+  };
 
   // 계정이 변경되면 캐시 초기화
   const currentAccountId = activeAccount?.id || '';
@@ -460,7 +491,7 @@ const JiraDashboard = () => {
 
   const searchIssues = useCallback(async () => {
     if (!activeAccount) return;
-    const jqlFilter = buildSearchJql(searchQuery, selectedProjects);
+    const jqlFilter = buildSearchJql(searchQuery, selectedProjects, projects.map((p) => p.key));
     if (!jqlFilter) {
       setSearchResults(null);
       return;
@@ -555,7 +586,7 @@ const JiraDashboard = () => {
     } finally {
       setIsSearching(false);
     }
-  }, [activeAccount, searchQuery, selectedProjects, fetchByKeys, fetchChildren]);
+  }, [activeAccount, searchQuery, selectedProjects, projects, fetchByKeys, fetchChildren]);
 
   // 자동완성: summary 필드만으로 검색
   const fetchSuggestions = useCallback(async (query: string) => {
@@ -573,6 +604,12 @@ const JiraDashboard = () => {
       const term = query.trim();
       if (KEY_PATTERN.test(term)) {
         clauses.push(`key = "${escapeJql(term)}"`);
+      } else if (NUMBER_ONLY_PATTERN.test(term)) {
+        const prefixes = selectedProjects.length > 0 ? selectedProjects : projects.map((p) => p.key);
+        if (prefixes.length > 0) {
+          const keys = prefixes.map((pk) => `"${pk}-${term}"`);
+          clauses.push(keys.length === 1 ? `key = ${keys[0]}` : `key IN (${keys.join(',')})`);
+        }
       } else {
         const words = term.split(/\s+/).filter(Boolean);
         const wordClauses = words.map((w) => `summary ~ "${escapeJql(w)}"`);
@@ -585,7 +622,7 @@ const JiraDashboard = () => {
         action: 'searchIssues',
         params: {
           jql: `${clauses.join(' AND ')} ORDER BY updated DESC`,
-          maxResults: 8,
+          maxResults: 10,
           skipCache: true,
         },
       });
@@ -599,7 +636,7 @@ const JiraDashboard = () => {
     } finally {
       setIsSuggestLoading(false);
     }
-  }, [activeAccount, selectedProjects]);
+  }, [activeAccount, selectedProjects, projects]);
 
   // 검색어 변경 시 debounce 자동완성
   const handleSearchChange = useCallback((value: string) => {
@@ -681,6 +718,19 @@ const JiraDashboard = () => {
     setExpandedEpics(new Set());
   };
 
+  // 글로벌 단축키 이벤트 수신 (모두 접기/펼치기)
+  const epicGroupsRef = useRef<EpicGroup[]>([]);
+  useEffect(() => {
+    const onExpand = () => expandAll(epicGroupsRef.current);
+    const onCollapse = () => collapseAll();
+    window.addEventListener('lyra:expand-all', onExpand);
+    window.addEventListener('lyra:collapse-all', onCollapse);
+    return () => {
+      window.removeEventListener('lyra:expand-all', onExpand);
+      window.removeEventListener('lyra:collapse-all', onCollapse);
+    };
+  }, []);
+
   // 스페이스 설정 모달용 필터링 (Hook은 early return 전에 호출)
   const filteredProjects = React.useMemo(() => {
     const q = spaceFilter.trim().toLowerCase();
@@ -690,14 +740,14 @@ const JiraDashboard = () => {
     );
   }, [projects, spaceFilter]);
 
-  if (!activeAccount || activeAccount.serviceType !== 'jira') {
+  if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
     return (
       <Layout>
-        <Content>
-          <Empty>
-            Jira 계정을 추가하고 활성화해주세요. 계정 설정에서 Jira를 연결할 수 있습니다.
-          </Empty>
-        </Content>
+        <CenterContent>
+          <EmptyCenter>
+            Atlassian 계정을 추가하고 활성화해주세요. 계정 설정에서 Atlassian을 연결할 수 있습니다.
+          </EmptyCenter>
+        </CenterContent>
       </Layout>
     );
   }
@@ -706,6 +756,7 @@ const JiraDashboard = () => {
   const isSearchMode = searchResults !== null;
   const displayIssues = isSearchMode ? searchResults : myIssues;
   const epicGroups = groupByEpic(displayIssues);
+  epicGroupsRef.current = epicGroups;
 
   return (
     <Layout>
@@ -725,6 +776,7 @@ const JiraDashboard = () => {
           </SpaceFilterBtn>
           <SearchInputWrapper>
             <SearchInput
+              data-search-input
               placeholder="티켓 번호, 제목, 내용 검색..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
@@ -833,7 +885,10 @@ const JiraDashboard = () => {
                     {group.key !== '__no_epic__' && (
                       <>
                         <JiraTaskIcon type={resolveTaskType(group.issueTypeName)} size={18} />
-                        <EpicKey onClick={(e) => { e.stopPropagation(); goToIssue(group.key); }}>
+                        <EpicKey
+                          onClick={(e) => { e.stopPropagation(); goToIssue(group.key); }}
+                          onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${group.key}`, group.key)}
+                        >
                           {group.key}
                         </EpicKey>
                       </>
@@ -849,10 +904,13 @@ const JiraDashboard = () => {
                         <span>요약</span>
                         <span>상태</span>
                         <span>담당자</span>
-                        <span>마감일</span>
                       </TableHeader>
                       {group.children.map((issue) => (
-                        <IssueRow key={issue.key || issue.id} onClick={() => goToIssue(issue.key)}>
+                        <IssueRow
+                          key={issue.key || issue.id}
+                          onClick={() => goToIssue(issue.key)}
+                          onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${issue.key}`, `${issue.key} ${issue.summary}`)}
+                        >
                           <IssueKeyCell>
                             <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={18} />
                             <IssueKey>{issue.key}</IssueKey>
@@ -869,7 +927,6 @@ const JiraDashboard = () => {
                             <ChevronIcon>▾</ChevronIcon>
                           </StatusBadgeBtn>
                           <AssigneeText>{issue.assigneeName || '미지정'}</AssigneeText>
-                          <DueDateText>{issue.duedate ? issue.duedate.slice(0, 10) : '-'}</DueDateText>
                         </IssueRow>
                       ))}
                     </IssueTable>
@@ -1000,6 +1057,19 @@ const JiraDashboard = () => {
           onClose={closeTransition}
         />
       )}
+      {/* 아이템 우클릭 메뉴 */}
+      {itemContextMenu && (
+        <ItemContextOverlay onClick={() => setItemContextMenu(null)}>
+          <ItemContextBox
+            style={{ left: itemContextMenu.x, top: itemContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ItemContextMenuItem onClick={handleOpenInNewTab}>
+              새 탭으로 열기
+            </ItemContextMenuItem>
+          </ItemContextBox>
+        </ItemContextOverlay>
+      )}
     </Layout>
   );
 };
@@ -1009,7 +1079,8 @@ export default JiraDashboard;
 const Layout = styled.div`
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  flex: 1;
+  min-height: 100%;
   background: ${jiraTheme.bg.subtle};
   overflow-x: hidden;
   zoom: 1.2;
@@ -1023,6 +1094,11 @@ const Toolbar = styled.div`
   background: ${jiraTheme.bg.default};
   border-bottom: 1px solid ${jiraTheme.border};
   flex-wrap: wrap;
+
+  @media (max-width: 900px) {
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+  }
 `;
 
 const Logo = styled.div`
@@ -1121,6 +1197,8 @@ const SuggestDropdown = styled.div`
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   z-index: 200;
+  max-height: 420px;
+  overflow-y: auto;
   max-height: 360px;
   overflow-y: auto;
 `;
@@ -1229,6 +1307,10 @@ const Content = styled.main`
   width: 100%;
   box-sizing: border-box;
   overflow-x: auto;
+
+  @media (max-width: 900px) {
+    padding: 1rem 0.75rem;
+  }
 `;
 
 const SectionHeader = styled.div`
@@ -1294,6 +1376,20 @@ const Empty = styled.div`
   color: ${jiraTheme.text.secondary};
 `;
 
+const CenterContent = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 20vh;
+`;
+
+const EmptyCenter = styled.div`
+  text-align: center;
+  color: ${jiraTheme.text.muted};
+  font-size: 0.95rem;
+`;
+
 const EpicList = styled.div`
   display: flex;
   flex-direction: column;
@@ -1319,6 +1415,11 @@ const EpicHeader = styled.div`
   border-left: 3px solid ${jiraTheme.issueType.epic};
 
   &:hover { background: ${jiraTheme.bg.hover}; }
+
+  @media (max-width: 900px) {
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+  }
 `;
 
 const EpicToggle = styled.span`
@@ -1362,7 +1463,7 @@ const IssueTable = styled.div``;
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: minmax(100px, 160px) 1fr minmax(70px, 110px) minmax(70px, 110px) minmax(70px, 100px);
+  grid-template-columns: minmax(100px, 160px) 1fr minmax(70px, 110px) minmax(70px, 110px);
   gap: 0.75rem;
   padding: 0.4rem 1rem 0.4rem 2.25rem;
   background: #ECEEF2;
@@ -1374,19 +1475,27 @@ const TableHeader = styled.div`
   letter-spacing: 0.03em;
   text-align: center;
 
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(80px, 120px) 1fr minmax(60px, 90px);
+    gap: 0.5rem;
+    padding-left: 1.25rem;
+
+    span:nth-child(4) { display: none; }
+  }
+
   @media (max-width: 600px) {
-    grid-template-columns: minmax(80px, 120px) 1fr;
+    grid-template-columns: minmax(70px, 100px) 1fr;
+    gap: 0.375rem;
     padding-left: 1rem;
 
     span:nth-child(3),
-    span:nth-child(4),
-    span:nth-child(5) { display: none; }
+    span:nth-child(4) { display: none; }
   }
 `;
 
 const IssueRow = styled.div`
   display: grid;
-  grid-template-columns: minmax(100px, 160px) 1fr minmax(70px, 110px) minmax(70px, 110px) minmax(70px, 100px);
+  grid-template-columns: minmax(100px, 160px) 1fr minmax(70px, 110px) minmax(70px, 110px);
   gap: 0.75rem;
   padding: 0.5rem 1rem 0.5rem 2.25rem;
   background: ${jiraTheme.bg.default};
@@ -1398,8 +1507,15 @@ const IssueRow = styled.div`
   &:first-child { border-top: none; }
   &:hover { background: #F5F7FA; }
 
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(80px, 120px) 1fr minmax(60px, 90px);
+    gap: 0.5rem;
+    padding-left: 1.25rem;
+  }
+
   @media (max-width: 600px) {
-    grid-template-columns: minmax(80px, 120px) 1fr;
+    grid-template-columns: minmax(70px, 100px) 1fr;
+    gap: 0.375rem;
     padding-left: 1rem;
   }
 `;
@@ -1446,6 +1562,7 @@ const StatusBadgeBtn = styled.button<{ $color?: string }>`
   @media (max-width: 600px) { display: none; }
 `;
 
+
 const ChevronIcon = styled.span`
   font-size: 0.625rem;
   line-height: 1;
@@ -1460,17 +1577,9 @@ const AssigneeText = styled.span`
   white-space: nowrap;
   text-align: center;
 
-  @media (max-width: 600px) { display: none; }
+  @media (max-width: 900px) { display: none; }
 `;
 
-const DueDateText = styled.span`
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.muted};
-  text-align: center;
-  white-space: nowrap;
-
-  @media (max-width: 600px) { display: none; }
-`;
 
 const SpaceSettingsOverlay = styled.div`
   position: fixed;
@@ -1647,5 +1756,36 @@ const SaveBtn = styled.button`
   transition: background 0.2s ${transition};
 
   &:hover { background: ${jiraTheme.primaryHover}; }
+`;
+
+// ─── Item Context Menu ─────────────────────────
+
+const ItemContextOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+`;
+
+const ItemContextBox = styled.div`
+  position: fixed;
+  background: ${jiraTheme.bg.default};
+  border: 1px solid ${jiraTheme.border};
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  padding: 0.25rem 0;
+  z-index: 501;
+`;
+
+const ItemContextMenuItem = styled.div`
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  color: ${jiraTheme.text.primary};
+  cursor: pointer;
+  transition: background 0.1s;
+
+  &:hover {
+    background: ${jiraTheme.bg.subtle};
+  }
 `;
 

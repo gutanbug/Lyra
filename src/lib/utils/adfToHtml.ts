@@ -168,6 +168,11 @@ function renderNode(node: ADFNode): string {
         const src = escapeHtml(String(node.attrs?.url || ''));
         return `<img src="${src}" alt="" class="adf-image" />`;
       }
+      // file 타입: media ID를 data 속성으로 포함하여 이후 실제 이미지로 대체 가능
+      const mediaId = String(node.attrs?.id || '');
+      if (mediaId) {
+        return `<img class="adf-image adf-attachment-img" data-media-id="${escapeHtml(mediaId)}" alt="첨부 이미지" />`;
+      }
       return '<span class="adf-media-placeholder">[첨부 파일]</span>';
     }
 

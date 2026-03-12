@@ -12,6 +12,7 @@ interface InvokeParams {
   pageId?: string;
   skipCache?: boolean;
   transitionId?: string;
+  contentUrl?: string;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -58,6 +59,7 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       getIssueTypes: (params: unknown) => this.getIssueTypes(params),
       getTransitions: (params: unknown) => this.getTransitions(params),
       transitionIssue: (params: unknown) => this.transitionIssue(params),
+      getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
     };
   }
 
@@ -143,4 +145,10 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     return client.searchConfluenceByIssue(issueKey);
   }
 
+  private async getAttachmentContent(params: unknown): Promise<unknown> {
+    const { credentials, contentUrl } = (params || {}) as InvokeParams;
+    if (!contentUrl) throw new Error('contentUrl is required');
+    const client = new JiraClient(credentials);
+    return client.getAttachmentContent(contentUrl);
+  }
 }

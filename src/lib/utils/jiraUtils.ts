@@ -48,3 +48,6 @@ export function escapeJql(value: string): string {
 }
 
 export const KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/i;
+
+/** 숫자만 입력된 경우 (예: "123") */
+export const NUMBER_ONLY_PATTERN = /^\d+$/;

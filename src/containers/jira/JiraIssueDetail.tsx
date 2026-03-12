@@ -10,6 +10,7 @@ import { adfToHtml } from 'lib/utils/adfToHtml';
 import { confluenceToHtml } from 'lib/utils/confluenceToHtml';
 import { str, obj, isEpicType, isSubTaskType, getStatusColor, getPriorityColor, formatDate } from 'lib/utils/jiraUtils';
 import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
+import { useRichContentLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import { ExternalLink } from 'lucide-react';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
@@ -332,6 +333,7 @@ function parseChildIssues(result: unknown): ChildIssue[] {
       const summary = typeof rawSummary === 'string' ? rawSummary : adfToText(rawSummary);
       const statusObj = obj(f.status);
       const statusCatObj = obj(statusObj?.statusCategory);
+      const assigneeObj = obj(f.assignee);
       const issueTypeObj = obj(f.issuetype) || obj(f.issue_type) || obj(f.issueType);
       const priorityObj = obj(f.priority);
       return {
@@ -339,6 +341,7 @@ function parseChildIssues(result: unknown): ChildIssue[] {
         summary: summary.trim(),
         statusName: str(statusObj?.name),
         statusCategory: str(statusCatObj?.name) || str(statusCatObj?.key),
+        assigneeName: str(assigneeObj?.displayName) || str(assigneeObj?.display_name) || str(assigneeObj?.name),
         issueTypeName: str(issueTypeObj?.name),
         priorityName: str(priorityObj?.name),
       };
@@ -394,6 +397,7 @@ const JiraIssueDetail = () => {
     grandchildren: ChildIssue[];
   }
   const [childIssues, setChildIssues] = useState<ChildWithGrandchildren[]>([]);
+  const [childIssuesLoading, setChildIssuesLoading] = useState(false);
   const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
 
   // 인라인 카드 링크 → 제목 매핑
@@ -429,11 +433,91 @@ const JiraIssueDetail = () => {
     );
   }, [issue]);
 
+  const handleContentClick = useRichContentLinkHandler();
+
   const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition } = useTransitionDropdown({
     accountId: activeAccount?.id,
     serviceType: 'jira',
     onTransitioned: handleTransitioned,
   });
+
+  // 하위 업무 항목 비동기 조회 (메인 로딩과 독립적으로 실행)
+  const fetchChildIssues = useCallback(async (detailKey: string, issueTypeName: string) => {
+    if (!activeAccount) return;
+    setChildIssuesLoading(true);
+    setChildIssues([]);
+    try {
+      const directChildren: ChildIssue[] = [];
+      const seenKeys = new Set<string>();
+
+      // 1) parent 필드 기반 — 직접 하위만
+      try {
+        const childResult = await integrationController.invoke({
+          accountId: activeAccount.id,
+          serviceType: 'jira',
+          action: 'searchIssues',
+          params: {
+            jql: `parent = ${detailKey} ORDER BY created ASC`,
+            maxResults: 100,
+          },
+        });
+        for (const ci of parseChildIssues(childResult)) {
+          if (!seenKeys.has(ci.key)) {
+            directChildren.push(ci);
+            seenKeys.add(ci.key);
+          }
+        }
+      } catch { /* ignore */ }
+
+      // 2) Epic Link 폴백 (classic Jira 프로젝트)
+      if (isEpicType(issueTypeName)) {
+        try {
+          const epicLinkResult = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: {
+              jql: `"Epic Link" = ${detailKey} ORDER BY created ASC`,
+              maxResults: 100,
+            },
+          });
+          for (const ci of parseChildIssues(epicLinkResult)) {
+            if (!seenKeys.has(ci.key)) {
+              directChildren.push(ci);
+              seenKeys.add(ci.key);
+            }
+          }
+        } catch { /* Epic Link 미지원 인스턴스 무시 */ }
+      }
+
+      // 직접 하위 이슈를 먼저 표시 (손자 이슈 로딩 전)
+      setChildIssues(directChildren.map((c) => ({ ...c, grandchildren: [] })));
+
+      // 3) 각 직접 하위 이슈의 손자 이슈 조회
+      const childrenWithGc = await Promise.all(
+        directChildren.map(async (child) => {
+          let grandchildren: ChildIssue[] = [];
+          try {
+            const gcResult = await integrationController.invoke({
+              accountId: activeAccount.id,
+              serviceType: 'jira',
+              action: 'searchIssues',
+              params: {
+                jql: `parent = ${child.key} ORDER BY created ASC`,
+                maxResults: 50,
+              },
+            });
+            grandchildren = parseChildIssues(gcResult);
+          } catch { /* ignore */ }
+          return { ...child, grandchildren };
+        })
+      );
+
+      setChildIssues(childrenWithGc);
+    } finally {
+      setChildIssuesLoading(false);
+    }
+  }, [activeAccount]);
 
   // 인라인 카드 URL에서 제목을 일괄 해석
   const resolveCardTitles = useCallback(async (urls: string[]) => {
@@ -661,72 +745,9 @@ const JiraIssueDetail = () => {
             }
           }
 
-          // 하위 업무 항목 조회 (직접 하위 이슈 + 손자 이슈)
+          // 하위 업무 항목 비동기 조회 (메인 로딩을 블로킹하지 않음)
           if (!isSubTaskType(detail.issueTypeName)) {
-            const directChildren: ChildIssue[] = [];
-            const seenKeys = new Set<string>();
-
-            // 1) parent 필드 기반 — 직접 하위만
-            try {
-              const childResult = await integrationController.invoke({
-                accountId: activeAccount!.id,
-                serviceType: 'jira',
-                action: 'searchIssues',
-                params: {
-                  jql: `parent = ${detail.key} ORDER BY created ASC`,
-                  maxResults: 100,
-                },
-              });
-              for (const ci of parseChildIssues(childResult)) {
-                if (!seenKeys.has(ci.key)) {
-                  directChildren.push(ci);
-                  seenKeys.add(ci.key);
-                }
-              }
-            } catch { /* ignore */ }
-
-            // 2) Epic Link 폴백 (classic Jira 프로젝트)
-            if (isEpicType(detail.issueTypeName)) {
-              try {
-                const epicLinkResult = await integrationController.invoke({
-                  accountId: activeAccount!.id,
-                  serviceType: 'jira',
-                  action: 'searchIssues',
-                  params: {
-                    jql: `"Epic Link" = ${detail.key} ORDER BY created ASC`,
-                    maxResults: 100,
-                  },
-                });
-                for (const ci of parseChildIssues(epicLinkResult)) {
-                  if (!seenKeys.has(ci.key)) {
-                    directChildren.push(ci);
-                    seenKeys.add(ci.key);
-                  }
-                }
-              } catch { /* Epic Link 미지원 인스턴스 무시 */ }
-            }
-
-            // 3) 각 직접 하위 이슈의 손자 이슈 조회
-            const childrenWithGc = await Promise.all(
-              directChildren.map(async (child) => {
-                let grandchildren: ChildIssue[] = [];
-                try {
-                  const gcResult = await integrationController.invoke({
-                    accountId: activeAccount!.id,
-                    serviceType: 'jira',
-                    action: 'searchIssues',
-                    params: {
-                      jql: `parent = ${child.key} ORDER BY created ASC`,
-                      maxResults: 50,
-                    },
-                  });
-                  grandchildren = parseChildIssues(gcResult);
-                } catch { /* ignore */ }
-                return { ...child, grandchildren };
-              })
-            );
-
-            setChildIssues(childrenWithGc);
+            fetchChildIssues(detail.key, detail.issueTypeName);
           } else {
             setChildIssues([]);
           }
@@ -1001,7 +1022,7 @@ const JiraIssueDetail = () => {
         {issue.descriptionHtml && (
           <Section>
             <SectionTitle>설명</SectionTitle>
-            <RichContent dangerouslySetInnerHTML={{ __html: resolveHtml(issue.descriptionHtml) }} />
+            <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(issue.descriptionHtml) }} />
           </Section>
         )}
 
@@ -1038,10 +1059,10 @@ const JiraIssueDetail = () => {
         )}
 
         {/* 하위 업무 항목 */}
-        {childIssues.length > 0 && (
+        {(childIssues.length > 0 || childIssuesLoading) && (
           <Section>
             <SectionTitle>
-              하위 업무 항목 ({childIssues.length})
+              하위 업무 항목 {childIssuesLoading ? '(로딩 중...)' : `(${childIssues.length})`}
             </SectionTitle>
             <ChildIssueList>
               {childIssues.map((ci) => (
@@ -1068,6 +1089,7 @@ const JiraIssueDetail = () => {
                       <ChildIssueSummary>{ci.summary || '(제목 없음)'}</ChildIssueSummary>
                     </ChildIssueLeft>
                     <ChildIssueRight>
+                      {ci.assigneeName && <ChildAssignee>{ci.assigneeName}</ChildAssignee>}
                       <StatusBadgeBtn
                         $color={getStatusColor(ci.statusName, ci.statusCategory)}
                         onClick={(e) => { e.stopPropagation(); openTransitionDropdown(ci.key, ci.statusName, e); }}
@@ -1087,6 +1109,7 @@ const JiraIssueDetail = () => {
                             <ChildIssueSummary>{gc.summary || '(제목 없음)'}</ChildIssueSummary>
                           </ChildIssueLeft>
                           <ChildIssueRight>
+                            {gc.assigneeName && <ChildAssignee>{gc.assigneeName}</ChildAssignee>}
                             <StatusBadgeBtn
                               $color={getStatusColor(gc.statusName, gc.statusCategory)}
                               onClick={(e) => { e.stopPropagation(); openTransitionDropdown(gc.key, gc.statusName, e); }}
@@ -1123,7 +1146,7 @@ const JiraIssueDetail = () => {
                         <CommentAuthor>{comment.author}</CommentAuthor>
                         <CommentDate>{formatDate(comment.created)}</CommentDate>
                       </CommentHeader>
-                      <CommentBody dangerouslySetInnerHTML={{ __html: resolveHtml(comment.bodyHtml) }} />
+                      <CommentBody onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(comment.bodyHtml) }} />
                     </CommentItem>
                     {replies.length > 0 && (
                       <ReplyList>
@@ -1140,7 +1163,7 @@ const JiraIssueDetail = () => {
                               </CommentAuthor>
                               <CommentDate>{formatDate(reply.created)}</CommentDate>
                             </CommentHeader>
-                            <CommentBody dangerouslySetInnerHTML={{ __html: resolveHtml(reply.bodyHtml) }} />
+                            <CommentBody onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(reply.bodyHtml) }} />
                           </ReplyItem>
                         ))}
                       </ReplyList>
@@ -1206,7 +1229,7 @@ const JiraIssueDetail = () => {
                       {isPageLoading ? (
                         <ConfluenceLoading>문서 로딩 중...</ConfluenceLoading>
                       ) : content ? (
-                        <ConfluenceContent dangerouslySetInnerHTML={{ __html: content.body }} />
+                        <ConfluenceContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: content.body }} />
                       ) : null}
                     </ConfluenceBody>
                   )}
@@ -1665,7 +1688,19 @@ const ChildIssueSummary = styled.span`
 `;
 
 const ChildIssueRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   flex-shrink: 0;
+`;
+
+const ChildAssignee = styled.span`
+  font-size: 0.75rem;
+  color: ${({ theme }) => theme.textSecondary || '#6b778c'};
+  white-space: nowrap;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const GrandchildToggle = styled.span`
@@ -1686,9 +1721,10 @@ const GrandchildToggle = styled.span`
 const GrandchildList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.375rem;
   padding-left: 1.5rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
 `;
 
 const GrandchildRow = styled.div`
@@ -1696,11 +1732,12 @@ const GrandchildRow = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.375rem 0.625rem;
-  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 3px;
   cursor: pointer;
   transition: background 0.12s;
   background: ${jiraTheme.bg.subtle};
+  border: 1px solid ${jiraTheme.border};
 
   &:hover {
     background: ${jiraTheme.bg.hover};

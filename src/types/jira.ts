@@ -76,6 +76,7 @@ export interface ChildIssue {
   summary: string;
   statusName: string;
   statusCategory: string;
+  assigneeName: string;
   issueTypeName: string;
   priorityName: string;
 }

@@ -78,9 +78,11 @@ const LayoutPage = () => {
 
   const hasTabs = tabs.length > 0;
   const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : null;
-  // Split View가 활성이면 메인/탭 모두 숨김
-  const showMain = !isSplit && !activeTab;
-  const showSplit = isSplit && leftPanel && rightPanel;
+  const hasSplit = isSplit && leftPanel && rightPanel;
+  // 메인 뷰: Split View도 없고 활성 탭도 없을 때
+  const showMain = !hasSplit && !activeTab;
+  // Split View: Split 활성이고 탭이 선택되지 않았을 때
+  const showSplit = hasSplit && !activeTab;
 
   // 글로벌 단축키
   useEffect(() => {
@@ -147,9 +149,9 @@ const LayoutPage = () => {
     <Page>
       <Header />
 
-      {/* Split View */}
-      {showSplit && (
-        <SplitContainer>
+      {/* Split View (display 토글로 상태 유지) */}
+      {hasSplit && (
+        <SplitContainer $visible={showSplit as boolean}>
           <SplitPanel>
             <IsolatedPanel menuId={leftPanel!} />
           </SplitPanel>
@@ -167,7 +169,7 @@ const LayoutPage = () => {
 
       {/* 탭 패널 (숨김/표시로 상태 유지) */}
       {tabs.map((tab) => (
-        <TabContent key={tab.id} $visible={!isSplit && activeTabId === tab.id}>
+        <TabContent key={tab.id} $visible={activeTabId === tab.id}>
           <TabPanel tab={tab} />
         </TabContent>
       ))}
@@ -206,8 +208,8 @@ const TabContent = styled.div<{ $visible: boolean }>`
   flex-direction: column;
 `;
 
-const SplitContainer = styled.div`
-  display: flex;
+const SplitContainer = styled.div<{ $visible: boolean }>`
+  display: ${({ $visible }) => ($visible ? 'flex' : 'none')};
   flex: 1;
   min-height: 0;
 `;

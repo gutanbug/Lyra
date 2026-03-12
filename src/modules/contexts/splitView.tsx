@@ -72,10 +72,6 @@ export const SplitViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const newTab: Tab = { id, name: label, menuId, initialPath };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(id);
-    // Split View 해제
-    setIsSplit(false);
-    setLeftPanel(null);
-    setRightPanel(null);
     return id;
   }, []);
 
@@ -95,10 +91,6 @@ export const SplitViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const activateTab = useCallback((tabId: string) => {
     setActiveTabId(tabId);
-    // Split View 해제
-    setIsSplit(false);
-    setLeftPanel(null);
-    setRightPanel(null);
   }, []);
 
   const deactivateTab = useCallback(() => {

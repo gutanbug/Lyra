@@ -300,7 +300,6 @@ const JiraDashboard = () => {
   // 기본 모드 N-depth 하위 이슈 상태
   const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>({});
   const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(new Set());
-  const [defaultLoadingChildren, setDefaultLoadingChildren] = useState<Set<string>>(new Set());
   const [defaultLoadedChildren, setDefaultLoadedChildren] = useState<Set<string>>(new Set());
 
   // 사이드바 프로젝트 브라우즈 모드 (스페이스 설정과 독립)
@@ -650,26 +649,6 @@ const JiraDashboard = () => {
     setBrowseLoadedChildren((prev) => new Set(prev).add(parentKey));
   }, [fetchChildren, browseLoadedChildren]);
 
-  // 기본 모드에서 하위 이슈 비동기 로드 → defaultChildrenMap에 저장
-  const loadDefaultChildren = useCallback(async (parentKey: string) => {
-    if (defaultLoadedChildren.has(parentKey)) return;
-
-    setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
-    try {
-      const pf = selectedProjects.length > 0 ? selectedProjects : undefined;
-      const children = await fetchChildren([parentKey], pf);
-      setDefaultChildrenMap((prev) => ({
-        ...prev,
-        [parentKey]: children,
-      }));
-    } catch { /* ignore */ }
-    setDefaultLoadingChildren((prev) => {
-      const next = new Set(prev);
-      next.delete(parentKey);
-      return next;
-    });
-    setDefaultLoadedChildren((prev) => new Set(prev).add(parentKey));
-  }, [fetchChildren, defaultLoadedChildren, selectedProjects]);
 
   const searchIssues = useCallback(async () => {
     if (!activeAccount) return;
@@ -910,23 +889,20 @@ const JiraDashboard = () => {
     });
   };
 
-  const expandAll = (groups: EpicGroup[]) => {
+  const expandAll = useCallback((groups: EpicGroup[]) => {
     setExpandedEpics(new Set(groups.map((g) => g.key)));
     // N-depth: defaultChildrenMap에 하위 항목이 있는 모든 키를 펼침
     const allKeys = new Set<string>();
-    const collectKeys = (map: Record<string, NormalizedIssue[]>) => {
-      for (const [key, children] of Object.entries(map)) {
-        if (children.length > 0) allKeys.add(key);
-      }
-    };
-    collectKeys(defaultChildrenMap);
+    for (const [key, children] of Object.entries(defaultChildrenMap)) {
+      if (children.length > 0) allKeys.add(key);
+    }
     setDefaultExpandedChildren(allKeys);
-  };
+  }, [defaultChildrenMap]);
 
-  const collapseAll = () => {
+  const collapseAll = useCallback(() => {
     setExpandedEpics(new Set());
     setDefaultExpandedChildren(new Set());
-  };
+  }, []);
 
   // 글로벌 단축키 이벤트 수신 (모두 접기/펼치기)
   const epicGroupsRef = useRef<EpicGroup[]>([]);
@@ -939,7 +915,7 @@ const JiraDashboard = () => {
       window.removeEventListener('lyra:expand-all', onExpand);
       window.removeEventListener('lyra:collapse-all', onCollapse);
     };
-  }, []);
+  }, [expandAll, collapseAll]);
 
   // 스페이스 설정 모달용 필터링 (Hook은 early return 전에 호출)
   const filteredProjects = React.useMemo(() => {

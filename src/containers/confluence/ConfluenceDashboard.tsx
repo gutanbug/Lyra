@@ -619,6 +619,9 @@ const ConfluenceDashboard = () => {
                       <PageIcon />
                     </SuggestIcon>
                     <SuggestTitle>{page.title}</SuggestTitle>
+                    {page.authorName && (
+                      <SuggestAuthor>{page.authorName}</SuggestAuthor>
+                    )}
                     {page.spaceKey && (
                       <SuggestSpace>
                         {isPersonalSpaceKey(page.spaceKey) ? (page.spaceName || page.authorName || page.spaceKey) : page.spaceKey}
@@ -1080,6 +1083,13 @@ const SuggestTitle = styled.span`
   color: ${confluenceTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const SuggestAuthor = styled.span`
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  color: ${confluenceTheme.text.secondary};
   white-space: nowrap;
 `;
 

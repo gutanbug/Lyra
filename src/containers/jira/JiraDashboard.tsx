@@ -300,7 +300,6 @@ const JiraDashboard = () => {
   // 기본 모드 N-depth 하위 이슈 상태
   const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>({});
   const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(new Set());
-  const [defaultLoadedChildren, setDefaultLoadedChildren] = useState<Set<string>>(new Set());
 
   // 사이드바 프로젝트 브라우즈 모드 (스페이스 설정과 독립)
   const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(null);
@@ -507,7 +506,6 @@ const JiraDashboard = () => {
     }
 
     setDefaultChildrenMap(childrenMap);
-    setDefaultLoadedChildren(new Set(loaded));
     // 자동 펼침 없음 — 사용자가 직접 클릭하여 확장
     setDefaultExpandedChildren(new Set());
   }, [fetchChildren]);

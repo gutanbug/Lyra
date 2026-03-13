@@ -129,6 +129,10 @@ function normalizeIssue(raw: Record<string, unknown>): Record<string, unknown> {
     result.issuelinks = fields.issuelinks;
   }
 
+  // subtasks 수 (하위 항목 토글 표시용)
+  const subtasks = fields.subtasks as unknown[] | undefined;
+  result.subtaskCount = Array.isArray(subtasks) ? subtasks.length : 0;
+
   // 첨부파일
   if (Array.isArray(fields.attachment)) {
     result.attachment = fields.attachment;

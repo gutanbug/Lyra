@@ -8,6 +8,7 @@ interface InvokeParams {
   jql?: string;
   maxResults?: number;
   startAt?: number;
+  nextPageToken?: string;
   issueKey?: string;
   pageId?: string;
   skipCache?: boolean;
@@ -64,10 +65,10 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
   }
 
   private async searchIssues(params?: unknown): Promise<unknown> {
-    const { credentials, jql = 'created >= -90d ORDER BY created DESC', maxResults = 50, startAt = 0, skipCache = false } =
+    const { credentials, jql = '', maxResults = 50, startAt = 0, skipCache = false, nextPageToken } =
       (params || {}) as InvokeParams;
     const client = new JiraClient(credentials);
-    return client.searchIssues(jql, maxResults, startAt, undefined, skipCache);
+    return client.searchIssues(jql, maxResults, startAt, undefined, skipCache, nextPageToken);
   }
 
   private async getPriorities(params?: unknown): Promise<unknown> {

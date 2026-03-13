@@ -65,10 +65,17 @@ function normalizeDetail(raw: Record<string, unknown>): NormalizedDetail {
   const updated = str(f.updated) || '';
   const duedate = str(f.duedate) || '';
 
+  const parentObj = obj(f.parent);
+  const parentFields = obj(parentObj?.fields);
+  const parentKey = str(parentObj?.key) || '';
+  const parentSummary = str(parentFields?.summary) || str(parentObj?.summary) || '';
+  const parentIssueTypeObj = obj(parentFields?.issuetype) || obj(parentFields?.issueType) || obj(parentFields?.issue_type) || obj(parentObj?.issue_type) || obj(parentObj?.issueType);
+  const parentIssueTypeName = str(parentIssueTypeObj?.name) || str(parentObj?.issueTypeName) || '';
+
   return {
     key, summary, descriptionHtml, statusName, statusCategory,
     assigneeName, reporterName, issueTypeName, priorityName,
-    created, updated, duedate,
+    created, updated, duedate, parentKey, parentSummary, parentIssueTypeName,
   };
 }
 
@@ -355,16 +362,12 @@ interface BreadcrumbEntry {
   issueTypeName: string;
 }
 
-// 모듈 레벨 스택 (라우트 이동 간 유지)
-const breadcrumbStack: BreadcrumbEntry[] = [];
-
-/** 가장 가까운 스크롤 가능한 부모 요소를 찾아 scrollTop을 0으로 설정 */
+/** 자기 자신 포함 모든 스크롤 가능한 부모 요소의 scrollTop을 0으로 설정 */
 function scrollToTop(el: HTMLElement | null) {
-  let current = el?.parentElement;
+  let current: HTMLElement | null = el;
   while (current) {
-    if (current.scrollHeight > current.clientHeight) {
+    if (current.scrollTop > 0) {
       current.scrollTop = 0;
-      return;
     }
     current = current.parentElement;
   }
@@ -649,12 +652,40 @@ const JiraIssueDetail = () => {
           descHtml = detail.descriptionHtml;
           setIssue(detail);
 
-          // 브레드크럼 관리: 현재 이슈가 스택에 이미 있으면 그 지점까지 자르기
-          const existingIdx = breadcrumbStack.findIndex((b) => b.key === detail.key);
-          if (existingIdx >= 0) {
-            breadcrumbStack.splice(existingIdx);
+          // 계층 구조 브레드크럼: parent 체인을 따라가며 ancestors 구성
+          const ancestors: BreadcrumbEntry[] = [];
+          let currentParentKey = detail.parentKey;
+          let currentParentSummary = detail.parentSummary;
+          let currentParentType = detail.parentIssueTypeName;
+
+          // 첫 번째 parent는 이미 detail에 있음
+          if (currentParentKey) {
+            ancestors.unshift({ key: currentParentKey, summary: currentParentSummary, issueTypeName: currentParentType });
+
+            // 상위 parent들을 재귀 조회 (최대 5단계)
+            for (let i = 0; i < 5; i++) {
+              try {
+                const parentData = await integrationController.invoke({
+                  accountId: activeAccount.id,
+                  serviceType: 'jira',
+                  action: 'getIssue',
+                  params: { issueKey: currentParentKey },
+                });
+                const parentRaw = parentData as Record<string, unknown>;
+                const parentDetail = normalizeDetail(parentRaw);
+                if (!parentDetail.parentKey) break;
+                ancestors.unshift({
+                  key: parentDetail.parentKey,
+                  summary: parentDetail.parentSummary,
+                  issueTypeName: parentDetail.parentIssueTypeName,
+                });
+                currentParentKey = parentDetail.parentKey;
+              } catch {
+                break;
+              }
+            }
           }
-          setBreadcrumbs([...breadcrumbStack]);
+          setBreadcrumbs(ancestors);
 
           // issuelinks 추출
           const rawLinks = raw.issuelinks;
@@ -785,45 +816,23 @@ const JiraIssueDetail = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAccount, issueKey]);
 
-  // 하위 이슈 클릭 시 현재 이슈를 브레드크럼에 추가하고 이동
+  // 이슈 클릭 시 이동 (계층은 자동으로 parent chain에서 구성됨)
   const goToChildIssue = (targetKey: string) => {
-    if (issue) {
-      // 이미 스택에 현재 이슈가 없으면 추가
-      if (!breadcrumbStack.some((b) => b.key === issue.key)) {
-        breadcrumbStack.push({
-          key: issue.key,
-          summary: issue.summary,
-          issueTypeName: issue.issueTypeName,
-        });
-      }
-    }
     history.push(`/jira/issue/${targetKey}`);
   };
 
-  // 브레드크럼 항목 클릭 → 해당 지점까지 스택 자르고 이동
+  // 브레드크럼 항목 클릭 → 해당 이슈로 이동
   const goToBreadcrumb = (targetKey: string) => {
-    const idx = breadcrumbStack.findIndex((b) => b.key === targetKey);
-    if (idx >= 0) {
-      breadcrumbStack.splice(idx + 1);
-    }
     history.push(`/jira/issue/${targetKey}`);
   };
 
-  // 목록으로 돌아갈 때 스택 초기화
+  // 목록으로 돌아가기
   const goToList = () => {
-    breadcrumbStack.length = 0;
     history.push('/jira');
   };
 
-  // 뒤로가기: 브레드크럼 스택이 있으면 상위 이슈로, 없으면 목록으로
   const goBack = () => {
-    if (breadcrumbStack.length > 0) {
-      const prev = breadcrumbStack[breadcrumbStack.length - 1];
-      breadcrumbStack.splice(breadcrumbStack.length - 1);
-      history.push(`/jira/issue/${prev.key}`);
-    } else {
-      goToList();
-    }
+    goToList();
   };
 
   const toggleConfluencePage = useCallback(async (link: ConfluenceLink) => {
@@ -912,7 +921,7 @@ const JiraIssueDetail = () => {
       <Layout ref={layoutRef}>
         <ToolbarArea>
           <BackButton onClick={goBack}>
-            &larr; {breadcrumbs.length > 0 ? '상위 이슈' : '목록으로'}
+            &larr; 목록으로
           </BackButton>
         </ToolbarArea>
         <Content>
@@ -926,20 +935,21 @@ const JiraIssueDetail = () => {
     <Layout ref={layoutRef}>
       <ToolbarArea>
         <BackButton onClick={goBack}>
-          &larr; {breadcrumbs.length > 0 ? '상위 이슈' : '목록으로'}
+          &larr; 목록으로
         </BackButton>
         <Breadcrumbs>
           {breadcrumbs.map((b) => (
             <React.Fragment key={b.key}>
-              <BreadcrumbSep>/</BreadcrumbSep>
-              <BreadcrumbItem onClick={() => goToBreadcrumb(b.key)}>
+              <BreadcrumbSep>&gt;</BreadcrumbSep>
+              <BreadcrumbItem onClick={() => goToBreadcrumb(b.key)} title={b.summary}>
                 <JiraTaskIcon type={resolveTaskType(b.issueTypeName)} size={14} />
                 <span>{b.key}</span>
+                {b.summary && <BreadcrumbSummary>{b.summary}</BreadcrumbSummary>}
               </BreadcrumbItem>
             </React.Fragment>
           ))}
-          <BreadcrumbSep>/</BreadcrumbSep>
-          <BreadcrumbCurrent>
+          <BreadcrumbSep>&gt;</BreadcrumbSep>
+          <BreadcrumbCurrent title={issue.summary}>
             <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={14} />
             <span>{issue.key}</span>
           </BreadcrumbCurrent>
@@ -1067,25 +1077,30 @@ const JiraIssueDetail = () => {
             <ChildIssueList>
               {childIssues.map((ci) => (
                 <React.Fragment key={ci.key}>
-                  <ChildIssueRow onClick={() => goToChildIssue(ci.key)}>
+                  <ChildIssueRow
+                    onClick={() => {
+                      if (ci.grandchildren.length > 0) {
+                        setExpandedChildren((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(ci.key)) next.delete(ci.key);
+                          else next.add(ci.key);
+                          return next;
+                        });
+                      } else {
+                        goToChildIssue(ci.key);
+                      }
+                    }}
+                  >
                     <ChildIssueLeft>
-                      {ci.grandchildren.length > 0 && (
-                        <GrandchildToggle
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedChildren((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(ci.key)) next.delete(ci.key);
-                              else next.add(ci.key);
-                              return next;
-                            });
-                          }}
-                        >
-                          {expandedChildren.has(ci.key) ? '▼' : '▶'}
-                        </GrandchildToggle>
-                      )}
+                      <GrandchildToggle $visible={ci.grandchildren.length > 0}>
+                        {ci.grandchildren.length > 0 ? (expandedChildren.has(ci.key) ? '▼' : '▶') : ''}
+                      </GrandchildToggle>
                       <JiraTaskIcon type={resolveTaskType(ci.issueTypeName)} size={18} />
-                      <ChildIssueKey>{ci.key}</ChildIssueKey>
+                      <ChildIssueKey
+                        onClick={(e) => { e.stopPropagation(); goToChildIssue(ci.key); }}
+                      >
+                        {ci.key}
+                      </ChildIssueKey>
                       <ChildIssueSummary>{ci.summary || '(제목 없음)'}</ChildIssueSummary>
                     </ChildIssueLeft>
                     <ChildIssueRight>
@@ -1102,10 +1117,14 @@ const JiraIssueDetail = () => {
                   {expandedChildren.has(ci.key) && ci.grandchildren.length > 0 && (
                     <GrandchildList>
                       {ci.grandchildren.map((gc) => (
-                        <GrandchildRow key={gc.key} onClick={() => goToChildIssue(gc.key)}>
+                        <GrandchildRow key={gc.key}>
                           <ChildIssueLeft>
                             <JiraTaskIcon type={resolveTaskType(gc.issueTypeName)} size={16} />
-                            <ChildIssueKey>{gc.key}</ChildIssueKey>
+                            <ChildIssueKey
+                              onClick={() => goToChildIssue(gc.key)}
+                            >
+                              {gc.key}
+                            </ChildIssueKey>
                             <ChildIssueSummary>{gc.summary || '(제목 없음)'}</ChildIssueSummary>
                           </ChildIssueLeft>
                           <ChildIssueRight>
@@ -1297,6 +1316,7 @@ const Breadcrumbs = styled.div`
   gap: 0.25rem;
   min-width: 0;
   overflow: hidden;
+  flex-wrap: wrap;
 `;
 
 const BreadcrumbSep = styled.span`
@@ -1319,12 +1339,20 @@ const BreadcrumbItem = styled.button`
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ${transition};
-  flex-shrink: 0;
+  max-width: 280px;
 
   &:hover {
     background: ${jiraTheme.primaryLight};
     border-color: ${jiraTheme.primary};
   }
+`;
+
+const BreadcrumbSummary = styled.span`
+  color: ${jiraTheme.text.secondary};
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const BreadcrumbCurrent = styled.span`
@@ -1357,8 +1385,9 @@ const HeaderCard = styled.div`
 
 const HeaderTopRow = styled.div`
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 0.5rem;
   margin-bottom: 0.75rem;
 `;
 
@@ -1366,6 +1395,8 @@ const IssueKeyRow = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
 `;
 
 const IssueKeyLink = styled.span`
@@ -1677,6 +1708,11 @@ const ChildIssueKey = styled.span`
   font-size: 0.8125rem;
   color: ${jiraTheme.primary};
   flex-shrink: 0;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 const ChildIssueSummary = styled.span`
@@ -1703,18 +1739,18 @@ const ChildAssignee = styled.span`
   text-overflow: ellipsis;
 `;
 
-const GrandchildToggle = styled.span`
+const GrandchildToggle = styled.span<{ $visible?: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 1rem;
   font-size: 0.625rem;
-  color: ${jiraTheme.text.secondary};
-  cursor: pointer;
+  color: ${({ $visible }) => $visible ? jiraTheme.text.secondary : 'transparent'};
+  cursor: ${({ $visible }) => $visible ? 'pointer' : 'default'};
   flex-shrink: 0;
 
   &:hover {
-    color: ${jiraTheme.text.primary};
+    color: ${({ $visible }) => $visible ? jiraTheme.text.primary : 'transparent'};
   }
 `;
 

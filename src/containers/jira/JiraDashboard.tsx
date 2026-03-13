@@ -10,7 +10,7 @@ import { adfToText } from 'lib/utils/adfToText';
 import { str, obj, isEpicType, isSubTaskType, getStatusColor, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
-import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
+import JiraTaskIcon, { resolveTaskType, TASK_TYPE_LABELS, TASK_TYPE_COLORS } from 'components/jira/JiraTaskIcon';
 import { isAtlassianAccount } from 'types/account';
 import { useTabs } from 'modules/contexts/splitView';
 import { Loader } from 'lucide-react';
@@ -1030,6 +1030,9 @@ const JiraDashboard = () => {
               <SubTaskToggleSpacer />
             )}
             <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={18} />
+            <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(issue.issueTypeName)]}>
+              {TASK_TYPE_LABELS[resolveTaskType(issue.issueTypeName)]}
+            </IssueTypeLabel>
             <IssueKey
               onClick={(e) => { e.stopPropagation(); goToIssue(issue.key); }}
             >
@@ -1095,6 +1098,9 @@ const JiraDashboard = () => {
               <SubTaskToggleSpacer />
             )}
             <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={18} />
+            <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(issue.issueTypeName)]}>
+              {TASK_TYPE_LABELS[resolveTaskType(issue.issueTypeName)]}
+            </IssueTypeLabel>
             <IssueKey
               onClick={(e) => { e.stopPropagation(); goToIssue(issue.key); }}
             >
@@ -1256,6 +1262,9 @@ const JiraDashboard = () => {
                       <EpicHeader onClick={() => toggleBrowseEpic(epic.key)}>
                         <EpicToggle>{isExpanded ? '▼' : '▶'}</EpicToggle>
                         <JiraTaskIcon type={resolveTaskType(epic.issueTypeName)} size={18} />
+                        <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(epic.issueTypeName)]}>
+                          {TASK_TYPE_LABELS[resolveTaskType(epic.issueTypeName)]}
+                        </IssueTypeLabel>
                         <EpicKey
                           onClick={(e) => { e.stopPropagation(); goToIssue(epic.key); }}
                           onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${epic.key}`, epic.key)}
@@ -1308,6 +1317,9 @@ const JiraDashboard = () => {
                                       <SubTaskToggleSpacer />
                                     )}
                                     <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={18} />
+                                    <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(issue.issueTypeName)]}>
+                                      {TASK_TYPE_LABELS[resolveTaskType(issue.issueTypeName)]}
+                                    </IssueTypeLabel>
                                     <IssueKey
                                       onClick={(e) => { e.stopPropagation(); goToIssue(issue.key); }}
                                     >
@@ -1385,6 +1397,9 @@ const JiraDashboard = () => {
                           {group.key !== '__no_epic__' && (
                             <>
                               <JiraTaskIcon type={resolveTaskType(group.issueTypeName)} size={18} />
+                              <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(group.issueTypeName)]}>
+                                {TASK_TYPE_LABELS[resolveTaskType(group.issueTypeName)]}
+                              </IssueTypeLabel>
                               <EpicKey
                                 onClick={(e) => { e.stopPropagation(); goToIssue(group.key); }}
                                 onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${group.key}`, group.key)}
@@ -1449,6 +1464,9 @@ const JiraDashboard = () => {
                                       <SubTaskToggleSpacer />
                                     )}
                                     <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={18} />
+                                    <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(issue.issueTypeName)]}>
+                                      {TASK_TYPE_LABELS[resolveTaskType(issue.issueTypeName)]}
+                                    </IssueTypeLabel>
                                     <IssueKey
                                       onClick={(e) => { e.stopPropagation(); goToIssue(issue.key); }}
                                     >
@@ -2100,6 +2118,14 @@ const IssueKey = styled.span`
   &:hover {
     text-decoration: underline;
   }
+`;
+
+const IssueTypeLabel = styled.span<{ $color: string }>`
+  font-weight: 700;
+  font-size: 0.6875rem;
+  color: ${({ $color }) => $color};
+  white-space: nowrap;
+  flex-shrink: 0;
 `;
 
 const IssueSummary = styled.span`

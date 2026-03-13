@@ -236,22 +236,26 @@ export class JiraClient {
     maxResults = 50,
     _startAt = 0,
     fields: string[] = DEFAULT_FIELDS,
-    skipCache = false
+    skipCache = false,
+    nextPageToken?: string
   ): Promise<unknown> {
-    const cacheKey = `search:${jql}:${maxResults}`;
+    const cacheKey = `search:${jql}:${maxResults}:${nextPageToken || _startAt}`;
     if (!skipCache) {
       const cached = getCached(this.searchCache, cacheKey);
       if (cached) return cached;
     }
 
-    const jqlQuery = jql || 'created >= -90d ORDER BY created DESC';
+    const jqlQuery = jql || 'ORDER BY created DESC';
     const fieldsStr = fields.join(',');
+
+    const params: Record<string, unknown> = { jql: jqlQuery, maxResults, fields: fieldsStr };
+    if (nextPageToken) {
+      params.nextPageToken = nextPageToken;
+    }
 
     const result = await withRetry429(() =>
       this.client
-        .get('/search/jql', {
-          params: { jql: jqlQuery, maxResults, fields: fieldsStr },
-        })
+        .get('/search/jql', { params })
         .then((r) => r.data)
     );
 

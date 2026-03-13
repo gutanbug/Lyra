@@ -53,7 +53,7 @@ export function confluenceToHtml(raw: string): string {
       const title = titleMatch ? titleMatch[1].trim() : '펼치기';
       const bodyMatch = inner.match(/<ac:rich-text-body[^>]*>([\s\S]*?)<\/ac:rich-text-body>/i);
       const body = bodyMatch ? bodyMatch[1] : '';
-      return `<details><summary>${escapeHtml(title)}</summary>${body}</details>`;
+      return `<details><summary>${escapeHtmlPreserveEntities(title)}</summary>${body}</details>`;
     }
   );
 
@@ -84,7 +84,7 @@ export function confluenceToHtml(raw: string): string {
       // JQL 기반 jira 매크로 (이슈 목록)
       const jqlMatch = inner.match(/<ac:parameter[^>]*ac:name="jqlQuery"[^>]*>([^<]*)<\/ac:parameter>/i);
       if (jqlMatch) {
-        return `<span class="jira-macro-placeholder">[Jira: ${escapeHtml(jqlMatch[1].trim())}]</span>`;
+        return `<span class="jira-macro-placeholder">[Jira: ${escapeHtmlPreserveEntities(jqlMatch[1].trim())}]</span>`;
       }
       return '';
     }
@@ -172,7 +172,7 @@ export function confluenceToHtml(raw: string): string {
           pageTitle ? `data-confluence-page-title="${escapeHtml(pageTitle)}"` : '',
           spaceKey ? `data-confluence-space-key="${escapeHtml(spaceKey)}"` : '',
         ].filter(Boolean).join(' ');
-        return `<a href="#" ${dataAttrs}>${display}</a>`;
+        return `<a href="#" ${dataAttrs}>${escapeHtmlPreserveEntities(display)}</a>`;
       }
 
       // ri:url (외부 URL 링크)
@@ -180,7 +180,7 @@ export function confluenceToHtml(raw: string): string {
       if (urlTag) {
         const url = urlTag[1];
         const display = linkText || url;
-        return `<a href="${escapeHtml(url)}">${display}</a>`;
+        return `<a href="${escapeHtml(url)}">${escapeHtmlPreserveEntities(display)}</a>`;
       }
 
       // ri:attachment (첨부파일 링크)
@@ -188,11 +188,11 @@ export function confluenceToHtml(raw: string): string {
       if (attTag) {
         const filename = attTag[1];
         const display = linkText || filename;
-        return `<a href="#" data-confluence-attachment="${escapeHtml(filename)}">${display}</a>`;
+        return `<a href="#" data-confluence-attachment="${escapeHtml(filename)}">${escapeHtmlPreserveEntities(display)}</a>`;
       }
 
       // fallback
-      return linkText ? `<span>${linkText}</span>` : '';
+      return linkText ? `<span>${escapeHtmlPreserveEntities(linkText)}</span>` : '';
     }
   );
 
@@ -246,4 +246,20 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * HTML 엔티티(&rarr; &gt; 등)를 보존하면서 태그만 이스케이프.
+ * Confluence Storage Format에서 이미 엔티티로 인코딩된 텍스트에 사용.
+ */
+function escapeHtmlPreserveEntities(text: string): string {
+  // 기존 엔티티를 임시 치환 → 태그 이스케이프 → 복원
+  const entities: string[] = [];
+  const placeholder = '%%ENT';
+  const preserved = text.replace(/&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);/g, (m) => {
+    entities.push(m);
+    return `${placeholder}${entities.length - 1}%%`;
+  });
+  const escaped = escapeHtml(preserved);
+  return escaped.replace(/%%ENT(\d+)%%/g, (_m, idx) => entities[Number(idx)]);
 }

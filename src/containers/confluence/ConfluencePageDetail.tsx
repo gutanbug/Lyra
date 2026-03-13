@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useHistory } from 'react-router-dom';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
@@ -120,7 +120,18 @@ const ConfluencePageDetailView = () => {
   const [error, setError] = useState<string | null>(null);
   const [attachmentUrlMap, setAttachmentUrlMap] = useState<Record<string, string>>({});
   const [jiraIssueMap, setJiraIssueMap] = useState<Record<string, JiraIssueInfo>>({});
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const baseHandleContentClick = useRichContentLinkHandler();
+
+  // ESC 키로 라이트박스 닫기
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxSrc(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lightboxSrc]);
 
   const goToList = useCallback(() => history.push('/confluence'), [history]);
 
@@ -134,6 +145,18 @@ const ConfluencePageDetailView = () => {
 
   const handleContentClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement;
+
+    // 이미지 클릭 → 라이트박스
+    if (target.tagName === 'IMG') {
+      const src = (target as HTMLImageElement).src;
+      if (src) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLightboxSrc(src);
+        return;
+      }
+    }
+
     const anchor = target.closest('a');
     if (!anchor) return;
 
@@ -492,6 +515,18 @@ const ConfluencePageDetailView = () => {
           )}
         </Section>
       </ContentArea>
+
+      {/* 이미지 라이트박스 */}
+      {lightboxSrc && (
+        <LightboxOverlay onClick={() => setLightboxSrc(null)}>
+          <LightboxClose onClick={() => setLightboxSrc(null)}>&times;</LightboxClose>
+          <LightboxImage
+            src={lightboxSrc}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+          />
+        </LightboxOverlay>
+      )}
     </Layout>
   );
 };
@@ -502,9 +537,10 @@ export default ConfluencePageDetailView;
 
 const Layout = styled.div`
   flex: 1;
-  min-height: 100%;
+  min-height: 0;
   background: ${confluenceTheme.bg.subtle};
   zoom: 1.2;
+  overflow-y: auto;
 `;
 
 const ToolbarArea = styled.div`
@@ -817,6 +853,9 @@ const RichContent = styled.div`
   img {
     max-width: 100%;
     border-radius: 3px;
+    cursor: zoom-in;
+    transition: opacity 0.15s;
+    &:hover { opacity: 0.85; }
   }
 
   .confluence-panel {
@@ -979,4 +1018,62 @@ const EmptyMsg = styled.div`
   padding: 4rem 2rem;
   text-align: center;
   color: ${confluenceTheme.text.secondary};
+`;
+
+// ── 이미지 라이트박스 ──
+
+const lightboxFadeIn = keyframes`
+  from { opacity: 0; }
+  to { opacity: 1; }
+`;
+
+const lightboxZoomIn = keyframes`
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+`;
+
+const LightboxOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+  animation: ${lightboxFadeIn} 0.2s ease;
+`;
+
+const LightboxImage = styled.img`
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  animation: ${lightboxZoomIn} 0.2s ease;
+`;
+
+const LightboxClose = styled.button`
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
 `;

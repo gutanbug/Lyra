@@ -22,11 +22,13 @@ export function useRichContentLinkHandler() {
 
     const href = anchor.getAttribute('href') || '';
 
-    // Jira issue: /browse/KEY-123
-    const jiraMatch = href.match(/\/browse\/([A-Z][A-Z0-9_]+-\d+)/);
-    if (jiraMatch) {
-      const issueKey = jiraMatch[1];
-      addTab('jira', `/jira/issue/${issueKey}`, issueKey);
+    // Jira issue: /browse/KEY-123 또는 ?selectedIssue=KEY-123
+    const jiraBrowseMatch = href.match(/\/browse\/([A-Z][A-Z0-9_]+-\d+)/);
+    const jiraSelectedMatch = href.match(/[?&]selectedIssue=([A-Z][A-Z0-9_]+-\d+)/);
+    const jiraIssueKey = jiraBrowseMatch?.[1] || jiraSelectedMatch?.[1];
+    if (jiraIssueKey) {
+      const label = anchor.textContent?.trim() || jiraIssueKey;
+      addTab('jira', `/jira/issue/${jiraIssueKey}`, label);
       return;
     }
 

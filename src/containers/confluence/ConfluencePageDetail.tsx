@@ -5,8 +5,12 @@ import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { confluenceToHtml, resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
+import { renderMermaidDiagrams } from 'lib/utils/mermaidLoader';
+import { extractJiraKeysFromHtml, enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
+import type { JiraIssueInfo } from 'lib/utils/jiraLinkEnricher';
 import { transition } from 'lib/styles/styles';
 import { useRichContentLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
+import { useTabs } from 'modules/contexts/splitView';
 import { ExternalLink } from 'lucide-react';
 import { isAtlassianAccount } from 'types/account';
 import type { JiraCredentials } from 'types/account';
@@ -90,13 +94,12 @@ function normalizeComment(raw: Record<string, unknown>): ConfluenceComment {
   return { id, author, bodyHtml, created };
 }
 
-/** 가장 가까운 스크롤 가능한 부모 요소를 찾아 scrollTop을 0으로 설정 */
+/** 자기 자신 포함 모든 스크롤 가능한 부모 요소의 scrollTop을 0으로 설정 */
 function scrollToTop(el: HTMLElement | null) {
-  let current = el?.parentElement;
+  let current: HTMLElement | null = el;
   while (current) {
-    if (current.scrollHeight > current.clientHeight) {
+    if (current.scrollTop > 0) {
       current.scrollTop = 0;
-      return;
     }
     current = current.parentElement;
   }
@@ -107,6 +110,7 @@ const ConfluencePageDetailView = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const history = useHistory();
   const { activeAccount } = useAccount();
+  const { addTab } = useTabs();
   const layoutRef = useRef<HTMLDivElement>(null);
 
   const [page, setPage] = useState<PageDetailType | null>(null);
@@ -115,7 +119,8 @@ const ConfluencePageDetailView = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attachmentUrlMap, setAttachmentUrlMap] = useState<Record<string, string>>({});
-  const handleContentClick = useRichContentLinkHandler();
+  const [jiraIssueMap, setJiraIssueMap] = useState<Record<string, JiraIssueInfo>>({});
+  const baseHandleContentClick = useRichContentLinkHandler();
 
   const goToList = useCallback(() => history.push('/confluence'), [history]);
 
@@ -124,14 +129,70 @@ const ConfluencePageDetailView = () => {
   }, [history]);
 
   const goBack = useCallback(() => {
-    // ancestors가 있으면 바로 상위 페이지로, 없으면 목록으로
-    if (page && page.ancestors.length > 0) {
-      const parent = page.ancestors[page.ancestors.length - 1];
-      goToPage(parent.id);
-    } else {
-      goToList();
+    goToList();
+  }, [goToList]);
+
+  const handleContentClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement;
+    const anchor = target.closest('a');
+    if (!anchor) return;
+
+    // Confluence 내부 페이지 링크 (data-confluence-page-title)
+    const pageTitle = anchor.getAttribute('data-confluence-page-title');
+    if (pageTitle && activeAccount) {
+      e.preventDefault();
+      e.stopPropagation();
+      const linkText = anchor.textContent?.trim() || pageTitle;
+      // 링크에 지정된 space key, 없으면 현재 페이지의 space key를 사용
+      const targetSpaceKey = anchor.getAttribute('data-confluence-space-key') || page?.spaceKey || '';
+      const spaceKeys = targetSpaceKey ? [targetSpaceKey] : undefined;
+      integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'confluence',
+        action: 'searchPages',
+        params: { query: pageTitle, searchField: 'title', limit: 5, spaceKeys },
+      }).then((result) => {
+        const r = result as Record<string, unknown>;
+        const results = (r.results ?? []) as Record<string, unknown>[];
+        if (results.length > 0) {
+          // 제목이 정확히 일치하는 항목 우선, 없으면 첫 번째 결과
+          const exactMatch = results.find((item) => str(item.title as unknown) === pageTitle);
+          const best = exactMatch || results[0];
+          const foundId = str(best.id as unknown);
+          if (foundId) {
+            addTab('confluence', `/confluence/page/${foundId}`, linkText);
+            return;
+          }
+        }
+        // 검색 실패 시 외부 브라우저로 열기 (Confluence 웹)
+        const creds = activeAccount.credentials as JiraCredentials;
+        const baseUrl = creds.baseUrl?.replace(/\/$/, '') || '';
+        const spaceKey = anchor.getAttribute('data-confluence-space-key') || '';
+        if (baseUrl) {
+          const url = spaceKey
+            ? `${baseUrl}/wiki/spaces/${spaceKey}/pages?title=${encodeURIComponent(pageTitle)}`
+            : `${baseUrl}/wiki/search?text=${encodeURIComponent(pageTitle)}`;
+          const api = (window as any).electronAPI;
+          if (api?.openExternal) api.openExternal(url);
+          else window.open(url, '_blank');
+        }
+      }).catch(() => { /* ignore */ });
+      return;
     }
-  }, [page, goToPage, goToList]);
+
+    // Jira 매크로 링크 (data-jira-key)
+    const jiraKey = anchor.getAttribute('data-jira-key');
+    if (jiraKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const label = anchor.textContent?.trim() || jiraKey;
+      addTab('jira', `/jira/issue/${jiraKey}`, label);
+      return;
+    }
+
+    // 기본 핸들러 (Jira 링크, 외부 URL 등 → useRichContentLinkHandler가 addTab 사용)
+    baseHandleContentClick(e);
+  }, [activeAccount, baseHandleContentClick, addTab, page?.spaceKey]);
 
   const fetchPage = useCallback(async () => {
     if (!activeAccount || !pageId) return;
@@ -181,17 +242,31 @@ const ConfluencePageDetailView = () => {
         params: { pageId },
       });
       const raw = Array.isArray(result) ? result : [];
-      // 이미지 첨부파일만 필터링 후 콘텐츠 로드
+      console.log('[ConfluencePageDetail] attachments:', raw.length, raw);
+
       for (const item of raw) {
         const att = item as Record<string, unknown>;
         const title = str(att.title);
-        const mediaType = str(att.mediaType);
-        if (!title || !mediaType.startsWith('image/')) continue;
+        if (!title) continue;
 
+        // mediaType 탐색: extensions > metadata > top-level
+        const extensions = obj(att.extensions);
+        const metadata = obj(att.metadata);
+        const mediaType = str(extensions?.mediaType) || str(metadata?.mediaType) || str(att.mediaType);
+        const isImage = mediaType
+          ? mediaType.startsWith('image/')
+          : /\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?)$/i.test(title);
+        if (!isImage) continue;
+
+        // download URL 탐색: _links.download > _links.self
         const links = obj(att._links);
-        const downloadUrl = str(links?.download);
-        if (!downloadUrl) continue;
+        const downloadUrl = str(links?.download) || str(links?.self);
+        if (!downloadUrl) {
+          console.warn('[ConfluencePageDetail] no download URL for:', title, att._links);
+          continue;
+        }
 
+        console.log('[ConfluencePageDetail] loading attachment:', title, downloadUrl);
         integrationController.invoke({
           accountId: activeAccount.id,
           serviceType: 'confluence',
@@ -200,11 +275,15 @@ const ConfluencePageDetailView = () => {
         }).then((dataUrl) => {
           if (typeof dataUrl === 'string') {
             setAttachmentUrlMap((prev) => ({ ...prev, [title]: dataUrl }));
+          } else {
+            console.warn('[ConfluencePageDetail] unexpected dataUrl type:', typeof dataUrl, title);
           }
-        }).catch(() => { /* ignore */ });
+        }).catch((err) => {
+          console.error('[ConfluencePageDetail] attachment load failed:', title, err);
+        });
       }
-    } catch {
-      // 첨부파일 로드 실패해도 페이지 조회에는 영향 없음
+    } catch (err) {
+      console.error('[ConfluencePageDetail] fetchAttachments error:', err);
     }
   }, [activeAccount, pageId]);
 
@@ -218,6 +297,51 @@ const ConfluencePageDetailView = () => {
     fetchComments();
     fetchAttachments();
   }, [fetchPage, fetchComments, fetchAttachments]);
+
+  // Mermaid 다이어그램 렌더링
+  useEffect(() => {
+    if (!page?.bodyHtml) return;
+    const container = layoutRef.current;
+    if (!container) return;
+
+    renderMermaidDiagrams(container, pageId).catch(() => { /* ignore */ });
+  }, [page?.bodyHtml, pageId, attachmentUrlMap]);
+
+  // Jira 이슈 정보 조회 (HTML에서 키 추출 → API 일괄 조회 → 상태에 저장)
+  useEffect(() => {
+    if (!page?.bodyHtml || !activeAccount) return;
+    const keys = extractJiraKeysFromHtml(page.bodyHtml);
+    if (keys.length === 0) return;
+
+    integrationController.invoke({
+      accountId: activeAccount.id,
+      serviceType: 'jira',
+      action: 'searchIssues',
+      params: {
+        jql: `key IN (${keys.join(',')})`,
+        maxResults: keys.length,
+      },
+    }).then((result) => {
+      const r = result as Record<string, unknown>;
+      const issues = (r.issues ?? []) as Record<string, unknown>[];
+      const map: Record<string, JiraIssueInfo> = {};
+      for (const issue of issues) {
+        const key = str(issue.key);
+        const summary = str(issue.summary);
+        const status = obj(issue.status);
+        const statusName = str(status?.name);
+        const statusCategory = str(status?.category);
+        const issueType = obj(issue.issue_type);
+        const issueTypeName = str(issueType?.name);
+        if (key) {
+          map[key] = { key, summary, statusName, statusCategory, issueTypeName };
+        }
+      }
+      setJiraIssueMap(map);
+    }).catch((err) => {
+      console.error('[ConfluencePageDetail] Jira issue fetch error:', err);
+    });
+  }, [page?.bodyHtml, activeAccount]);
 
   if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
     return (
@@ -262,13 +386,13 @@ const ConfluencePageDetailView = () => {
     <Layout ref={layoutRef}>
       <ToolbarArea>
         <BackButton onClick={goBack}>
-          &larr; {page.ancestors.length > 0 ? '상위 페이지' : '목록으로'}
+          &larr; 목록으로
         </BackButton>
         <Breadcrumbs>
           {/* 스페이스 */}
           {page.spaceName && (
             <>
-              <BreadcrumbLabel>{page.spaceKey || page.spaceName}</BreadcrumbLabel>
+              <BreadcrumbLabel>{page.spaceKey?.startsWith('~') ? page.spaceName : (page.spaceKey || page.spaceName)}</BreadcrumbLabel>
               <BreadcrumbSep>/</BreadcrumbSep>
             </>
           )}
@@ -339,7 +463,7 @@ const ConfluencePageDetailView = () => {
         {/* 본문 */}
         {page.bodyHtml && (
           <Section>
-            <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap) }} />
+            <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: enrichJiraLinksInHtml(resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap), jiraIssueMap) }} />
           </Section>
         )}
 
@@ -711,6 +835,32 @@ const RichContent = styled.div`
     font-style: italic;
   }
 
+  .confluence-mermaid {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #fafafa;
+    border: 1px solid ${confluenceTheme.border};
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8125rem;
+    color: ${confluenceTheme.text.secondary};
+  }
+  .confluence-mermaid-rendered {
+    white-space: normal;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    background: ${confluenceTheme.bg.default};
+    text-align: center;
+
+    svg {
+      max-width: 100%;
+      height: auto;
+    }
+  }
+
   details {
     margin: 0.5rem 0;
     border: 1px solid ${confluenceTheme.border};
@@ -727,6 +877,58 @@ const RichContent = styled.div`
     > *:not(summary) {
       padding: 0 0.75rem;
     }
+  }
+
+  /* Jira 리치 링크 카드 */
+  a.jira-rich-link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none !important;
+    color: inherit;
+    vertical-align: middle;
+  }
+
+  .jira-rich-link-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid ${confluenceTheme.border};
+    border-radius: 3px;
+    background: ${confluenceTheme.bg.subtle};
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    transition: background 0.15s ease;
+
+    &:hover {
+      background: ${confluenceTheme.bg.hover};
+    }
+  }
+
+  .jira-rich-link-key {
+    color: ${confluenceTheme.primary};
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .jira-rich-link-summary {
+    color: ${confluenceTheme.text.primary};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+  }
+
+  .jira-rich-link-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 3px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    text-transform: uppercase;
+    color: ${confluenceTheme.text.secondary};
   }
 `;
 

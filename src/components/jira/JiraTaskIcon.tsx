@@ -69,6 +69,13 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   task: '할 일',
 };
 
+export const TASK_TYPE_COLORS: Record<TaskType, string> = {
+  epic: jiraTheme.issueType.epic,
+  story: jiraTheme.issueType.story,
+  bug: jiraTheme.issueType.bug,
+  task: jiraTheme.issueType.task,
+};
+
 // ─── Styled Components ─────────────────────────
 
 const IconBox = styled.div<{ $bgColor: string; $size: number }>`

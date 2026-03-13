@@ -72,10 +72,35 @@ export class ConfluenceClient {
   }
 
   async getSpaces(limit = 250): Promise<unknown> {
-    const { data } = await withRetry429(() =>
-      this.v2.get('/spaces', { params: { limit, sort: 'name' } })
-    );
-    return data;
+    const allResults: unknown[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const params: Record<string, unknown> = { limit, sort: 'name' };
+      if (cursor) params.cursor = cursor;
+
+      const { data } = await withRetry429(() =>
+        this.v2.get('/spaces', { params })
+      );
+
+      const d = data as Record<string, unknown>;
+      const results = d.results as unknown[];
+      if (Array.isArray(results)) {
+        allResults.push(...results);
+      }
+
+      // v2 API: _links.next contains the cursor for the next page
+      const links = d._links as Record<string, string> | undefined;
+      const next = links?.next;
+      if (next) {
+        const match = next.match(/[?&]cursor=([^&]+)/);
+        cursor = match ? decodeURIComponent(match[1]) : undefined;
+      } else {
+        cursor = undefined;
+      }
+    } while (cursor);
+
+    return { results: allResults };
   }
 
   async getMyPages(params: {
@@ -101,7 +126,7 @@ export class ConfluenceClient {
         params: {
           cql: `${cql} ORDER BY ${orderBy}`,
           limit,
-          expand: 'content.space,content.version,content.history',
+          expand: 'content.space,content.version,content.history,content.history.createdBy',
         },
       })
     );
@@ -150,7 +175,7 @@ export class ConfluenceClient {
   async getPageAttachments(pageId: string): Promise<unknown[]> {
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}/child/attachment`, {
-        params: { limit: 100 },
+        params: { limit: 100, expand: 'extensions,version' },
       })
     );
     const r = data as Record<string, unknown>;
@@ -162,25 +187,87 @@ export class ConfluenceClient {
    * 첨부파일 콘텐츠를 base64 Data URL로 반환 (인증 프록시)
    */
   async getAttachmentContent(downloadUrl: string): Promise<string> {
-    const baseUrl = this.v1.defaults.baseURL?.replace(/\/wiki\/rest\/api$/, '') || '';
-    const fullUrl = downloadUrl.startsWith('http') ? downloadUrl : `${baseUrl}${downloadUrl}`;
-    const auth = this.v1.defaults.auth as { username: string; password: string };
-    const { data, headers } = await withRetry429(() =>
-      axios.get(fullUrl, {
-        responseType: 'arraybuffer',
-        auth,
-      })
-    );
-    const mimeType = headers['content-type'] || 'application/octet-stream';
-    const base64 = Buffer.from(data).toString('base64');
-    return `data:${mimeType};base64,${base64}`;
+    const siteBase = this.v1.defaults.baseURL?.replace(/\/wiki\/rest\/api$/, '') || '';
+
+    // 절대 URL 후보 구성 (v1 인스턴스의 인증 설정 재사용)
+    const candidates: string[] = [];
+    if (downloadUrl.startsWith('http')) {
+      candidates.push(downloadUrl);
+    } else {
+      // /wiki/ prefix 포함/미포함 두 가지 모두 시도
+      candidates.push(`${siteBase}${downloadUrl}`);
+      if (!downloadUrl.startsWith('/wiki/')) {
+        candidates.push(`${siteBase}/wiki${downloadUrl}`);
+      }
+    }
+
+    for (const url of candidates) {
+      try {
+        const { data, headers } = await withRetry429(() =>
+          this.v1.get(url, { responseType: 'arraybuffer', baseURL: '' })
+        );
+        const mimeType = headers['content-type'] || 'application/octet-stream';
+        const base64 = Buffer.from(data).toString('base64');
+        return `data:${mimeType};base64,${base64}`;
+      } catch {
+        // 다음 URL 후보로 시도
+      }
+    }
+    throw new Error(`Failed to download attachment: ${downloadUrl}`);
+  }
+
+  async getSpacePages(spaceKey: string, limit = 500): Promise<unknown> {
+    const cql = `type = page AND space = "${escapeCql(spaceKey)}" ORDER BY title ASC`;
+    const allResults: Record<string, unknown>[] = [];
+    let start = 0;
+
+    do {
+      const { data } = await withRetry429(() =>
+        this.v1.get('/search', {
+          params: {
+            cql,
+            limit: Math.min(limit - allResults.length, 100),
+            start,
+            expand: 'content.space,content.version,content.ancestors',
+          },
+        })
+      );
+
+      const r = data as Record<string, unknown>;
+      const results = (r.results ?? []) as Record<string, unknown>[];
+      if (!Array.isArray(results) || results.length === 0) break;
+
+      for (const item of results) {
+        const content = (item.content ?? item) as Record<string, unknown>;
+        const space = (content.space ?? {}) as Record<string, unknown>;
+        const ancestors = (content.ancestors ?? []) as Record<string, unknown>[];
+        const version = (content.version ?? {}) as Record<string, unknown>;
+        const parentId = ancestors.length > 0
+          ? String((ancestors[ancestors.length - 1] as Record<string, unknown>).id)
+          : null;
+
+        allResults.push({
+          id: String(content.id),
+          title: content.title,
+          parentId,
+          spaceKey: space.key ?? spaceKey,
+          version: version.number ?? 1,
+        });
+      }
+
+      start += results.length;
+      const totalSize = r.totalSize as number | undefined;
+      if (totalSize != null && start >= totalSize) break;
+    } while (allResults.length < limit);
+
+    return { results: allResults };
   }
 
   async searchPages(params: {
     query: string;
     limit?: number;
     spaceKeys?: string[];
-    searchField?: 'all' | 'title' | 'body' | 'title_body';
+    searchField?: 'all' | 'title' | 'body' | 'title_body' | 'contributor';
   }): Promise<unknown> {
     const limit = params.limit ?? 100;
     const field = params.searchField || 'all';
@@ -194,6 +281,8 @@ export class ConfluenceClient {
       conditions.push(`title !~ "${q}"`);
     } else if (field === 'title_body') {
       conditions.push(`(title ~ "${q}" OR text ~ "${q}")`);
+    } else if (field === 'contributor') {
+      conditions.push(`contributor = "${q}"`);
     } else {
       // 'all' — text는 title, body, 댓글 등 전체를 포함
       conditions.push(`text ~ "${q}"`);
@@ -209,7 +298,7 @@ export class ConfluenceClient {
         params: {
           cql,
           limit,
-          expand: 'content.space,content.version,content.history',
+          expand: 'content.space,content.version,content.history,content.history.createdBy',
         },
       })
     );

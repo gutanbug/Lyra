@@ -21,12 +21,16 @@ export interface NormalizedIssue {
   duedate: string;
   parentKey: string;
   parentSummary: string;
+  subtaskCount: number;
 }
 
 export interface EpicGroup {
   key: string;
   summary: string;
   issueTypeName: string;
+  statusName: string;
+  statusCategory: string;
+  assigneeName: string;
   children: NormalizedIssue[];
 }
 
@@ -43,6 +47,9 @@ export interface NormalizedDetail {
   created: string;
   updated: string;
   duedate: string;
+  parentKey: string;
+  parentSummary: string;
+  parentIssueTypeName: string;
 }
 
 export interface NormalizedComment {

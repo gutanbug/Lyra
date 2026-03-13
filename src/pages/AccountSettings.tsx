@@ -27,6 +27,7 @@ const SHORTCUT_SECTIONS = [
       { label: '검색창 포커스', keys: [CMD, 'L'] },
       { label: '이전 메뉴', keys: ['['] },
       { label: '다음 메뉴', keys: [']'] },
+      { label: '탭 닫기', keys: [CMD, 'W'] },
     ],
   },
   {

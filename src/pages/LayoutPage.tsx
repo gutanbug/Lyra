@@ -5,6 +5,7 @@ import Header from 'components/layout/Header';
 import JiraPage from 'pages/JiraPage';
 import ConfluencePage from 'pages/ConfluencePage';
 import AccountSettings from 'pages/AccountSettings';
+import StatsPage from 'pages/StatsPage';
 import NotFound from 'pages/NotFound';
 import Modal from 'containers/modal';
 import Snackbar from 'containers/common/Snackbar';
@@ -35,6 +36,7 @@ const SingleView = () => (
     <Route path="/jira" component={JiraPage} />
     <Route path="/confluence" component={ConfluencePage} />
     <Route path="/settings" component={AccountSettings} exact />
+    <Route path="/stats" component={StatsPage} exact />
     <Route path="*" component={NotFound} />
   </Switch>
 );
@@ -72,7 +74,7 @@ const TabPanel = ({ tab }: { tab: Tab }) => {
 };
 
 const LayoutPage = () => {
-  const { tabs, activeTabId, isSplit, leftPanel, rightPanel } = useTabs();
+  const { tabs, activeTabId, closeTab, isSplit, leftPanel, rightPanel } = useTabs();
   const history = useHistory();
   const location = useLocation();
 
@@ -126,6 +128,15 @@ const LayoutPage = () => {
         return;
       }
 
+      // CmdOrCtrl+W → 활성 탭 닫기
+      if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+        if (activeTabId) {
+          e.preventDefault();
+          closeTab(activeTabId);
+          return;
+        }
+      }
+
       // 입력 중이면 [ ] 무시
       if (isInput) return;
       if (isSplit) return;
@@ -143,7 +154,7 @@ const LayoutPage = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [history, location.pathname, hasTabs, activeTabId, isSplit]);
+  }, [history, location.pathname, hasTabs, activeTabId, isSplit, closeTab]);
 
   return (
     <Page>
@@ -196,8 +207,16 @@ const MainContent = styled.div<{ $visible: boolean }>`
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  display: ${({ $visible }) => ($visible ? 'flex' : 'none')};
+  display: flex;
   flex-direction: column;
+  ${({ $visible }) => !$visible && `
+    visibility: hidden;
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  `}
 `;
 
 const TabContent = styled.div<{ $visible: boolean }>`

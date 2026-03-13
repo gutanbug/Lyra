@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useHistory } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
@@ -222,6 +222,8 @@ function saveSelectedProjects(accountId: string, keys: string[]): void {
   } catch { /* ignore */ }
 }
 
+interface StatusCount { name: string; category: string; count: number }
+
 interface DashboardCache {
   myIssues: NormalizedIssue[];
   projects: JiraProject[];
@@ -229,6 +231,9 @@ interface DashboardCache {
   searchQuery: string;
   searchResults: NormalizedIssue[] | null;
   expandedEpics: Set<string>;
+  statusCounts: StatusCount[];
+  defaultChildrenMap: Record<string, NormalizedIssue[]>;
+  defaultExpandedChildren: Set<string>;
   accountId: string;
 }
 
@@ -239,6 +244,9 @@ const cache: DashboardCache = {
   searchQuery: '',
   searchResults: null,
   expandedEpics: new Set(),
+  statusCounts: [],
+  defaultChildrenMap: {},
+  defaultExpandedChildren: new Set(),
   accountId: '',
 };
 
@@ -272,6 +280,38 @@ const JiraDashboard = () => {
   const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.myIssues : []);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 완료(Done) 상태별 개수 (별도 조회)
+  const [doneCounts, setDoneCounts] = useState<StatusCount[]>(isCacheValid ? (cache as any).doneCounts || [] : []);
+
+  // 상태별 개수 (myIssues + doneCounts 합산)
+  const statusCounts = useMemo(() => {
+    const countMap = new Map<string, { category: string; count: number }>();
+    for (const issue of myIssues) {
+      if (isEpicType(issue.issueTypeName)) continue;
+      const name = issue.statusName || '기타';
+      const cat = issue.statusCategory || '';
+      const entry = countMap.get(name);
+      if (entry) entry.count++;
+      else countMap.set(name, { category: cat, count: 1 });
+    }
+    // 완료 상태 합산
+    for (const dc of doneCounts) {
+      const entry = countMap.get(dc.name);
+      if (entry) entry.count += dc.count;
+      else countMap.set(dc.name, { category: dc.category, count: dc.count });
+    }
+    const counts: StatusCount[] = [];
+    countMap.forEach((v, name) => counts.push({ name, category: v.category, count: v.count }));
+    const catOrder = (c: string) => {
+      const l = c.toLowerCase();
+      if (l.includes('done') || l.includes('완료')) return 2;
+      if (l.includes('progress') || l.includes('진행')) return 1;
+      return 0;
+    };
+    counts.sort((a, b) => catOrder(a.category) - catOrder(b.category));
+    return counts;
+  }, [myIssues, doneCounts]);
+
   // 프로젝트 (스페이스) 필터 — 다중 선택, localStorage 저장
   const [projects, setProjects] = useState<JiraProject[]>(isCacheValid ? cache.projects : []);
   const [selectedProjects, setSelectedProjects] = useState<string[]>(
@@ -298,8 +338,12 @@ const JiraDashboard = () => {
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(isCacheValid ? cache.expandedEpics : new Set());
 
   // 기본 모드 N-depth 하위 이슈 상태
-  const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>({});
-  const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(new Set());
+  const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>(isCacheValid ? cache.defaultChildrenMap : {});
+  const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(isCacheValid ? cache.defaultExpandedChildren : new Set());
+  const [defaultLoadingChildren, setDefaultLoadingChildren] = useState<Set<string>>(new Set());
+  const defaultLoadedChildrenRef = useRef<Set<string>>(
+    isCacheValid ? new Set(Object.keys(cache.defaultChildrenMap)) : new Set()
+  );
 
   // 사이드바 프로젝트 브라우즈 모드 (스페이스 설정과 독립)
   const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(null);
@@ -386,7 +430,11 @@ const JiraDashboard = () => {
     cache.searchQuery = searchQuery;
     cache.searchResults = searchResults;
     cache.expandedEpics = expandedEpics;
-  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics]);
+    cache.statusCounts = statusCounts;
+    cache.defaultChildrenMap = defaultChildrenMap;
+    cache.defaultExpandedChildren = defaultExpandedChildren;
+    (cache as any).doneCounts = doneCounts;
+  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts]);
 
   const fetchProjects = useCallback(async () => {
     if (!activeAccount) return;
@@ -505,10 +553,45 @@ const JiraDashboard = () => {
       keysToLoad = nextKeys;
     }
 
-    setDefaultChildrenMap(childrenMap);
-    // 자동 펼침 없음 — 사용자가 직접 클릭하여 확장
-    setDefaultExpandedChildren(new Set());
+    setDefaultChildrenMap((prev) => ({ ...prev, ...childrenMap }));
+    for (const key of Object.keys(childrenMap)) {
+      defaultLoadedChildrenRef.current.add(key);
+    }
   }, [fetchChildren]);
+
+  /** 기본 모드 온디맨드 하위 이슈 로드 (Split View / 페이지 이동 후에도 동작) */
+  const loadDefaultChildren = useCallback(async (parentKey: string) => {
+    // 이미 로드된 키 → 데이터 있으므로 바로 확장
+    if (defaultLoadedChildrenRef.current.has(parentKey)) {
+      setDefaultExpandedChildren((prev) => {
+        const next = new Set(prev);
+        next.add(parentKey);
+        return next;
+      });
+      return;
+    }
+
+    setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
+    try {
+      const children = await fetchChildren([parentKey], selectedProjects);
+      setDefaultChildrenMap((prev) => ({
+        ...prev,
+        [parentKey]: children,
+      }));
+      // 데이터 로드 완료 후 확장
+      setDefaultExpandedChildren((prev) => {
+        const next = new Set(prev);
+        next.add(parentKey);
+        return next;
+      });
+    } catch { /* ignore */ }
+    setDefaultLoadingChildren((prev) => {
+      const next = new Set(prev);
+      next.delete(parentKey);
+      return next;
+    });
+    defaultLoadedChildrenRef.current.add(parentKey);
+  }, [fetchChildren, selectedProjects]);
 
   const fetchMyIssues = useCallback(async () => {
     if (!activeAccount) return;
@@ -590,6 +673,46 @@ const JiraDashboard = () => {
       setIsLoading(false);
     }
   }, [activeAccount, selectedProjects, loadAllDescendants]);
+
+  // 완료(Done) 상태별 개수 조회 (nextPageToken 기반 페이지네이션)
+  const fetchDoneCounts = useCallback(async () => {
+    if (!activeAccount) return;
+    try {
+      const pc = buildProjectClause(selectedProjects);
+      const projectClause = pc ? `${pc} AND ` : '';
+      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done`;
+      const countMap = new Map<string, { category: string; count: number }>();
+      const pageSize = 100;
+      let pageToken: string | undefined;
+      const maxPages = 20;
+
+      for (let page = 0; page < maxPages; page++) {
+        const result = await integrationController.invoke({
+          accountId: activeAccount.id,
+          serviceType: 'jira',
+          action: 'searchIssues',
+          params: { jql, maxResults: pageSize, skipCache: true, ...(pageToken ? { nextPageToken: pageToken } : {}) },
+        }) as Record<string, unknown>;
+        const issues = parseIssues(result);
+        for (const issue of issues) {
+          if (isEpicType(issue.issueTypeName)) continue;
+          const name = issue.statusName || '완료';
+          const cat = issue.statusCategory || 'done';
+          const entry = countMap.get(name);
+          if (entry) entry.count++;
+          else countMap.set(name, { category: cat, count: 1 });
+        }
+        pageToken = result.nextPageToken as string | undefined;
+        if (!pageToken || issues.length < pageSize) break;
+      }
+
+      const counts: StatusCount[] = [];
+      countMap.forEach((v, name) => counts.push({ name, category: v.category, count: v.count }));
+      setDoneCounts(counts);
+    } catch (err) {
+      console.error('[JiraDashboard] fetchDoneCounts error:', err);
+    }
+  }, [activeAccount, selectedProjects]);
 
   // ── 사이드바 프로젝트 브라우즈: 에픽만 조회 ──
   useEffect(() => {
@@ -869,7 +992,8 @@ const JiraDashboard = () => {
     }
     fetchProjects();
     fetchMyIssues();
-  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues]);
+    fetchDoneCounts();
+  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts]);
 
   const goToIssue = (key: string) => {
     if (key) history.push(`/jira/issue/${key}`);
@@ -1047,18 +1171,22 @@ const JiraDashboard = () => {
       const childChildren = defaultChildrenMap[issue.key] || [];
       const canExpand = issue.subtaskCount > 0 || childChildren.length > 0;
       const isChildExpanded = defaultExpandedChildren.has(issue.key);
+      const isChildLoading = defaultLoadingChildren.has(issue.key);
 
       rows.push(
         <IssueRow
           key={issue.key || issue.id}
           onClick={() => {
             if (canExpand) {
-              setDefaultExpandedChildren((prev) => {
-                const next = new Set(prev);
-                if (next.has(issue.key)) next.delete(issue.key);
-                else next.add(issue.key);
-                return next;
-              });
+              if (isChildExpanded) {
+                setDefaultExpandedChildren((prev) => {
+                  const next = new Set(prev);
+                  next.delete(issue.key);
+                  return next;
+                });
+              } else {
+                loadDefaultChildren(issue.key);
+              }
             }
           }}
           onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${issue.key}`, `${issue.key} ${issue.summary}`)}
@@ -1066,7 +1194,7 @@ const JiraDashboard = () => {
           <IssueKeyCell style={{ paddingLeft: `${depth * 24}px` }}>
             {canExpand ? (
               <SubTaskToggle>
-                {isChildExpanded ? '▼' : '▶'}
+                {isChildLoading ? <Loader size={10} /> : isChildExpanded ? '▼' : '▶'}
               </SubTaskToggle>
             ) : (
               <SubTaskToggleSpacer />
@@ -1188,10 +1316,31 @@ const JiraDashboard = () => {
             <ClearButton onClick={clearSearch}>초기화</ClearButton>
           )}
         </SearchWrapper>
-        <RefreshBtn onClick={fetchMyIssues} disabled={isLoading}>
+        <RefreshBtn onClick={() => { fetchMyIssues(); fetchDoneCounts(); }} disabled={isLoading}>
           새로고침
         </RefreshBtn>
       </Toolbar>
+
+      {!browseProjectKey && !isSearchMode && statusCounts.length > 0 && (
+        <StatusSummaryBar>
+          {statusCounts.map((sc) => {
+            const total = statusCounts.reduce((s, c) => s + c.count, 0);
+            return (
+              <StatusSummaryItem key={sc.name}>
+                <StatusDot $color={getStatusColor(sc.name, sc.category)} />
+                <StatusSummaryName>{sc.name}</StatusSummaryName>
+                <StatusSummaryCount>{sc.count}</StatusSummaryCount>
+                <StatusSummaryPercent>
+                  {total > 0 ? Math.round((sc.count / total) * 100) : 0}%
+                </StatusSummaryPercent>
+              </StatusSummaryItem>
+            );
+          })}
+          <StatusSummaryTotal>
+            합계 <strong>{statusCounts.reduce((s, c) => s + c.count, 0)}</strong>
+          </StatusSummaryTotal>
+        </StatusSummaryBar>
+      )}
 
       <Content>
         {browseProjectKey ? (
@@ -1414,17 +1563,21 @@ const JiraDashboard = () => {
                             const childChildren = defaultChildrenMap[issue.key] || [];
                             const canExpand = issue.subtaskCount > 0 || childChildren.length > 0;
                             const isChildExpanded = defaultExpandedChildren.has(issue.key);
+                            const isChildLoading = defaultLoadingChildren.has(issue.key);
                             return (
                               <React.Fragment key={issue.key || issue.id}>
                                 <IssueRow
                                   onClick={() => {
                                     if (canExpand) {
-                                      setDefaultExpandedChildren((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(issue.key)) next.delete(issue.key);
-                                        else next.add(issue.key);
-                                        return next;
-                                      });
+                                      if (isChildExpanded) {
+                                        setDefaultExpandedChildren((prev) => {
+                                          const next = new Set(prev);
+                                          next.delete(issue.key);
+                                          return next;
+                                        });
+                                      } else {
+                                        loadDefaultChildren(issue.key);
+                                      }
                                     }
                                   }}
                                   onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${issue.key}`, `${issue.key} ${issue.summary}`)}
@@ -1432,7 +1585,7 @@ const JiraDashboard = () => {
                                   <IssueKeyCell>
                                     {canExpand ? (
                                       <SubTaskToggle>
-                                        {isChildExpanded ? '▼' : '▶'}
+                                        {isChildLoading ? <Loader size={10} /> : isChildExpanded ? '▼' : '▶'}
                                       </SubTaskToggle>
                                     ) : (
                                       <SubTaskToggleSpacer />
@@ -1577,6 +1730,7 @@ const JiraDashboard = () => {
                   window.dispatchEvent(new CustomEvent('lyra:space-settings-changed'));
                   // 변경 후 목록 새로고침
                   fetchMyIssues();
+                  fetchDoneCounts();
                 }}
               >
                 저장
@@ -1639,6 +1793,61 @@ const Toolbar = styled.div`
   @media (max-width: 900px) {
     padding: 0.75rem 1rem;
     gap: 0.5rem;
+  }
+`;
+
+const StatusSummaryBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.5rem;
+  background: ${jiraTheme.bg.subtle};
+  border-bottom: 1px solid ${jiraTheme.border};
+  flex-wrap: wrap;
+  flex-shrink: 0;
+`;
+
+const StatusSummaryItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  background: ${jiraTheme.bg.default};
+  border-radius: 6px;
+  font-size: 0.75rem;
+`;
+
+const StatusDot = styled.span<{ $color: string }>`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: ${({ $color }) => $color};
+  flex-shrink: 0;
+`;
+
+const StatusSummaryName = styled.span`
+  color: ${jiraTheme.text.primary};
+  font-weight: 600;
+`;
+
+const StatusSummaryCount = styled.span`
+  color: ${jiraTheme.text.primary};
+  font-weight: 700;
+`;
+
+const StatusSummaryPercent = styled.span`
+  color: ${jiraTheme.text.secondary};
+  font-size: 0.6875rem;
+`;
+
+const StatusSummaryTotal = styled.div`
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: ${jiraTheme.text.secondary};
+
+  strong {
+    color: ${jiraTheme.text.primary};
+    font-weight: 700;
   }
 `;
 

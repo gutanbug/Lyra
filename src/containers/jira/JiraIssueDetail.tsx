@@ -826,13 +826,8 @@ const JiraIssueDetail = () => {
     history.push(`/jira/issue/${targetKey}`);
   };
 
-  // 목록으로 돌아가기
-  const goToList = () => {
-    history.push('/jira');
-  };
-
   const goBack = () => {
-    goToList();
+    history.goBack();
   };
 
   const toggleConfluencePage = useCallback(async (link: ConfluenceLink) => {
@@ -921,7 +916,7 @@ const JiraIssueDetail = () => {
       <Layout ref={layoutRef}>
         <ToolbarArea>
           <BackButton onClick={goBack}>
-            &larr; 목록으로
+            &larr; 뒤로가기
           </BackButton>
         </ToolbarArea>
         <Content>
@@ -935,7 +930,7 @@ const JiraIssueDetail = () => {
     <Layout ref={layoutRef}>
       <ToolbarArea>
         <BackButton onClick={goBack}>
-          &larr; 목록으로
+          &larr; 뒤로가기
         </BackButton>
         <Breadcrumbs>
           {breadcrumbs.map((b) => (

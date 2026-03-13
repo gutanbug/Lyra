@@ -520,7 +520,7 @@ const StatsPage = () => {
                                 <StatusBarLabel>
                                   <StatusExpandIcon>{expandedStatus === s.name ? '▼' : '▶'}</StatusExpandIcon>
                                   <StatusName>{s.name}</StatusName>
-                                  <StatusCount>{s.count}건</StatusCount>
+                                  <StatusCountLabel>{s.count}건</StatusCountLabel>
                                 </StatusBarLabel>
                                 <StatusBarTrack>
                                   <StatusBarFill
@@ -1017,7 +1017,7 @@ const StatusName = styled.span`
   flex: 1;
 `;
 
-const StatusCount = styled.span`
+const StatusCountLabel = styled.span`
   font-size: 0.8125rem;
   font-weight: 600;
   color: ${theme.textSecondary};

@@ -434,7 +434,7 @@ const JiraDashboard = () => {
     cache.defaultChildrenMap = defaultChildrenMap;
     cache.defaultExpandedChildren = defaultExpandedChildren;
     (cache as any).doneCounts = doneCounts;
-  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts]);
+  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts]);
 
   const fetchProjects = useCallback(async () => {
     if (!activeAccount) return;

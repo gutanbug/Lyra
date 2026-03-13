@@ -255,11 +255,11 @@ function escapeHtml(text: string): string {
 function escapeHtmlPreserveEntities(text: string): string {
   // 기존 엔티티를 임시 치환 → 태그 이스케이프 → 복원
   const entities: string[] = [];
-  const placeholder = '\x00ENT';
+  const placeholder = '%%ENT';
   const preserved = text.replace(/&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);/g, (m) => {
     entities.push(m);
-    return `${placeholder}${entities.length - 1}\x00`;
+    return `${placeholder}${entities.length - 1}%%`;
   });
   const escaped = escapeHtml(preserved);
-  return escaped.replace(/\x00ENT(\d+)\x00/g, (_m, idx) => entities[Number(idx)]);
+  return escaped.replace(/%%ENT(\d+)%%/g, (_m, idx) => entities[Number(idx)]);
 }

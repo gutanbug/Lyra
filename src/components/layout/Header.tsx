@@ -79,6 +79,12 @@ const Header = () => {
     history.push('/settings');
   };
 
+  const handleGoStats = () => {
+    deactivateTab();
+    if (isSplit) closeSplit();
+    history.push('/stats');
+  };
+
   // 탭 더블클릭 → 이름 편집 시작
   const startRename = (tab: Tab) => {
     setEditingTabId(tab.id);
@@ -271,6 +277,19 @@ const Header = () => {
               </ProfileDropdown>
             )}
           </NavIconButton>
+
+          {/* 통계 버튼 */}
+          <IconButton
+            onClick={handleGoStats}
+            $active={location.pathname.startsWith('/stats')}
+            title="통계"
+          >
+            <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </IconSvg>
+          </IconButton>
 
           {/* 설정 버튼 */}
           <IconButton

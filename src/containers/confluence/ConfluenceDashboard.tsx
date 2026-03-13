@@ -105,10 +105,16 @@ function groupBySpace(pages: NormalizedConfluencePage[], spaces: ConfluenceSpace
     const sid = page.spaceId || NO_SPACE;
     if (!spaceMap.has(sid)) {
       const info = spaceNameMap.get(sid);
+      const key = page.spaceKey || info?.key || '';
+      let name = page.spaceName || info?.name || (sid === NO_SPACE ? '기타' : sid);
+      // 개인 스페이스: ~ID 형식이면 spaceName 사용, 없으면 작성자 이름으로 대체
+      if (isPersonalSpaceKey(key) && (!name || name === key)) {
+        name = page.authorName || name;
+      }
       spaceMap.set(sid, {
         spaceId: sid,
-        spaceName: page.spaceName || info?.name || (sid === NO_SPACE ? '기타' : sid),
-        spaceKey: page.spaceKey || info?.key || '',
+        spaceName: name,
+        spaceKey: key,
         pages: [],
       });
     }
@@ -224,14 +230,14 @@ const ConfluenceDashboard = () => {
   const [searchResults, setSearchResults] = useState<NormalizedConfluencePage[] | null>(isCacheValid ? cache.searchResults : null);
   const [isSearching, setIsSearching] = useState(false);
 
-  type SearchFieldType = 'all' | 'title' | 'body' | 'title_body';
+  type SearchFieldType = 'title' | 'body' | 'title_body' | 'contributor';
   const SEARCH_FIELD_LABELS: Record<SearchFieldType, string> = {
-    all: '전체',
     title: '제목',
     body: '본문',
     title_body: '제목+본문',
+    contributor: '작성자',
   };
-  const [searchField, setSearchField] = useState<SearchFieldType>('all');
+  const [searchField, setSearchField] = useState<SearchFieldType>('title');
   const [showFieldDropdown, setShowFieldDropdown] = useState(false);
   const fieldDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -614,7 +620,9 @@ const ConfluenceDashboard = () => {
                     </SuggestIcon>
                     <SuggestTitle>{page.title}</SuggestTitle>
                     {page.spaceKey && (
-                      <SuggestSpace>{page.spaceKey}</SuggestSpace>
+                      <SuggestSpace>
+                        {isPersonalSpaceKey(page.spaceKey) ? (page.spaceName || page.authorName || page.spaceKey) : page.spaceKey}
+                      </SuggestSpace>
                     )}
                   </SuggestItem>
                 ))}
@@ -866,9 +874,10 @@ const Layout = styled.div`
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   background: ${confluenceTheme.bg.subtle};
-  overflow-x: hidden;
+  overflow: hidden;
   zoom: 1.2;
 `;
 
@@ -880,6 +889,7 @@ const Toolbar = styled.div`
   background: ${confluenceTheme.bg.default};
   border-bottom: 1px solid ${confluenceTheme.border};
   flex-wrap: wrap;
+  flex-shrink: 0;
 `;
 
 const Logo = styled.div`
@@ -1137,7 +1147,9 @@ const Content = styled.main`
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
-  overflow-x: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 `;
 
 const SectionHeader = styled.div`

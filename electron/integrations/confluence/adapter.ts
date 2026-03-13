@@ -10,6 +10,7 @@ interface InvokeParams {
   spaceKeys?: string[];
   query?: string;
   pageId?: string;
+  spaceKey?: string;
   downloadUrl?: string;
   searchField?: 'all' | 'title' | 'body' | 'title_body';
 }
@@ -42,6 +43,7 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
   getActions() {
     return {
       getSpaces: (params: unknown) => this.getSpaces(params),
+      getSpacePages: (params: unknown) => this.getSpacePages(params),
       getMyPages: (params: unknown) => this.getMyPages(params),
       searchPages: (params: unknown) => this.searchPages(params),
       getPageContent: (params: unknown) => this.getPageContent(params),
@@ -55,6 +57,13 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     const { credentials, limit } = (params || {}) as InvokeParams;
     const client = new ConfluenceClient(credentials);
     return client.getSpaces(limit);
+  }
+
+  private async getSpacePages(params?: unknown): Promise<unknown> {
+    const p = (params || {}) as InvokeParams;
+    if (!p.spaceKey) throw new Error('spaceKey is required');
+    const client = new ConfluenceClient(p.credentials);
+    return client.getSpacePages(p.spaceKey, p.limit);
   }
 
   private async getMyPages(params?: unknown): Promise<unknown> {

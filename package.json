@@ -34,7 +34,7 @@
     "uuid": "^13.0.0"
   },
   "scripts": {
-    "postinstall": "bash scripts/patch-atlaskit.sh",
+    "postinstall": "node scripts/patch-atlaskit.js",
     "start": "vite",
     "prebuild": "vitest run",
     "build": "tsc --noEmit && vite build",

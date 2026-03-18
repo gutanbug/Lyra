@@ -76,8 +76,8 @@ jobs:
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}-draft
-          name: "Draft: ${{ steps.version.outputs.version }}"
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
           draft: true
           files: artifacts/*
           generate_release_notes: true

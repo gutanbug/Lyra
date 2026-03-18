@@ -16,7 +16,7 @@ const List = styled.ul`
   width: 100%;
 `;
 
-const Item = styled.li<{ $active?: boolean }>`
+const Item = styled.li<{ $active?: boolean; $selected?: boolean }>`
   width: 100%;
   box-sizing: border-box;
   display: flex;
@@ -25,8 +25,14 @@ const Item = styled.li<{ $active?: boolean }>`
   padding: 1rem 1.25rem;
   margin-bottom: 0.5rem;
   background: ${({ $active }) => ($active ? theme.blueLight : theme.bgSecondary)};
-  border: 1px solid ${({ $active }) => ($active ? theme.blue : theme.border)};
+  border: 2px solid ${({ $active, $selected }) => ($selected ? theme.blue : $active ? theme.blue : theme.border)};
   border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+
+  ${({ $selected }) => !$selected && `
+    &:hover { border-color: ${theme.textMuted}; }
+  `}
 `;
 
 const Info = styled.div`
@@ -95,9 +101,11 @@ const AccountIconWrap = styled.span`
 
 interface AccountListProps {
   onEdit?: (account: Account) => void;
+  onSelect?: (id: string) => void;
+  selectedId?: string | null;
 }
 
-const AccountList = ({ onEdit }: AccountListProps) => {
+const AccountList = ({ onEdit, onSelect, selectedId }: AccountListProps) => {
   const { accounts, activeAccount, refresh, setActive } = useAccount();
   const { dispatch: snackbarDispatch } = React.useContext(snackbarContext);
 
@@ -131,7 +139,12 @@ const AccountList = ({ onEdit }: AccountListProps) => {
   return (
     <List>
       {accounts.map((account) => (
-        <Item key={account.id} $active={activeAccount?.id === account.id}>
+        <Item
+          key={account.id}
+          $active={activeAccount?.id === account.id}
+          $selected={selectedId === account.id}
+          onClick={() => onSelect?.(account.id)}
+        >
           <Info>
             <Name>
               {hasServiceIcon(account.serviceType) ? (

@@ -1,0 +1,1 @@
+import{t as e}from"./exp-val-equals-no-exposure-CTUP1GTh.js";var t=function(t){return!!(e(`platform_editor_controls`,`cohort`,`variant1`)||t)};export{t};

@@ -27,7 +27,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('account:update', (_, id: string, updates) =>
     AccountManager.update(id, updates)
   );
-  ipcMain.handle('account:remove', (_, id: string) => AccountManager.remove(id));
+  ipcMain.handle('account:remove', (_, id: string) => {
+    SettingsManager.removeAccount(id);
+    return AccountManager.remove(id);
+  });
   ipcMain.handle('account:setActive', (_, id: string | null) =>
     AccountManager.setActive(id)
   );

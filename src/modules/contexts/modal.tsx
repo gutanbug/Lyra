@@ -51,7 +51,7 @@ export const modalContext = createContext<{
   dispatch: Dispatch<actions.ActionType>;
 }>({ state: initialState, dispatch: () => null });
 
-const Provider = ({ children }) => {
+const Provider = ({ children }: { children: React.ReactNode }) => {
 	const [state, dispatch] = useReducer(reducer, initialState);
 	const value = { state, dispatch };
 

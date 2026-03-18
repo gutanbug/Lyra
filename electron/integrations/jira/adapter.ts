@@ -14,6 +14,9 @@ interface InvokeParams {
   skipCache?: boolean;
   transitionId?: string;
   contentUrl?: string;
+  commentId?: string;
+  body?: unknown;
+  query?: string;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -21,11 +24,15 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
   readonly displayName = 'Jira';
   readonly icon = '📋';
 
-  async validateCredentials(credentials: JiraCredentials): Promise<boolean> {
+  async validateCredentials(credentials: JiraCredentials): Promise<boolean | Record<string, unknown>> {
     try {
       const client = new JiraClient(credentials);
-      await client.getCurrentUser();
-      return true;
+      const user = await client.getCurrentUser() as Record<string, unknown>;
+      return {
+        valid: true,
+        userDisplayName: user.displayName || '',
+        userAccountId: user.accountId || '',
+      };
     } catch {
       return false;
     }
@@ -48,6 +55,7 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
 
   getActions() {
     return {
+      getCurrentUser: (params: unknown) => this.getCurrentUser(params),
       searchIssues: (params: unknown) => this.searchIssues(params),
       getProjects: (params: unknown) => this.getProjects(params),
       getIssue: (params: unknown) => this.getIssue(params),
@@ -61,7 +69,17 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       getTransitions: (params: unknown) => this.getTransitions(params),
       transitionIssue: (params: unknown) => this.transitionIssue(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
+      searchAssignableUsers: (params: unknown) => this.searchAssignableUsers(params),
+      addComment: (params: unknown) => this.addComment(params),
+      updateComment: (params: unknown) => this.updateComment(params),
+      deleteComment: (params: unknown) => this.deleteComment(params),
     };
+  }
+
+  private async getCurrentUser(params?: unknown): Promise<unknown> {
+    const { credentials } = (params || {}) as InvokeParams;
+    const client = new JiraClient(credentials);
+    return client.getCurrentUser();
   }
 
   private async searchIssues(params?: unknown): Promise<unknown> {
@@ -144,6 +162,39 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!issueKey) throw new Error('issueKey is required');
     const client = new JiraClient(credentials);
     return client.searchConfluenceByIssue(issueKey);
+  }
+
+  private async searchAssignableUsers(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, query = '' } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    const client = new JiraClient(credentials);
+    return client.searchAssignableUsers(issueKey, query);
+  }
+
+  private async addComment(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, body } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (!body) throw new Error('body is required');
+    const client = new JiraClient(credentials);
+    return client.addComment(issueKey, body);
+  }
+
+  private async updateComment(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, commentId, body } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (!commentId) throw new Error('commentId is required');
+    if (!body) throw new Error('body is required');
+    const client = new JiraClient(credentials);
+    return client.updateComment(issueKey, commentId, body);
+  }
+
+  private async deleteComment(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, commentId } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (!commentId) throw new Error('commentId is required');
+    const client = new JiraClient(credentials);
+    await client.deleteComment(issueKey, commentId);
+    return { success: true };
   }
 
   private async getAttachmentContent(params: unknown): Promise<unknown> {

@@ -5,6 +5,10 @@ import { registerIpcHandlers } from './ipc/handlers';
 
 const isDev = process.env.NODE_ENV === 'development';
 
+// V8 메모리 제한 (개발 시 GPU 프로세스 메모리 절약)
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+
 // 앱 이름 설정
 app.name = 'Lyra';
 
@@ -73,6 +77,8 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: true,
+      spellcheck: false,
     },
     show: false,
   });
@@ -82,8 +88,8 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
+    mainWindow.loadURL('http://localhost:5173');
+    // DevTools는 Cmd+Option+I로 필요할 때만 열기 (메모리 절약)
   } else {
     mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
   }

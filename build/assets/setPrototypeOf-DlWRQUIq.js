@@ -1,0 +1,1 @@
+import{n as e}from"./chunk-zsgVPwQN.js";function t(e,n){return t=Object.setPrototypeOf?Object.setPrototypeOf.bind():function(e,t){return e.__proto__=t,e},t(e,n)}var n=e((()=>{}));export{n,t};

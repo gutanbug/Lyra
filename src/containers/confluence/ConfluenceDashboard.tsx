@@ -193,6 +193,7 @@ const cache: DashboardCache = {
 
 const ConfluenceDashboard = () => {
   const { activeAccount } = useAccount();
+  const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
   const history = useHistory();
   const { addTab } = useTabs();
 
@@ -713,7 +714,7 @@ const ConfluenceDashboard = () => {
                             <PageTitle>{page.title || '(제목 없음)'}</PageTitle>
                           </PageTitleCell>
                           <PageStatus>{page.status}</PageStatus>
-                          <AuthorText>{page.authorName || '-'}</AuthorText>
+                          <AuthorText $isMe={page.authorName === myDisplayName}>{page.authorName || '-'}</AuthorText>
                           <DateText>{formatDate(page.updatedAt || page.createdAt)}</DateText>
                         </PageRow>
                       ))}
@@ -824,6 +825,7 @@ const ConfluenceDashboard = () => {
                   saveSelectedSpaces(currentAccountId, selectedSpaces);
                   setShowSpaceSettings(false);
                   fetchMyPages();
+                  window.dispatchEvent(new CustomEvent('lyra:confluence-space-settings-changed'));
                 }}
               >
                 저장
@@ -1320,7 +1322,7 @@ const TableHeader = styled.div`
   letter-spacing: 0.03em;
   text-align: center;
 
-  & > span:first-child { text-align: left; }
+  & > span:first-of-type { text-align: left; }
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr;
@@ -1342,7 +1344,7 @@ const PageRow = styled.div`
   cursor: pointer;
   transition: background 0.12s ${transition};
 
-  &:first-child { border-top: none; }
+  &:first-of-type { border-top: none; }
   &:hover { background: #F5F7FA; }
 
   @media (max-width: 600px) {
@@ -1376,9 +1378,10 @@ const PageStatus = styled.span`
   @media (max-width: 600px) { display: none; }
 `;
 
-const AuthorText = styled.span`
+const AuthorText = styled.span<{ $isMe?: boolean }>`
   font-size: 0.75rem;
-  color: ${confluenceTheme.text.secondary};
+  color: ${({ $isMe }) => ($isMe ? confluenceTheme.primary : confluenceTheme.text.secondary)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1492,7 +1495,7 @@ const SpaceSectionLabel = styled.div`
   letter-spacing: 0.04em;
   border-bottom: 1px solid ${confluenceTheme.border};
   margin-bottom: 0.125rem;
-  &:not(:first-child) {
+  &:not(:first-of-type) {
     margin-top: 0.375rem;
     border-top: 1px solid ${confluenceTheme.border};
     padding-top: 0.5rem;

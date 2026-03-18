@@ -235,6 +235,11 @@ interface DashboardCache {
   defaultChildrenMap: Record<string, NormalizedIssue[]>;
   defaultExpandedChildren: Set<string>;
   accountId: string;
+  browseProjectKey: string | null;
+  browseEpics: NormalizedIssue[];
+  browseChildrenMap: Record<string, NormalizedIssue[]>;
+  browseExpandedKeys: Set<string>;
+  browseLoadedChildren: Set<string>;
 }
 
 const cache: DashboardCache = {
@@ -248,10 +253,16 @@ const cache: DashboardCache = {
   defaultChildrenMap: {},
   defaultExpandedChildren: new Set(),
   accountId: '',
+  browseProjectKey: null,
+  browseEpics: [],
+  browseChildrenMap: {},
+  browseExpandedKeys: new Set(),
+  browseLoadedChildren: new Set(),
 };
 
 const JiraDashboard = () => {
   const { activeAccount } = useAccount();
+  const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
   const history = useHistory();
   const { addTab } = useTabs();
 
@@ -346,19 +357,27 @@ const JiraDashboard = () => {
   );
 
   // 사이드바 프로젝트 브라우즈 모드 (스페이스 설정과 독립)
-  const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(null);
-  const [browseEpics, setBrowseEpics] = useState<NormalizedIssue[]>([]); // 에픽 목록
-  const [browseChildrenMap, setBrowseChildrenMap] = useState<Record<string, NormalizedIssue[]>>({}); // parentKey → children
+  const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(isCacheValid ? cache.browseProjectKey : null);
+  const [browseEpics, setBrowseEpics] = useState<NormalizedIssue[]>(isCacheValid ? cache.browseEpics : []);
+  const [browseChildrenMap, setBrowseChildrenMap] = useState<Record<string, NormalizedIssue[]>>(isCacheValid ? cache.browseChildrenMap : {});
   const [isBrowseLoading, setIsBrowseLoading] = useState(false);
-  const [browseExpandedKeys, setBrowseExpandedKeys] = useState<Set<string>>(new Set());
-  const [browseLoadingChildren, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
-  const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(new Set());
+  const [browseExpandedKeys, setBrowseExpandedKeys] = useState<Set<string>>(isCacheValid ? cache.browseExpandedKeys : new Set());
+  const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
+  const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(isCacheValid ? cache.browseLoadedChildren : new Set());
 
   const handleTransitioned = useCallback((issueKey: string, toName: string, toCategory: string) => {
     const updateIssues = (list: NormalizedIssue[]) =>
       list.map((i) => i.key === issueKey ? { ...i, statusName: toName, statusCategory: toCategory } : i);
     setMyIssues((prev) => updateIssues(prev));
     setSearchResults((prev) => prev ? updateIssues(prev) : prev);
+    setBrowseEpics((prev) => updateIssues(prev));
+    setBrowseChildrenMap((prev) => {
+      const next: Record<string, NormalizedIssue[]> = {};
+      for (const [key, children] of Object.entries(prev)) {
+        next[key] = updateIssues(children);
+      }
+      return next;
+    });
   }, []);
 
   const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition } = useTransitionDropdown({
@@ -434,7 +453,12 @@ const JiraDashboard = () => {
     cache.defaultChildrenMap = defaultChildrenMap;
     cache.defaultExpandedChildren = defaultExpandedChildren;
     (cache as any).doneCounts = doneCounts;
-  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts]);
+    cache.browseProjectKey = browseProjectKey;
+    cache.browseEpics = browseEpics;
+    cache.browseChildrenMap = browseChildrenMap;
+    cache.browseExpandedKeys = browseExpandedKeys;
+    cache.browseLoadedChildren = browseLoadedChildren;
+  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren]);
 
   const fetchProjects = useCallback(async () => {
     if (!activeAccount) return;
@@ -451,7 +475,8 @@ const JiraDashboard = () => {
           .sort((a: JiraProject, b: JiraProject) => a.name.localeCompare(b.name));
         setProjects(list);
       }
-    } catch {
+    } catch (err) {
+      console.error('[JiraDashboard] fetchProjects failed:', err);
       setProjects([]);
     }
   }, [activeAccount]);
@@ -715,8 +740,13 @@ const JiraDashboard = () => {
   }, [activeAccount, selectedProjects]);
 
   // ── 사이드바 프로젝트 브라우즈: 에픽만 조회 ──
+  const browseFetchDone = React.useRef(isCacheValid && cache.browseProjectKey === browseProjectKey && cache.browseEpics.length > 0);
   useEffect(() => {
     if (!browseProjectKey || !activeAccount) return;
+    if (browseFetchDone.current) {
+      browseFetchDone.current = false;
+      return;
+    }
     let cancelled = false;
     setIsBrowseLoading(true);
     setBrowseEpics([]);
@@ -731,7 +761,7 @@ const JiraDashboard = () => {
           serviceType: 'jira',
           action: 'searchIssues',
           params: {
-            jql: `project = "${escapeJql(browseProjectKey)}" AND issuetype = Epic ORDER BY created DESC`,
+            jql: `project = "${escapeJql(browseProjectKey)}" AND issuetype in (Epic, 에픽) ORDER BY created DESC`,
             maxResults: 500,
             skipCache: true,
           },
@@ -770,6 +800,20 @@ const JiraDashboard = () => {
     setBrowseLoadedChildren((prev) => new Set(prev).add(parentKey));
   }, [fetchChildren, browseLoadedChildren]);
 
+  // 캐시 복원 후 펼침 상태와 로드된 데이터 동기화
+  // (모두 펼치기 → 상세 이동 → 복귀 시, 비동기 로드가 완료되지 않은 항목 재로드)
+  const browseResyncDone = React.useRef(false);
+  useEffect(() => {
+    if (browseResyncDone.current) return;
+    browseResyncDone.current = true;
+    if (!browseProjectKey || !activeAccount) return;
+    browseExpandedKeys.forEach((key) => {
+      if (browseChildrenMap[key] === undefined) {
+        loadBrowseChildren(key);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const searchIssues = useCallback(async () => {
     if (!activeAccount) return;
@@ -1028,16 +1072,41 @@ const JiraDashboard = () => {
 
   // 글로벌 단축키 이벤트 수신 (모두 접기/펼치기)
   const epicGroupsRef = useRef<EpicGroup[]>([]);
+  const browseEpicsRef = useRef<NormalizedIssue[]>([]);
+  useEffect(() => { browseEpicsRef.current = browseEpics; }, [browseEpics]);
+  const browseChildrenMapRef = useRef<Record<string, NormalizedIssue[]>>({});
+  useEffect(() => { browseChildrenMapRef.current = browseChildrenMap; }, [browseChildrenMap]);
+  const browseProjectKeyRef = useRef<string | null>(null);
+  useEffect(() => { browseProjectKeyRef.current = browseProjectKey; }, [browseProjectKey]);
+
   useEffect(() => {
-    const onExpand = () => expandAll(epicGroupsRef.current);
-    const onCollapse = () => collapseAll();
+    const onExpand = () => {
+      if (browseProjectKeyRef.current) {
+        const allKeys = new Set<string>();
+        browseEpicsRef.current.forEach((e) => allKeys.add(e.key));
+        for (const [key, children] of Object.entries(browseChildrenMapRef.current)) {
+          if (children.length > 0) allKeys.add(key);
+        }
+        setBrowseExpandedKeys(allKeys);
+        browseEpicsRef.current.forEach((e) => loadBrowseChildren(e.key));
+      } else {
+        expandAll(epicGroupsRef.current);
+      }
+    };
+    const onCollapse = () => {
+      if (browseProjectKeyRef.current) {
+        setBrowseExpandedKeys(new Set());
+      } else {
+        collapseAll();
+      }
+    };
     window.addEventListener('lyra:expand-all', onExpand);
     window.addEventListener('lyra:collapse-all', onCollapse);
     return () => {
       window.removeEventListener('lyra:expand-all', onExpand);
       window.removeEventListener('lyra:collapse-all', onCollapse);
     };
-  }, [expandAll, collapseAll]);
+  }, [expandAll, collapseAll, loadBrowseChildren]);
 
   // 스페이스 설정 모달용 필터링 (Hook은 early return 전에 호출)
   const filteredProjects = React.useMemo(() => {
@@ -1083,25 +1152,12 @@ const JiraDashboard = () => {
   // 브라우즈 모드 테이블 내 하위 항목 재귀 렌더링 (browseChildrenMap 기반)
   const renderBrowseChildren = (parentKey: string, depth: number): React.ReactNode[] => {
     const children = browseChildrenMap[parentKey] || [];
-    const isLoadingThis = browseLoadingChildren.has(parentKey);
-
     const rows: React.ReactNode[] = [];
-
-    if (children.length === 0 && isLoadingThis) {
-      rows.push(
-        <BrowseLoadingRow key={`loading-${parentKey}`}>
-          <Loader size={12} />
-          <span>하위 이슈 로딩 중...</span>
-        </BrowseLoadingRow>,
-      );
-      return rows;
-    }
 
     for (const issue of children) {
       const childChildren = browseChildrenMap[issue.key] || [];
       const canExpand = issue.subtaskCount > 0 || childChildren.length > 0;
       const isChildExpanded = browseExpandedKeys.has(issue.key);
-      const isChildLoading = browseLoadingChildren.has(issue.key);
 
       rows.push(
         <IssueRow
@@ -1122,7 +1178,7 @@ const JiraDashboard = () => {
           <IssueKeyCell style={{ paddingLeft: `${depth * 24}px` }}>
             {canExpand ? (
               <SubTaskToggle>
-                {isChildLoading ? <Loader size={10} /> : isChildExpanded ? '▼' : '▶'}
+                {isChildExpanded ? '▼' : '▶'}
               </SubTaskToggle>
             ) : (
               <SubTaskToggleSpacer />
@@ -1148,7 +1204,7 @@ const JiraDashboard = () => {
             {issue.statusName || '-'}
             <ChevronIcon>▾</ChevronIcon>
           </StatusBadgeBtn>
-          <AssigneeText>{issue.assigneeName || '미지정'}</AssigneeText>
+          <AssigneeText $isMe={issue.assigneeName === myDisplayName}>{issue.assigneeName || '미지정'}</AssigneeText>
         </IssueRow>,
       );
 
@@ -1220,7 +1276,7 @@ const JiraDashboard = () => {
             {issue.statusName || '-'}
             <ChevronIcon>▾</ChevronIcon>
           </StatusBadgeBtn>
-          <AssigneeText>{issue.assigneeName || '미지정'}</AssigneeText>
+          <AssigneeText $isMe={issue.assigneeName === myDisplayName}>{issue.assigneeName || '미지정'}</AssigneeText>
         </IssueRow>,
       );
 
@@ -1378,26 +1434,38 @@ const JiraDashboard = () => {
               <EpicList>
                 {browseEpics.map((epic) => {
                   const isExpanded = browseExpandedKeys.has(epic.key);
-                  const isLoadingEpic = browseLoadingChildren.has(epic.key);
                   const epicChildren = browseChildrenMap[epic.key] || [];
                   return (
                     <EpicCard key={epic.key}>
                       <EpicHeader onClick={() => toggleBrowseEpic(epic.key)}>
-                        <EpicToggle>{isExpanded ? '▼' : '▶'}</EpicToggle>
-                        <JiraTaskIcon type={resolveTaskType(epic.issueTypeName)} size={18} />
-                        <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(epic.issueTypeName)]}>
-                          {TASK_TYPE_LABELS[resolveTaskType(epic.issueTypeName)]}
-                        </IssueTypeLabel>
-                        <EpicKey
-                          onClick={(e) => { e.stopPropagation(); goToIssue(epic.key); }}
-                          onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${epic.key}`, epic.key)}
-                        >
-                          {epic.key}
-                        </EpicKey>
-                        <EpicSummary>{epic.summary}</EpicSummary>
-                        {epicChildren.length > 0 && (
-                          <EpicCount>{epicChildren.length}</EpicCount>
-                        )}
+                        <EpicHeaderLeft>
+                          <EpicToggle>{isExpanded ? '▼' : '▶'}</EpicToggle>
+                          <JiraTaskIcon type={resolveTaskType(epic.issueTypeName)} size={18} />
+                          <IssueTypeLabel $color={TASK_TYPE_COLORS[resolveTaskType(epic.issueTypeName)]}>
+                            {TASK_TYPE_LABELS[resolveTaskType(epic.issueTypeName)]}
+                          </IssueTypeLabel>
+                          <EpicKey
+                            onClick={(e) => { e.stopPropagation(); goToIssue(epic.key); }}
+                            onContextMenu={(e) => handleItemContextMenu(e, `/jira/issue/${epic.key}`, epic.key)}
+                          >
+                            {epic.key}
+                          </EpicKey>
+                          <EpicSummary>{epic.summary}</EpicSummary>
+                        </EpicHeaderLeft>
+                        {epic.statusName ? (
+                          <StatusBadgeBtn
+                            $color={getStatusColor(epic.statusName, epic.statusCategory)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openTransitionDropdown(epic.key, epic.statusName, e);
+                            }}
+                          >
+                            {epic.statusName}
+                            <ChevronIcon>▾</ChevronIcon>
+                          </StatusBadgeBtn>
+                        ) : <span />}
+                        <EpicAssignee>{epic.assigneeName || '미지정'}</EpicAssignee>
+                        <EpicCount>{epicChildren.length}</EpicCount>
                       </EpicHeader>
 
                       {isExpanded && (
@@ -1414,7 +1482,6 @@ const JiraDashboard = () => {
                             const childChildren = browseChildrenMap[issue.key] || [];
                             const canExpand = issue.subtaskCount > 0 || childChildren.length > 0;
                             const isChildExpanded = browseExpandedKeys.has(issue.key);
-                            const isChildLoading = browseLoadingChildren.has(issue.key);
                             return (
                               <React.Fragment key={issue.key || issue.id}>
                                 <IssueRow
@@ -1434,7 +1501,7 @@ const JiraDashboard = () => {
                                   <IssueKeyCell>
                                     {canExpand ? (
                                       <SubTaskToggle>
-                                        {isChildLoading ? <Loader size={10} /> : isChildExpanded ? '▼' : '▶'}
+                                        {isChildExpanded ? '▼' : '▶'}
                                       </SubTaskToggle>
                                     ) : (
                                       <SubTaskToggleSpacer />
@@ -1460,18 +1527,12 @@ const JiraDashboard = () => {
                                     {issue.statusName || '-'}
                                     <ChevronIcon>▾</ChevronIcon>
                                   </StatusBadgeBtn>
-                                  <AssigneeText>{issue.assigneeName || '미지정'}</AssigneeText>
+                                  <AssigneeText $isMe={issue.assigneeName === myDisplayName}>{issue.assigneeName || '미지정'}</AssigneeText>
                                 </IssueRow>
                                 {isChildExpanded && renderBrowseChildren(issue.key, 1)}
                               </React.Fragment>
                             );
                           })}
-                          {isLoadingEpic && epicChildren.length === 0 && (
-                            <BrowseLoadingRow>
-                              <Loader size={12} />
-                              <span>하위 이슈 로딩 중...</span>
-                            </BrowseLoadingRow>
-                          )}
                         </IssueTable>
                       )}
                     </EpicCard>
@@ -1611,7 +1672,7 @@ const JiraDashboard = () => {
                                     {issue.statusName || '-'}
                                     <ChevronIcon>▾</ChevronIcon>
                                   </StatusBadgeBtn>
-                                  <AssigneeText>{issue.assigneeName || '미지정'}</AssigneeText>
+                                  <AssigneeText $isMe={issue.assigneeName === myDisplayName}>{issue.assigneeName || '미지정'}</AssigneeText>
                                 </IssueRow>
                                 {isChildExpanded && renderDefaultChildren(issue.key, 1)}
                               </React.Fragment>
@@ -2270,7 +2331,7 @@ const IssueRow = styled.div`
   transition: background 0.12s ${transition};
   align-items: center;
 
-  &:first-child { border-top: none; }
+  &:first-of-type { border-top: none; }
   &:hover { background: #F5F7FA; }
 
   @media (max-width: 900px) {
@@ -2348,9 +2409,10 @@ const ChevronIcon = styled.span`
   opacity: 0.8;
 `;
 
-const AssigneeText = styled.span`
+const AssigneeText = styled.span<{ $isMe?: boolean }>`
   font-size: 0.75rem;
-  color: ${jiraTheme.text.secondary};
+  color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : jiraTheme.text.secondary)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2457,7 +2519,7 @@ const SpaceSectionLabel = styled.div`
   border-bottom: 1px solid ${jiraTheme.border};
   margin-bottom: 0.125rem;
 
-  &:not(:first-child) {
+  &:not(:first-of-type) {
     margin-top: 0.375rem;
     border-top: 1px solid ${jiraTheme.border};
     padding-top: 0.5rem;
@@ -2598,20 +2660,4 @@ const SubTaskToggleSpacer = styled.span`
   margin-right: 2px;
 `;
 
-const BrowseLoadingRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1.5rem;
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.secondary};
-
-  svg {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-`;
 

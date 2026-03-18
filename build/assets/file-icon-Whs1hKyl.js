@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-zsgVPwQN.js";import{n as t}from"./utils-CjJkvxz-.js";import{t as n}from"./file-CeRiuDRY.js";var r=t(e(n()).default,`grayBold`);r.displayName=`FileIconWithColor`;export{r as t};

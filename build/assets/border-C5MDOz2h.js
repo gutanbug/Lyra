@@ -1,0 +1,1 @@
+import{n as e,t}from"./defineProperty-D7rpUM5u.js";e();function n(e){return r[e.toUpperCase()]}var r=t(t(t({},`#091E4224`,`var(--ds-border, #091E4224)`),`#758195`,`var(--ds-border-bold, #758195)`),`#172B4D`,`var(--ds-text, #172B4D)`);export{n as t};

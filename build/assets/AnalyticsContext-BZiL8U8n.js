@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";import{n,t as r}from"./esm-xGmASAXy.js";import{n as i,r as a,t as o}from"./ModernAnalyticsContext-hwZU5fxb.js";var s=e(t());n();var c=function(e){return a||r(`analytics-next-use-legacy-context`)===!1?s.createElement(o,e):s.createElement(i,e)};export{c as t};

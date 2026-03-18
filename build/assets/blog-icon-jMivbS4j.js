@@ -1,0 +1,1 @@
+import{n as e,t}from"./24-BtcQ38dx.js";import{t as n}from"./utils-CHPHfXAa.js";var r=n(e,t);r.displayName=`BlogIconWithColor`;export{r as t};

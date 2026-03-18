@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useHistory } from 'react-router-dom';
 import styled from 'styled-components';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Check, Loader } from 'lucide-react';
 import AddAccountForm from 'components/account/AddAccountForm';
 import AccountList from 'components/account/AccountList';
 import { useAccount } from 'modules/contexts/account';
+import { integrationController } from 'controllers/account';
+import { isAtlassianAccount } from 'types/account';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import type { Account } from 'types/account';
@@ -28,13 +30,15 @@ const SHORTCUT_SECTIONS = [
       { label: '이전 메뉴', keys: ['['] },
       { label: '다음 메뉴', keys: [']'] },
       { label: '탭 닫기', keys: [CMD, 'W'] },
+      { label: '탭 전환 (1=메인, 2~9=탭)', keys: [CMD, '1~9'] },
     ],
   },
   {
     title: '보기',
     items: [
-      { label: '모두 접기', keys: [CMD, '-'] },
-      { label: '모두 펼치기', keys: [CMD, '+'] },
+      { label: '모두 접기', keys: ['-'] },
+      { label: '모두 펼치기', keys: ['+'] },
+      { label: '사이드바 토글', keys: [CMD, '\\'] },
     ],
   },
   {
@@ -44,14 +48,169 @@ const SHORTCUT_SECTIONS = [
       { label: '프로필 변경', keys: [CMD, ';'] },
     ],
   },
+  {
+    title: '편집기',
+    items: [
+      { label: '굵게', keys: [CMD, 'B'] },
+      { label: '기울임', keys: [CMD, 'I'] },
+      { label: '밑줄', keys: [CMD, 'U'] },
+      { label: '취소선', keys: [CMD, '⇧', 'S'] },
+      { label: '인라인 코드', keys: [CMD, 'E'] },
+      { label: '코드블록', keys: [CMD, '⇧', 'C'] },
+      { label: '링크 삽입', keys: [CMD, 'K'] },
+      { label: '댓글 전송', keys: [CMD, '↵'] },
+    ],
+  },
 ];
+
+/** Atlassian 계정 커스텀 설정 (Jira 프로젝트 / Confluence 스페이스 선택) */
+const AtlassianSettings = ({ account }: { account: Account }) => {
+  const [projects, setProjects] = useState<{ key: string; name: string }[]>([]);
+  const [spaces, setSpaces] = useState<{ key: string; name: string }[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
+  const [selectedSpaces, setSelectedSpaces] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  // 프로젝트/스페이스 목록 + 저장된 선택 로드
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    (async () => {
+      try {
+        // 저장된 설정 로드
+        const savedProjects = await window.workspaceAPI?.settings.getSelectedProjects(account.id) ?? [];
+        const savedSpaces = await window.workspaceAPI?.settings.getSelectedSpaces(account.id) ?? [];
+        if (cancelled) return;
+        setSelectedProjects(new Set(savedProjects));
+        setSelectedSpaces(new Set(savedSpaces));
+
+        // Jira 프로젝트 목록
+        const jiraResult = await integrationController.invoke({
+          accountId: account.id,
+          serviceType: 'jira',
+          action: 'getProjects',
+          params: {},
+        });
+        if (!cancelled) {
+          const raw = ((jiraResult as any)?.values ?? jiraResult ?? []) as Record<string, unknown>[];
+          setProjects(
+            (Array.isArray(raw) ? raw : []).map((p) => ({
+              key: String(p.key || ''),
+              name: String(p.name || ''),
+            })).filter((p) => p.key)
+          );
+        }
+
+        // Confluence 스페이스 목록
+        const confResult = await integrationController.invoke({
+          accountId: account.id,
+          serviceType: 'confluence',
+          action: 'getSpaces',
+          params: {},
+        });
+        if (!cancelled) {
+          const raw = ((confResult as any)?.results ?? []) as Record<string, unknown>[];
+          setSpaces(
+            raw.map((s) => ({
+              key: String(s.key || ''),
+              name: String(s.name || ''),
+            })).filter((s) => s.key)
+          );
+        }
+      } catch (err) {
+        console.error('[AtlassianSettings] load error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [account.id]);
+
+  const toggleProject = useCallback((key: string) => {
+    setSelectedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      window.workspaceAPI?.settings.setSelectedProjects(account.id, Array.from(next));
+      return next;
+    });
+  }, [account.id]);
+
+  const toggleSpace = useCallback((key: string) => {
+    setSelectedSpaces((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      window.workspaceAPI?.settings.setSelectedSpaces(account.id, Array.from(next));
+      window.dispatchEvent(new CustomEvent('lyra:confluence-space-settings-changed'));
+      return next;
+    });
+  }, [account.id]);
+
+  if (loading) {
+    return <SettingsLoading><Loader size={16} /><span>설정 로딩 중...</span></SettingsLoading>;
+  }
+
+  return (
+    <SettingsSections>
+      <SettingsSection>
+        <SettingsSectionTitle>Jira 프로젝트</SettingsSectionTitle>
+        <SettingsSectionDesc>사이드바에 표시할 프로젝트를 선택하세요.</SettingsSectionDesc>
+        <CheckList>
+          {projects.map((p) => (
+            <CheckItem key={p.key} onClick={() => toggleProject(p.key)}>
+              <CheckBox $checked={selectedProjects.has(p.key)}>
+                {selectedProjects.has(p.key) && <Check size={12} />}
+              </CheckBox>
+              <CheckLabel>
+                <CheckName>{p.name}</CheckName>
+                <CheckKey>{p.key}</CheckKey>
+              </CheckLabel>
+            </CheckItem>
+          ))}
+          {projects.length === 0 && <EmptyCheck>프로젝트가 없습니다.</EmptyCheck>}
+        </CheckList>
+      </SettingsSection>
+
+      <SettingsSection>
+        <SettingsSectionTitle>Confluence 스페이스</SettingsSectionTitle>
+        <SettingsSectionDesc>사이드바에 표시할 스페이스를 선택하세요.</SettingsSectionDesc>
+        <CheckList>
+          {spaces.map((s) => (
+            <CheckItem key={s.key} onClick={() => toggleSpace(s.key)}>
+              <CheckBox $checked={selectedSpaces.has(s.key)}>
+                {selectedSpaces.has(s.key) && <Check size={12} />}
+              </CheckBox>
+              <CheckLabel>
+                <CheckName>{s.name}</CheckName>
+                {!s.key.startsWith('~') && <CheckKey>{s.key}</CheckKey>}
+              </CheckLabel>
+            </CheckItem>
+          ))}
+          {spaces.length === 0 && <EmptyCheck>스페이스가 없습니다.</EmptyCheck>}
+        </CheckList>
+      </SettingsSection>
+    </SettingsSections>
+  );
+};
 
 /** 계정 설정 패널 */
 const AccountPanel = () => {
-  const { refresh } = useAccount();
+  const { accounts, refresh } = useAccount();
   const isElectron = typeof window !== 'undefined' && !!window.workspaceAPI;
   const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
   const [editTarget, setEditTarget] = useState<Account | undefined>(undefined);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // 첫 번째 계정 자동 선택
+  useEffect(() => {
+    if (accounts.length > 0 && !selectedAccountId) {
+      setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   const handleSuccess = () => {
     refresh();
@@ -71,18 +230,43 @@ const AccountPanel = () => {
 
   return (
     <>
-      <PanelHeader>
-        <PanelTitle>계정 설정</PanelTitle>
-        {isElectron && (
-          <AddButton onClick={() => setModalMode('add')}>+ 계정 추가</AddButton>
-        )}
-      </PanelHeader>
-      {!isElectron && (
-        <ElectronOnly>
-          계정 관리는 Electron 데스크톱 앱에서만 사용할 수 있습니다. pnpm electron:dev 로 실행해주세요.
-        </ElectronOnly>
-      )}
-      <AccountList onEdit={isElectron ? handleEdit : undefined} />
+      <AccountPanelLayout>
+        <AccountPanelLeft>
+          <PanelHeader>
+            <PanelTitle>계정 설정</PanelTitle>
+            {isElectron && (
+              <AddButton onClick={() => setModalMode('add')}>+ 계정 추가</AddButton>
+            )}
+          </PanelHeader>
+          {!isElectron && (
+            <ElectronOnly>
+              계정 관리는 Electron 데스크톱 앱에서만 사용할 수 있습니다.
+            </ElectronOnly>
+          )}
+          <AccountList
+            onEdit={isElectron ? handleEdit : undefined}
+            onSelect={setSelectedAccountId}
+            selectedId={selectedAccountId}
+          />
+        </AccountPanelLeft>
+
+        <AccountPanelRight>
+          {selectedAccount ? (
+            <>
+              <PanelHeader>
+                <PanelTitle>{selectedAccount.displayName} 설정</PanelTitle>
+              </PanelHeader>
+              {isAtlassianAccount(selectedAccount.serviceType) ? (
+                <AtlassianSettings key={selectedAccount.id} account={selectedAccount} />
+              ) : (
+                <EmptySettingsMsg>이 서비스 타입의 커스텀 설정은 아직 지원되지 않습니다.</EmptySettingsMsg>
+              )}
+            </>
+          ) : (
+            <EmptySettingsMsg>계정을 선택하면 커스텀 설정을 진행할 수 있습니다.</EmptySettingsMsg>
+          )}
+        </AccountPanelRight>
+      </AccountPanelLayout>
 
       {modalMode && (
         <ModalOverlay onClick={handleCloseModal}>
@@ -266,7 +450,6 @@ const ContentArea = styled.main`
   min-width: 0;
   padding: 1.5rem 2rem;
   overflow-y: auto;
-  max-width: 600px;
 `;
 
 const PanelHeader = styled.div`
@@ -413,4 +596,134 @@ const Kbd = styled.kbd`
   font-weight: 500;
   color: ${theme.textSecondary};
   box-shadow: 0 1px 0 ${theme.border};
+`;
+
+// ─── Account Panel Layout ─────────────────────────
+
+const AccountPanelLayout = styled.div`
+  display: flex;
+  gap: 2rem;
+  min-height: 0;
+`;
+
+const AccountPanelLeft = styled.div`
+  flex: 0 0 480px;
+  min-width: 0;
+`;
+
+const AccountPanelRight = styled.div`
+  flex: 1;
+  min-width: 300px;
+  border-left: 1px solid ${theme.border};
+  padding-left: 2rem;
+`;
+
+const EmptySettingsMsg = styled.div`
+  color: ${theme.textMuted};
+  font-size: 0.875rem;
+  padding: 2rem 0;
+`;
+
+// ─── Custom Settings ─────────────────────────
+
+const SettingsLoading = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: ${theme.textMuted};
+  font-size: 0.875rem;
+  padding: 1rem 0;
+
+  svg { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+`;
+
+const SettingsSections = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+`;
+
+const SettingsSection = styled.div``;
+
+const SettingsSectionTitle = styled.h3`
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: ${theme.textPrimary};
+`;
+
+const SettingsSectionDesc = styled.p`
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: ${theme.textMuted};
+`;
+
+const CheckList = styled.div`
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid ${theme.border};
+  border-radius: 8px;
+`;
+
+const CheckItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.1s;
+
+  &:hover {
+    background: ${theme.bgTertiary};
+  }
+
+  & + & {
+    border-top: 1px solid ${theme.border};
+  }
+`;
+
+const CheckBox = styled.div<{ $checked: boolean }>`
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid ${({ $checked }) => ($checked ? theme.blue : theme.border)};
+  background: ${({ $checked }) => ($checked ? theme.blue : 'transparent')};
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+`;
+
+const CheckLabel = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+`;
+
+const CheckName = styled.span`
+  font-size: 0.8125rem;
+  color: ${theme.textPrimary};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const CheckKey = styled.span`
+  font-size: 0.6875rem;
+  color: ${theme.textMuted};
+  flex-shrink: 0;
+`;
+
+const EmptyCheck = styled.div`
+  padding: 1rem;
+  text-align: center;
+  color: ${theme.textMuted};
+  font-size: 0.8125rem;
 `;

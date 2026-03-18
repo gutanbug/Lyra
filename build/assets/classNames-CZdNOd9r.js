@@ -1,0 +1,1 @@
+var e=`mvng-hide-controls`;export{e as t};

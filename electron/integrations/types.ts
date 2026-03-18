@@ -11,8 +11,8 @@ export interface IntegrationAdapter<TConfig = unknown> {
   readonly displayName: string;
   readonly icon?: string;
 
-  /** 연결 테스트 */
-  validateCredentials(credentials: TConfig): Promise<boolean>;
+  /** 연결 테스트 (사용자 정보 포함 가능) */
+  validateCredentials(credentials: TConfig): Promise<boolean | Record<string, unknown>>;
 
   /** 서비스별 공통 작업 (추상화된 API) */
   getCommonActions(): CommonAction[];

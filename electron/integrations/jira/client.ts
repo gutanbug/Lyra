@@ -354,6 +354,60 @@ export class JiraClient {
   }
 
   /**
+   * 이슈에 할당 가능한 사용자 검색
+   * GET /rest/api/3/user/assignable/search
+   */
+  async searchAssignableUsers(issueKey: string, query: string): Promise<unknown[]> {
+    const { data } = await withRetry429(() =>
+      this.client.get('/user/assignable/search', {
+        params: {
+          issueKey,
+          query,
+          maxResults: 10,
+        },
+      })
+    );
+    return (data as Record<string, unknown>[]).map((u) => ({
+      accountId: u.accountId,
+      displayName: u.displayName,
+      avatarUrl: (u.avatarUrls as Record<string, string>)?.['24x24'] || '',
+      emailAddress: u.emailAddress || '',
+    }));
+  }
+
+  /**
+   * 댓글 추가
+   * POST /rest/api/3/issue/:issueIdOrKey/comment
+   */
+  async addComment(issueIdOrKey: string, bodyAdf: unknown): Promise<unknown> {
+    const { data } = await withRetry429(() =>
+      this.client.post(`/issue/${issueIdOrKey}/comment`, { body: bodyAdf })
+    );
+    return data;
+  }
+
+  /**
+   * 댓글 수정
+   * PUT /rest/api/3/issue/:issueIdOrKey/comment/:commentId
+   */
+  async updateComment(issueIdOrKey: string, commentId: string, bodyAdf: unknown): Promise<unknown> {
+    const { data } = await withRetry429(() =>
+      this.client.put(`/issue/${issueIdOrKey}/comment/${commentId}`, { body: bodyAdf })
+    );
+    return data;
+  }
+
+  /**
+   * 댓글 삭제
+   * DELETE /rest/api/3/issue/:issueIdOrKey/comment/:commentId
+   */
+  async deleteComment(issueIdOrKey: string, commentId: string): Promise<void> {
+    await withRetry429(() =>
+      this.client.delete(`/issue/${issueIdOrKey}/comment/${commentId}`)
+    );
+  }
+
+  /**
    * 첨부파일 콘텐츠를 base64 Data URL로 반환 (인증 프록시)
    */
   async getAttachmentContent(contentUrl: string): Promise<string> {

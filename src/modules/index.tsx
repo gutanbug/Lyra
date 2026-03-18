@@ -31,14 +31,14 @@ export const combineProvider = (providers: Array<IProviderOrWithValue>) => {
 /*
 	Create Provider
 */
-const AppProvider = ({ children }) => {
-	const CombinedProvider = combineProvider([
-		AccountProvider,
-		SplitViewProvider,
-		ModalProvider,
-		SnackbarProvider
-	])
+const CombinedProvider = combineProvider([
+	AccountProvider,
+	SplitViewProvider,
+	ModalProvider,
+	SnackbarProvider
+]);
 
+const AppProvider = ({ children }: { children: React.ReactNode }) => {
 	return (
 		<CombinedProvider>
 			{children}

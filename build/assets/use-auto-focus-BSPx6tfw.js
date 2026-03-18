@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t());function r(e,t){var r=(0,n.useRef)(!0);(0,n.useEffect)(function(){e&&r.current&&t&&e.current&&e.current.focus(),r.current=!1},[t,e])}export{r as t};

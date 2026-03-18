@@ -1,1 +1,0 @@
-var e=function(e){return e===`offline`||e===`collab-offline`||e===`internet-offline`};export{e as t};

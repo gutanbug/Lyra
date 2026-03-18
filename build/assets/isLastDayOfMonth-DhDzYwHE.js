@@ -1,1 +1,0 @@
-import{n as e,t}from"./toDate-EZgBZ5Av.js";function n(n){e(1,arguments);var r=t(n);return r.setHours(23,59,59,999),r}function r(n){e(1,arguments);var r=t(n),i=r.getMonth();return r.setFullYear(r.getFullYear(),i+1,0),r.setHours(23,59,59,999),r}function i(i){e(1,arguments);var a=t(i);return n(a).getTime()===r(a).getTime()}export{n,i as t};

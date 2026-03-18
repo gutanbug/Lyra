@@ -1,1 +1,0 @@
-import{n as e,t}from"./setPrototypeOf-DlWRQUIq.js";e();function n(e,n){e.prototype=Object.create(n.prototype),e.prototype.constructor=e,t(e,n)}export{n as t};

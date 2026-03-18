@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t()),r=(0,n.createContext)({}),i=function(){var e=(0,n.useContext)(r).routerLinkComponent;if(e)return e};export{i as t};

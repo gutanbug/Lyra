@@ -1,1 +1,0 @@
-var e={DATE_WRAPPER:`date-lozenger-container`,DATE_CONTAINER:`dateView-content-wrap`};export{e as t};

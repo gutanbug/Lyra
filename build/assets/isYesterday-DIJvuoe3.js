@@ -1,1 +1,0 @@
-import{n as e}from"./toDate-EZgBZ5Av.js";import{t}from"./toInteger-BIK7KhiQ.js";import{t as n}from"./addDays-nDprTXEZ.js";import{t as r}from"./isSameDay-CNs9wO-3.js";function i(r,i){return e(2,arguments),n(r,-t(i))}function a(t){return e(1,arguments),r(t,i(Date.now(),1))}export{a as t};

@@ -1,1 +1,0 @@
-var e=function(e,t){return{type:`blockCard`,attrs:{url:t,datasource:e}}};export{e as t};

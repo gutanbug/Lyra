@@ -1,1 +1,0 @@
-import{t as e}from"./use-theme-observer-C82pqJ_x.js";var t=function(){var t=e().colorMode;return{iconThemed:function(e){return t&&t===`dark`?e.dark:e.light}}};export{t};

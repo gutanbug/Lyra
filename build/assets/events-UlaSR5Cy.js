@@ -1,1 +1,0 @@
-var e=function(e){return e.NATIVE=`mobileNative`,e.HYBRID=`mobileHybrid`,e.WEB=`web`,e}({}),t=function(e){return e.RENDERER=`renderer`,e.EDITOR=`editor`,e}({});export{e as n,t};

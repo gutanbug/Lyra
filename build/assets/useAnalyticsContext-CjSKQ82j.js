@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t()),r=(0,n.createContext)({getAtlaskitAnalyticsContext:function(){return[]},getAtlaskitAnalyticsEventHandlers:function(){return[]}}),i=function(){return(0,n.useContext)(r)};export{r as n,i as t};

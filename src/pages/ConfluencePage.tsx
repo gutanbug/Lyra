@@ -1,11 +1,13 @@
+import { lazy, Suspense } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Switch, Route, useRouteMatch } from 'react-router-dom';
 import ConfluenceDashboard from 'containers/confluence/ConfluenceDashboard';
-import ConfluencePageDetail from 'containers/confluence/ConfluencePageDetail';
 import SidebarLayout from 'components/sidebar/SidebarLayout';
 import ConfluenceSidebar from 'components/sidebar/ConfluenceSidebar';
 import styled from 'styled-components';
 import { theme } from 'lib/styles/theme';
+
+const ConfluencePageDetail = lazy(() => import('containers/confluence/ConfluencePageDetail'));
 
 const Page = styled.div`
   display: flex;
@@ -24,11 +26,13 @@ const ConfluencePage = () => {
         <title>Confluence - Workspace</title>
       </Helmet>
       <SidebarLayout sidebar={<ConfluenceSidebar />}>
-        <Switch>
-          <Route path={`${path}${path.endsWith('/confluence') ? '' : '/confluence'}/page/:pageId`} component={ConfluencePageDetail} />
-          <Route path={`${path}/page/:pageId`} component={ConfluencePageDetail} />
-          <Route path={path} component={ConfluenceDashboard} exact />
-        </Switch>
+        <Suspense fallback={null}>
+          <Switch>
+            <Route path={`${path}${path.endsWith('/confluence') ? '' : '/confluence'}/page/:pageId`} component={ConfluencePageDetail} />
+            <Route path={`${path}/page/:pageId`} component={ConfluencePageDetail} />
+            <Route path={path} component={ConfluenceDashboard} exact />
+          </Switch>
+        </Suspense>
       </SidebarLayout>
     </Page>
   );

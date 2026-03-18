@@ -1,0 +1,1 @@
+import{t as e}from"./chunk-zsgVPwQN.js";import{t}from"./_baseIsEqual-CoGdFhQG.js";function n(e){var t=new Date(Date.UTC(e.getFullYear(),e.getMonth(),e.getDate(),e.getHours(),e.getMinutes(),e.getSeconds(),e.getMilliseconds()));return t.setUTCFullYear(e.getFullYear()),e.getTime()-t.getTime()}var r=e(((e,n)=>{var r=t();function i(e,t){return r(e,t)}n.exports=i}));export{n,r as t};

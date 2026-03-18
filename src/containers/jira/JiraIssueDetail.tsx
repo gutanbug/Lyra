@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useHistory } from 'react-router-dom';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
 import { jiraTheme } from 'lib/styles/jiraTheme';
@@ -10,12 +10,36 @@ import { adfToHtml } from 'lib/utils/adfToHtml';
 import { confluenceToHtml } from 'lib/utils/confluenceToHtml';
 import { str, obj, isEpicType, isSubTaskType, getStatusColor, getPriorityColor, formatDate } from 'lib/utils/jiraUtils';
 import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
-import { useRichContentLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
+import { useRichContentLinkHandler, useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Send, Edit2, Trash2, CornerDownRight, X, Smile, Plus } from 'lucide-react';
+import EmojiPickerPanel from 'components/common/EmojiPicker';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
 import type { JiraCredentials } from 'types/account';
+import AdfCommentEditor from 'components/common/AdfCommentEditor';
+import type { AdfCommentEditorHandle } from 'components/common/AdfCommentEditor';
+import AdfRenderer from 'components/common/AdfRenderer';
 import type { NormalizedDetail, NormalizedComment, CommentThread, LinkedIssue, ChildIssue, ConfluenceLink, ConfluencePageContent, JiraAttachment } from 'types/jira';
+import type { LinkMeta } from 'components/common/AdfRenderer';
+
+/** ADF 문서 첫 번째 paragraph에 멘션을 삽입 (답글용) */
+function prependMentionToAdf(adf: unknown, mentionId: string, mentionName: string): unknown {
+  const doc = adf as Record<string, unknown>;
+  const content = (doc.content ?? []) as Record<string, unknown>[];
+  if (content.length === 0) return adf;
+  const first = content[0];
+  if (first.type !== 'paragraph') return adf;
+  const mentionNode = { type: 'mention', attrs: { id: mentionId, text: `@${mentionName}`, accessLevel: '' } };
+  const space = { type: 'text', text: ' ' };
+  const existingContent = (first.content ?? []) as unknown[];
+  return {
+    ...doc,
+    content: [
+      { ...first, content: [mentionNode, space, ...existingContent] },
+      ...content.slice(1),
+    ],
+  };
+}
 
 function normalizeDetail(raw: Record<string, unknown>): NormalizedDetail {
   const key = str(raw.key) || str(raw.issueKey) || '';
@@ -31,6 +55,12 @@ function normalizeDetail(raw: Record<string, unknown>): NormalizedDetail {
 
   let descriptionHtml = '';
   const rawDesc = f.description;
+  // ADF JSON이면 원본 보존, 문자열이면 간이 ADF로 래핑
+  const descriptionAdf: unknown = (rawDesc && typeof rawDesc === 'object')
+    ? rawDesc
+    : (typeof rawDesc === 'string'
+      ? { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: rawDesc }] }] }
+      : null);
   if (typeof rawDesc === 'string') {
     descriptionHtml = `<p>${rawDesc.trim().replace(/\n/g, '<br />')}</p>`;
   } else if (rawDesc && typeof rawDesc === 'object') {
@@ -73,7 +103,7 @@ function normalizeDetail(raw: Record<string, unknown>): NormalizedDetail {
   const parentIssueTypeName = str(parentIssueTypeObj?.name) || str(parentObj?.issueTypeName) || '';
 
   return {
-    key, summary, descriptionHtml, statusName, statusCategory,
+    key, summary, descriptionHtml, descriptionAdf, statusName, statusCategory,
     assigneeName, reporterName, issueTypeName, priorityName,
     created, updated, duedate, parentKey, parentSummary, parentIssueTypeName,
   };
@@ -118,6 +148,7 @@ function normalizeComments(raw: unknown[]): NormalizedComment[] {
         bodyHtml: typeof comment.body === 'string'
           ? `<p>${comment.body.replace(/\n/g, '<br />')}</p>`
           : adfToHtml(comment.body),
+        rawBody: comment.body,
         created: str(comment.created),
         updated: str(comment.updated),
         replyToId: mention?.id || '',
@@ -248,17 +279,28 @@ function mergeConfluenceLinks(remote: ConfluenceLink[], search: ConfluenceLink[]
   return merged;
 }
 
-/** HTML에서 data-inline-card 링크의 href를 추출 */
+/** HTML에서 인라인 카드 및 일반 Jira/Confluence 링크의 href를 추출 */
 function extractInlineCardUrls(html: string): string[] {
   const urls: string[] = [];
+  const seen = new Set<string>();
   const hrefRegex = /<a\s+[^>]*href="([^"]*)"[^>]*data-inline-card="true"[^>]*>/g;
   const hrefRegex2 = /<a\s+[^>]*data-inline-card="true"[^>]*href="([^"]*)"[^>]*>/g;
   let m: RegExpExecArray | null;
   while ((m = hrefRegex.exec(html)) !== null) {
-    if (m[1]) urls.push(m[1]);
+    if (m[1] && !seen.has(m[1])) { urls.push(m[1]); seen.add(m[1]); }
   }
   while ((m = hrefRegex2.exec(html)) !== null) {
-    if (m[1] && !urls.includes(m[1])) urls.push(m[1]);
+    if (m[1] && !seen.has(m[1])) { urls.push(m[1]); seen.add(m[1]); }
+  }
+  // 일반 <a> 태그에서 Jira/Confluence URL 추출
+  const regularRegex = /<a\s+[^>]*href="([^"]*)"[^>]*>/gi;
+  while ((m = regularRegex.exec(html)) !== null) {
+    const href = m[1];
+    if (seen.has(href)) continue;
+    if (extractIssueKeyFromUrl(href) || extractConfluencePageIdFromUrl(href)) {
+      urls.push(href);
+      seen.add(href);
+    }
   }
   return urls;
 }
@@ -275,22 +317,26 @@ function extractConfluencePageIdFromUrl(url: string): string | null {
   return m ? m[1] : null;
 }
 
-/** HTML 내 인라인 카드 링크의 텍스트를 제목으로 대체 */
-function replaceInlineCardTitles(html: string, titleMap: Record<string, string>): string {
-  // <a href="URL" ... data-inline-card="true">기존 텍스트</a> → <a ...>제목</a>
-  return html.replace(
-    /<a\s+([^>]*data-inline-card="true"[^>]*)>([^<]*)<\/a>/g,
-    (fullMatch, attrs, _oldText) => {
-      const hrefMatch = attrs.match(/href="([^"]*)"/);
-      if (!hrefMatch) return fullMatch;
-      const url = hrefMatch[1];
-      const title = titleMap[url];
-      if (title) {
-        return `<a ${attrs}>${title}</a>`;
+/** ADF에서 inlineCard/blockCard/embedCard의 URL 추출 */
+function extractCardUrlsFromAdf(adf: unknown): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  function walk(node: unknown) {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    if (n.type === 'inlineCard' || n.type === 'blockCard' || n.type === 'embedCard') {
+      const attrs = n.attrs as Record<string, unknown> | undefined;
+      const url = attrs?.url as string | undefined;
+      if (url && !seen.has(url)) {
+        urls.push(url);
+        seen.add(url);
       }
-      return fullMatch;
     }
-  );
+    const content = n.content as unknown[] | undefined;
+    if (Array.isArray(content)) content.forEach(walk);
+  }
+  walk(adf);
+  return urls;
 }
 
 /** ADF에서 media 노드의 file ID 목록 추출 */
@@ -312,19 +358,6 @@ function extractMediaIds(adf: unknown): string[] {
   return ids;
 }
 
-/** HTML 내 data-media-id img 태그에 실제 src를 삽입 */
-function resolveMediaInHtml(html: string, mediaUrlMap: Record<string, string>): string {
-  return html.replace(
-    /<img\s+([^>]*data-media-id="([^"]*)"[^>]*)\/?\s*>/g,
-    (fullMatch, attrs, mediaId) => {
-      const src = mediaUrlMap[mediaId];
-      if (src) {
-        return `<img src="${src}" ${attrs} />`;
-      }
-      return fullMatch;
-    }
-  );
-}
 
 function parseChildIssues(result: unknown): ChildIssue[] {
   if (!result || typeof result !== 'object') return [];
@@ -378,6 +411,7 @@ const JiraIssueDetail = () => {
   const { issueKey } = useParams<{ issueKey: string }>();
   const history = useHistory();
   const { activeAccount } = useAccount();
+  const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
   const layoutRef = useRef<HTMLDivElement>(null);
   const [issue, setIssue] = useState<NormalizedDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -403,8 +437,8 @@ const JiraIssueDetail = () => {
   const [childIssuesLoading, setChildIssuesLoading] = useState(false);
   const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
 
-  // 인라인 카드 링크 → 제목 매핑
-  const [linkTitleMap, setLinkTitleMap] = useState<Record<string, string>>({});
+  // 인라인 카드 링크 → 메타 정보 매핑
+  const [linkMetaMap, setLinkMetaMap] = useState<Record<string, LinkMeta>>({});
 
   // 첨부 이미지
   const [attachments, setAttachments] = useState<JiraAttachment[]>([]);
@@ -415,8 +449,26 @@ const JiraIssueDetail = () => {
   // 댓글 섹션 토글 (기본 닫힘)
   const [commentsExpanded, setCommentsExpanded] = useState(false);
 
+  // 댓글 CRUD 상태
+  // newCommentText 제거: Atlaskit Editor의 editorEmpty 상태로 대체
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<{ id: string; authorId: string; authorName: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ id: string; rawBody: unknown } | null>(null);
+  const [editEditorEmpty, setEditEditorEmpty] = useState(true);
+  const [isDeletingComment, setIsDeletingComment] = useState<string | null>(null);
+  const [emojiPickerTarget, setEmojiPickerTarget] = useState<string | null>(null);
+  const [commentReactions, setCommentReactions] = useState<Record<string, string[]>>({});
+  const newCommentRef = useRef<AdfCommentEditorHandle>(null);
+  const editCommentRef = useRef<AdfCommentEditorHandle>(null);
+  const [editorEmpty, setEditorEmpty] = useState(true);
+
+  // (멘션은 Atlaskit Editor가 자체 처리 — 기존 수동 멘션 상태 제거)
+
   // 브레드크럼 상태
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
+
+  // resolveCardTitles ref (순환 의존 방지)
+  const resolveCardTitlesRef = useRef<(urls: string[]) => Promise<void>>();
 
   const handleTransitioned = useCallback((targetKey: string, toName: string, toCategory: string) => {
     if (issue && targetKey === issue.key) {
@@ -437,6 +489,132 @@ const JiraIssueDetail = () => {
   }, [issue]);
 
   const handleContentClick = useRichContentLinkHandler();
+  const handleAdfLinkClick = useAdfLinkHandler();
+
+  // 댓글 다시 불러오기
+  const refreshComments = useCallback(async () => {
+    if (!activeAccount || !issueKey) return;
+    try {
+      const data = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'getComments',
+        params: { issueKey },
+      });
+      if (Array.isArray(data)) {
+        const normalized = normalizeComments(data);
+        setComments(normalized);
+
+        // 새 댓글의 Jira/Confluence 링크 제목 해석
+        const allCommentHtml = normalized.map((c) => c.bodyHtml).join(' ');
+        const cardUrls = extractInlineCardUrls(allCommentHtml);
+        if (cardUrls.length > 0) {
+          resolveCardTitlesRef.current?.(cardUrls);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [activeAccount, issueKey]);
+
+  // 댓글 추가 (Atlaskit Editor → ADF 직접 추출)
+  const handleAddComment = useCallback(async () => {
+    if (!activeAccount || !issueKey || editorEmpty) return;
+    setIsSubmittingComment(true);
+    try {
+      const adf = await newCommentRef.current?.getValue();
+      if (!adf) return;
+      const body = replyTarget
+        ? prependMentionToAdf(adf, replyTarget.authorId, replyTarget.authorName)
+        : adf;
+      await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'addComment',
+        params: { issueKey, body },
+      });
+      setReplyTarget(null);
+      newCommentRef.current?.clear();
+      setEditorEmpty(true);
+      await refreshComments();
+    } catch (err) {
+      console.error('[JiraIssueDetail] addComment error:', err);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  }, [activeAccount, issueKey, editorEmpty, replyTarget, refreshComments]);
+
+  // 댓글 수정
+  const handleUpdateComment = useCallback(async () => {
+    if (!activeAccount || !issueKey || !editTarget || editEditorEmpty) return;
+    setIsSubmittingComment(true);
+    try {
+      const body = await editCommentRef.current?.getValue();
+      if (!body) return;
+      await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'updateComment',
+        params: { issueKey, commentId: editTarget.id, body },
+      });
+      setEditTarget(null);
+      await refreshComments();
+    } catch (err) {
+      console.error('[JiraIssueDetail] updateComment error:', err);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  }, [activeAccount, issueKey, editTarget, editEditorEmpty, refreshComments]);
+
+  // 댓글 삭제
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    if (!activeAccount || !issueKey) return;
+    setIsDeletingComment(commentId);
+    try {
+      await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'deleteComment',
+        params: { issueKey, commentId },
+      });
+      await refreshComments();
+    } catch (err) {
+      console.error('[JiraIssueDetail] deleteComment error:', err);
+    } finally {
+      setIsDeletingComment(null);
+    }
+  }, [activeAccount, issueKey, refreshComments]);
+
+  // 대댓글 시작
+  const startReply = useCallback((comment: NormalizedComment) => {
+    setReplyTarget({ id: comment.id, authorId: comment.authorId, authorName: comment.author });
+    setEditTarget(null);
+    setCommentsExpanded(true);
+    setTimeout(() => newCommentRef.current?.focus(), 100);
+  }, []);
+
+  // 수정 시작
+  const startEdit = useCallback((comment: NormalizedComment) => {
+    setEditTarget({ id: comment.id, rawBody: comment.rawBody });
+    setEditEditorEmpty(false);
+    setReplyTarget(null);
+    setTimeout(() => editCommentRef.current?.focus(), 100);
+  }, []);
+
+  // 이모지 반응 토글
+  const toggleReaction = useCallback((commentId: string, emoji: string) => {
+    setCommentReactions((prev) => {
+      const existing = prev[commentId] || [];
+      if (existing.includes(emoji)) {
+        return { ...prev, [commentId]: existing.filter((e) => e !== emoji) };
+      }
+      return { ...prev, [commentId]: [...existing, emoji] };
+    });
+    setEmojiPickerTarget(null);
+  }, []);
+
+  // ─── 멘션 자동완성 ─── //
+
+  // (멘션 검색/키보드 처리는 Atlaskit Editor가 자체 수행)
+
 
   const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition } = useTransitionDropdown({
     accountId: activeAccount?.id,
@@ -522,10 +700,10 @@ const JiraIssueDetail = () => {
     }
   }, [activeAccount]);
 
-  // 인라인 카드 URL에서 제목을 일괄 해석
+  // 인라인 카드 URL에서 메타 정보를 일괄 해석
   const resolveCardTitles = useCallback(async (urls: string[]) => {
     if (!activeAccount) return;
-    const titleMap: Record<string, string> = {};
+    const metaMap: Record<string, LinkMeta> = {};
     const issueKeyMap = new Map<string, string[]>(); // issueKey → urls
     const pageIdMap = new Map<string, string[]>();    // pageId → urls
 
@@ -545,7 +723,7 @@ const JiraIssueDetail = () => {
       }
     }
 
-    // Jira 이슈 제목 일괄 조회
+    // Jira 이슈 메타 일괄 조회
     const issueKeys = Array.from(issueKeyMap.keys());
     if (issueKeys.length > 0) {
       try {
@@ -564,10 +742,20 @@ const JiraIssueDetail = () => {
             const fields = obj(item.fields) || item;
             const rawSummary = fields.summary;
             const summary = typeof rawSummary === 'string' ? rawSummary : adfToText(rawSummary);
+            const statusObj = obj(fields.status);
+            const statusCatObj = obj(statusObj?.statusCategory);
+            const statusName = str(statusObj?.name);
+            const statusCategory = str(statusCatObj?.name) || str(statusCatObj?.key);
             if (key && summary) {
               const matchUrls = issueKeyMap.get(key) || [];
               for (const u of matchUrls) {
-                titleMap[u] = `${key}: ${summary}`;
+                metaMap[u] = {
+                  type: 'jira',
+                  title: summary,
+                  issueKey: key,
+                  statusName,
+                  statusCategory,
+                };
               }
             }
           }
@@ -591,17 +779,20 @@ const JiraIssueDetail = () => {
           if (title) {
             const matchUrls = pageIdMap.get(pid) || [];
             for (const u of matchUrls) {
-              titleMap[u] = title;
+              metaMap[u] = { type: 'confluence', title };
             }
           }
         }
       } catch { /* ignore */ }
     }));
 
-    if (Object.keys(titleMap).length > 0) {
-      setLinkTitleMap(titleMap);
+    if (Object.keys(metaMap).length > 0) {
+      setLinkMetaMap((prev) => ({ ...prev, ...metaMap }));
     }
   }, [activeAccount]);
+
+  // ref 동기화
+  resolveCardTitlesRef.current = resolveCardTitles;
 
   // 이슈 전환 시 스크롤 최상단으로
   useEffect(() => {
@@ -796,11 +987,27 @@ const JiraIssueDetail = () => {
         const fromSearch = Array.isArray(confluenceSearchData) ? extractConfluenceSearchResults(confluenceSearchData) : [];
         setConfluenceLinks(mergeConfluenceLinks(fromRemote, fromSearch));
 
-        // 인라인 카드 링크 제목 해석
+        // 인라인 카드 링크 제목 해석 (HTML + ADF 모두에서 추출)
         const allHtml = [descHtml, ...normalizedComments.map((c) => c.bodyHtml)].join(' ');
         const cardUrls = extractInlineCardUrls(allHtml);
-        if (cardUrls.length > 0) {
-          resolveCardTitles(cardUrls);
+        // ADF에서도 card URL 추출 (description)
+        if (issueData && typeof issueData === 'object') {
+          const rawFields = (issueData as Record<string, unknown>).fields as Record<string, unknown> | undefined;
+          const descAdf = rawFields?.description ?? (issueData as Record<string, unknown>).description;
+          cardUrls.push(...extractCardUrlsFromAdf(descAdf));
+        }
+        // ADF에서 card URL 추출 (comments)
+        if (Array.isArray(commentsData)) {
+          for (const c of commentsData) {
+            if (c && typeof c === 'object') {
+              cardUrls.push(...extractCardUrlsFromAdf((c as Record<string, unknown>).body));
+            }
+          }
+        }
+        // 중복 제거
+        const uniqueCardUrls = Array.from(new Set(cardUrls));
+        if (uniqueCardUrls.length > 0) {
+          resolveCardTitles(uniqueCardUrls);
         }
 
         setError(null);
@@ -901,16 +1108,6 @@ const JiraIssueDetail = () => {
     );
   }
 
-  // HTML 내 인라인 카드 링크를 제목으로 치환하는 헬퍼
-  const hasLinkTitles = Object.keys(linkTitleMap).length > 0;
-  const hasMediaUrls = Object.keys(mediaUrlMap).length > 0;
-  const resolveHtml = (html: string) => {
-    let result = html;
-    if (hasLinkTitles) result = replaceInlineCardTitles(result, linkTitleMap);
-    if (hasMediaUrls) result = resolveMediaInHtml(result, mediaUrlMap);
-    return result;
-  };
-
   if (error || !issue) {
     return (
       <Layout ref={layoutRef}>
@@ -952,6 +1149,7 @@ const JiraIssueDetail = () => {
       </ToolbarArea>
 
       <Content>
+        <>
         {/* 헤더 */}
         <HeaderCard>
           <HeaderTopRow>
@@ -999,7 +1197,7 @@ const JiraIssueDetail = () => {
           <MetaGrid>
             <MetaItem>
               <MetaLabel>담당자</MetaLabel>
-              <MetaValue>{issue.assigneeName || '미지정'}</MetaValue>
+              <MetaValue $isMe={issue.assigneeName === myDisplayName}>{issue.assigneeName || '미지정'}</MetaValue>
             </MetaItem>
             <MetaItem>
               <MetaLabel>보고자</MetaLabel>
@@ -1024,10 +1222,10 @@ const JiraIssueDetail = () => {
         </HeaderCard>
 
         {/* 설명 */}
-        {issue.descriptionHtml && (
+        {issue.descriptionAdf && (
           <Section>
             <SectionTitle>설명</SectionTitle>
-            <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(issue.descriptionHtml) }} />
+            <AdfRenderer document={issue.descriptionAdf} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} />
           </Section>
         )}
 
@@ -1099,7 +1297,7 @@ const JiraIssueDetail = () => {
                       <ChildIssueSummary>{ci.summary || '(제목 없음)'}</ChildIssueSummary>
                     </ChildIssueLeft>
                     <ChildIssueRight>
-                      {ci.assigneeName && <ChildAssignee>{ci.assigneeName}</ChildAssignee>}
+                      {ci.assigneeName && <ChildAssignee $isMe={ci.assigneeName === myDisplayName}>{ci.assigneeName}</ChildAssignee>}
                       <StatusBadgeBtn
                         $color={getStatusColor(ci.statusName, ci.statusCategory)}
                         onClick={(e) => { e.stopPropagation(); openTransitionDropdown(ci.key, ci.statusName, e); }}
@@ -1123,7 +1321,7 @@ const JiraIssueDetail = () => {
                             <ChildIssueSummary>{gc.summary || '(제목 없음)'}</ChildIssueSummary>
                           </ChildIssueLeft>
                           <ChildIssueRight>
-                            {gc.assigneeName && <ChildAssignee>{gc.assigneeName}</ChildAssignee>}
+                            {gc.assigneeName && <ChildAssignee $isMe={gc.assigneeName === myDisplayName}>{gc.assigneeName}</ChildAssignee>}
                             <StatusBadgeBtn
                               $color={getStatusColor(gc.statusName, gc.statusCategory)}
                               onClick={(e) => { e.stopPropagation(); openTransitionDropdown(gc.key, gc.statusName, e); }}
@@ -1149,43 +1347,218 @@ const JiraIssueDetail = () => {
             <SectionTitle>댓글 ({comments.length})</SectionTitle>
           </SectionToggleHeader>
           {commentsExpanded && (
-            comments.length === 0 ? (
-              <EmptyComments>댓글이 없습니다.</EmptyComments>
-            ) : (
-              <CommentList>
-                {buildCommentThreads(comments).map(({ comment, replies }) => (
-                  <ThreadGroup key={comment.id}>
-                    <CommentItem>
-                      <CommentHeader>
-                        <CommentAuthor>{comment.author}</CommentAuthor>
-                        <CommentDate>{formatDate(comment.created)}</CommentDate>
-                      </CommentHeader>
-                      <CommentBody onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(comment.bodyHtml) }} />
-                    </CommentItem>
-                    {replies.length > 0 && (
-                      <ReplyList>
-                        {replies.map((reply) => (
-                          <ReplyItem key={reply.id}>
-                            <CommentHeader>
-                              <CommentAuthor>
-                                {reply.author}
-                                {reply.replyToName && (
-                                  <ReplyTarget>
-                                    &rarr; {reply.replyToName}
-                                  </ReplyTarget>
-                                )}
-                              </CommentAuthor>
-                              <CommentDate>{formatDate(reply.created)}</CommentDate>
-                            </CommentHeader>
-                            <CommentBody onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: resolveHtml(reply.bodyHtml) }} />
-                          </ReplyItem>
-                        ))}
-                      </ReplyList>
-                    )}
-                  </ThreadGroup>
-                ))}
-              </CommentList>
-            )
+            <>
+              {comments.length === 0 ? (
+                <EmptyComments>댓글이 없습니다.</EmptyComments>
+              ) : (
+                <CommentList>
+                  {buildCommentThreads(comments).map(({ comment, replies }) => (
+                    <ThreadGroup key={comment.id}>
+                      <CommentItem>
+                        <CommentHeader>
+                          <CommentAuthorRow>
+                            <CommentAuthor>{comment.author}</CommentAuthor>
+                            <CommentDate>{formatDate(comment.created)}</CommentDate>
+                          </CommentAuthorRow>
+                          <CommentActions>
+                            <CommentActionBtn title="답글" onClick={() => startReply(comment)}>
+                              <CornerDownRight size={13} />
+                            </CommentActionBtn>
+                            <CommentActionBtn title="수정" onClick={() => startEdit(comment)}>
+                              <Edit2 size={13} />
+                            </CommentActionBtn>
+                            <CommentActionBtn
+                              title="삭제"
+                              $danger
+                              onClick={() => { if (window.confirm('댓글을 삭제하시겠습니까?')) handleDeleteComment(comment.id); }}
+                            >
+                              {isDeletingComment === comment.id ? <CommentSpinner /> : <Trash2 size={13} />}
+                            </CommentActionBtn>
+                            <EmojiPickerWrapper>
+                              <CommentActionBtn title="반응" onClick={() => setEmojiPickerTarget((v) => v === comment.id ? null : comment.id)}>
+                                <Smile size={13} />
+                              </CommentActionBtn>
+                              {emojiPickerTarget === comment.id && (
+                                <EmojiPickerPanel
+                                  onSelect={(emoji) => toggleReaction(comment.id, emoji)}
+                                  onClose={() => setEmojiPickerTarget(null)}
+                                />
+                              )}
+                            </EmojiPickerWrapper>
+                          </CommentActions>
+                        </CommentHeader>
+                        {editTarget?.id === comment.id ? (
+                          <CommentEditArea>
+                            <CommentEditorRow>
+                              <AdfCommentEditor
+                                ref={editCommentRef}
+                                defaultValue={comment.rawBody}
+                                placeholder="댓글 수정..."
+                                onSave={handleUpdateComment}
+                                onChangeEmpty={setEditEditorEmpty}
+                                disabled={isSubmittingComment}
+                                accountId={activeAccount?.id}
+                                issueKey={issueKey}
+                                hideSaveButton
+                              />
+                            </CommentEditorRow>
+                            <CommentEditActions>
+                              <CancelBtn onClick={() => setEditTarget(null)}>취소</CancelBtn>
+                              <SubmitBtn onClick={handleUpdateComment} disabled={isSubmittingComment || editEditorEmpty}>
+                                {isSubmittingComment ? <CommentSpinner /> : '저장'}
+                              </SubmitBtn>
+                            </CommentEditActions>
+                          </CommentEditArea>
+                        ) : (
+                          <CommentAdfBody document={comment.rawBody} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} />
+                        )}
+                        {(commentReactions[comment.id]?.length ?? 0) > 0 && (
+                          <ReactionBar>
+                            {commentReactions[comment.id].map((emoji) => (
+                              <ReactionChip key={emoji} onClick={() => toggleReaction(comment.id, emoji)}>
+                                {emoji} <ReactionCount>1</ReactionCount>
+                              </ReactionChip>
+                            ))}
+                            <EmojiPickerWrapper>
+                              <AddReactionChip onClick={() => setEmojiPickerTarget((v) => v === `${comment.id}-bar` ? null : `${comment.id}-bar`)}>
+                                <Plus size={12} />
+                              </AddReactionChip>
+                              {emojiPickerTarget === `${comment.id}-bar` && (
+                                <EmojiPickerPanel
+                                  onSelect={(emoji) => toggleReaction(comment.id, emoji)}
+                                  onClose={() => setEmojiPickerTarget(null)}
+                                />
+                              )}
+                            </EmojiPickerWrapper>
+                          </ReactionBar>
+                        )}
+                      </CommentItem>
+                      {replies.length > 0 && (
+                        <ReplyList>
+                          {replies.map((reply) => (
+                            <ReplyItem key={reply.id}>
+                              <CommentHeader>
+                                <CommentAuthorRow>
+                                  <CommentAuthor>
+                                    {reply.author}
+                                    {reply.replyToName && (
+                                      <ReplyTarget>
+                                        &rarr; {reply.replyToName}
+                                      </ReplyTarget>
+                                    )}
+                                  </CommentAuthor>
+                                  <CommentDate>{formatDate(reply.created)}</CommentDate>
+                                </CommentAuthorRow>
+                                <CommentActions>
+                                  <CommentActionBtn title="답글" onClick={() => startReply(reply)}>
+                                    <CornerDownRight size={13} />
+                                  </CommentActionBtn>
+                                  <CommentActionBtn title="수정" onClick={() => startEdit(reply)}>
+                                    <Edit2 size={13} />
+                                  </CommentActionBtn>
+                                  <CommentActionBtn
+                                    title="삭제"
+                                    $danger
+                                    onClick={() => { if (window.confirm('댓글을 삭제하시겠습니까?')) handleDeleteComment(reply.id); }}
+                                  >
+                                    {isDeletingComment === reply.id ? <CommentSpinner /> : <Trash2 size={13} />}
+                                  </CommentActionBtn>
+                                  <EmojiPickerWrapper>
+                                    <CommentActionBtn title="반응" onClick={() => setEmojiPickerTarget((v) => v === reply.id ? null : reply.id)}>
+                                      <Smile size={13} />
+                                    </CommentActionBtn>
+                                    {emojiPickerTarget === reply.id && (
+                                      <EmojiPickerPanel
+                                        onSelect={(emoji) => toggleReaction(reply.id, emoji)}
+                                        onClose={() => setEmojiPickerTarget(null)}
+                                      />
+                                    )}
+                                  </EmojiPickerWrapper>
+                                </CommentActions>
+                              </CommentHeader>
+                              {editTarget?.id === reply.id ? (
+                                <CommentEditArea>
+                                  <CommentEditorRow>
+                                    <AdfCommentEditor
+                                      ref={editCommentRef}
+                                      defaultValue={reply.rawBody}
+                                      placeholder="댓글 수정..."
+                                      onSave={handleUpdateComment}
+                                      onChangeEmpty={setEditEditorEmpty}
+                                      disabled={isSubmittingComment}
+                                      accountId={activeAccount?.id}
+                                      issueKey={issueKey}
+                                      hideSaveButton
+                                    />
+                                  </CommentEditorRow>
+                                  <CommentEditActions>
+                                    <CancelBtn onClick={() => setEditTarget(null)}>취소</CancelBtn>
+                                    <SubmitBtn onClick={handleUpdateComment} disabled={isSubmittingComment || editEditorEmpty}>
+                                      {isSubmittingComment ? <CommentSpinner /> : '저장'}
+                                    </SubmitBtn>
+                                  </CommentEditActions>
+                                </CommentEditArea>
+                              ) : (
+                                <CommentAdfBody document={reply.rawBody} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} />
+                              )}
+                              {(commentReactions[reply.id]?.length ?? 0) > 0 && (
+                                <ReactionBar>
+                                  {commentReactions[reply.id].map((emoji) => (
+                                    <ReactionChip key={emoji} onClick={() => toggleReaction(reply.id, emoji)}>
+                                      {emoji} <ReactionCount>1</ReactionCount>
+                                    </ReactionChip>
+                                  ))}
+                                  <EmojiPickerWrapper>
+                                    <AddReactionChip onClick={() => setEmojiPickerTarget((v) => v === `${reply.id}-bar` ? null : `${reply.id}-bar`)}>
+                                      <Plus size={12} />
+                                    </AddReactionChip>
+                                    {emojiPickerTarget === `${reply.id}-bar` && (
+                                      <EmojiPickerPanel
+                                        onSelect={(emoji) => toggleReaction(reply.id, emoji)}
+                                        onClose={() => setEmojiPickerTarget(null)}
+                                      />
+                                    )}
+                                  </EmojiPickerWrapper>
+                                </ReactionBar>
+                              )}
+                            </ReplyItem>
+                          ))}
+                        </ReplyList>
+                      )}
+                    </ThreadGroup>
+                  ))}
+                </CommentList>
+              )}
+
+              {/* 댓글 입력 */}
+              <CommentInputArea>
+                {replyTarget && (
+                  <ReplyIndicator>
+                    <CornerDownRight size={14} />
+                    <span><strong>{replyTarget.authorName}</strong>에게 답글</span>
+                    <ReplyIndicatorClose onClick={() => setReplyTarget(null)}><X size={14} /></ReplyIndicatorClose>
+                  </ReplyIndicator>
+                )}
+                <CommentEditorRow>
+                  <AdfCommentEditor
+                    ref={newCommentRef}
+                    placeholder={replyTarget ? `${replyTarget.authorName}에게 답글 작성...` : '댓글 작성... (⌘+Enter로 전송)'}
+                    onSave={handleAddComment}
+                    onChangeEmpty={setEditorEmpty}
+                    disabled={isSubmittingComment}
+                    accountId={activeAccount?.id}
+                    issueKey={issueKey}
+                  />
+                  <SendBtn
+                    onClick={handleAddComment}
+                    disabled={isSubmittingComment || editorEmpty}
+                    title="댓글 전송 (⌘+Enter)"
+                  >
+                    {isSubmittingComment ? <CommentSpinner /> : <Send size={16} />}
+                  </SendBtn>
+                </CommentEditorRow>
+              </CommentInputArea>
+            </>
           )}
         </Section>
 
@@ -1252,6 +1625,7 @@ const JiraIssueDetail = () => {
             })}
           </Section>
         )}
+        </>
       </Content>
 
       {transitionTarget && (
@@ -1272,12 +1646,16 @@ export default JiraIssueDetail;
 
 const Layout = styled.div`
   flex: 1;
-  min-height: 100%;
+  min-height: 0;
   background: ${jiraTheme.bg.subtle};
   zoom: 1.2;
+  overflow-y: auto;
 `;
 
 const ToolbarArea = styled.div`
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -1364,7 +1742,7 @@ const BreadcrumbCurrent = styled.span`
   flex-shrink: 0;
 `;
 
-const Content = styled.main`
+const Content = styled.main<{ children?: React.ReactNode }>`
   max-width: 960px;
   margin: 0 auto;
   padding: 1.5rem;
@@ -1464,8 +1842,9 @@ const MetaLabel = styled.span`
   margin-bottom: 0.25rem;
 `;
 
-const MetaValue = styled.span`
-  color: ${jiraTheme.text.primary};
+const MetaValue = styled.span<{ $isMe?: boolean }>`
+  color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : jiraTheme.text.primary)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
 `;
 
 const Section = styled.div`
@@ -1523,7 +1902,7 @@ const RichContent = styled.div`
   h2 { font-size: 1.125rem; }
   h3 { font-size: 1rem; }
   h4, h5, h6 { font-size: 0.875rem; }
-  h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
+  h1:first-of-type, h2:first-of-type, h3:first-of-type { margin-top: 0; }
 
   ul, ol {
     margin: 0.5rem 0;
@@ -1537,29 +1916,39 @@ const RichContent = styled.div`
     &:hover { text-decoration: underline; }
   }
 
+  span[data-renderer-mark="code"],
   code {
-    background: ${jiraTheme.bg.subtle};
-    border: 1px solid ${jiraTheme.border};
-    border-radius: 3px;
-    padding: 0.125rem 0.375rem;
-    font-size: 0.8125rem;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    background: ${jiraTheme.bg.subtle} !important;
+    border: 1px solid ${jiraTheme.border} !important;
+    border-radius: 3px !important;
+    padding: 0.125rem 0.375rem !important;
+    font-size: 0.8125rem !important;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+    color: ${jiraTheme.text.primary} !important;
   }
 
   pre {
     background: #263238;
     color: #EEFFFF;
-    border-radius: 3px;
+    border-radius: 6px;
     padding: 0.75rem 1rem;
     margin: 0.5rem 0;
     overflow-x: auto;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre;
+    word-wrap: normal;
+    overflow-wrap: normal;
 
     code {
-      background: none;
-      border: none;
-      padding: 0;
-      color: inherit;
-      font-size: 0.8125rem;
+      background: none !important;
+      border: none !important;
+      padding: 0 !important;
+      color: inherit !important;
+      font-size: inherit !important;
+      font-family: inherit;
+      white-space: inherit;
     }
   }
 
@@ -1719,19 +2108,26 @@ const ChildIssueSummary = styled.span`
 `;
 
 const ChildIssueRight = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: 5rem 6rem;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1.5rem;
   flex-shrink: 0;
+  justify-items: start;
+
+  & > :first-child {
+    justify-self: end;
+  }
 `;
 
-const ChildAssignee = styled.span`
+const ChildAssignee = styled.span<{ $isMe?: boolean }>`
   font-size: 0.75rem;
-  color: ${({ theme }) => theme.textSecondary || '#6b778c'};
+  color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : '#6b778c')};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
   white-space: nowrap;
-  max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: right;
 `;
 
 const GrandchildToggle = styled.span<{ $visible?: boolean }>`
@@ -1981,6 +2377,13 @@ const CommentHeader = styled.div`
   margin-bottom: 0.5rem;
 `;
 
+const CommentAuthorRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+`;
+
 const CommentAuthor = styled.span`
   display: inline-flex;
   align-items: center;
@@ -1988,6 +2391,39 @@ const CommentAuthor = styled.span`
   font-size: 0.8125rem;
   font-weight: 600;
   color: ${jiraTheme.text.primary};
+`;
+
+const CommentActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+
+  ${CommentItem}:hover &,
+  ${ReplyItem}:hover & {
+    opacity: 1;
+  }
+`;
+
+const CommentActionBtn = styled.button<{ $danger?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: ${({ $danger }) => $danger ? '#E5493A' : jiraTheme.text.muted};
+  cursor: pointer;
+  transition: all 0.12s;
+
+  &:hover {
+    background: ${({ $danger }) => $danger ? '#FFEBE6' : jiraTheme.bg.hover};
+    color: ${({ $danger }) => $danger ? '#BF2600' : jiraTheme.text.primary};
+  }
 `;
 
 const ReplyTarget = styled.span`
@@ -2002,7 +2438,7 @@ const CommentDate = styled.span`
   flex-shrink: 0;
 `;
 
-const CommentBody = styled(RichContent)`
+const CommentAdfBody = styled(AdfRenderer)`
   font-size: 0.8125rem;
 `;
 
@@ -2010,6 +2446,209 @@ const EmptyComments = styled.div`
   font-size: 0.8125rem;
   color: ${jiraTheme.text.muted};
   margin-top: 1rem;
+`;
+
+const CommentInputArea = styled.div`
+  margin-top: 1rem;
+  margin-bottom: -0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid ${jiraTheme.border};
+`;
+
+const CommentInputRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const CommentEditorRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+
+  & > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+`;
+
+
+const SendBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: ${jiraTheme.primary};
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px ${jiraTheme.primary}40;
+
+  &:hover:not(:disabled) {
+    background: ${jiraTheme.primaryHover};
+    transform: scale(1.05);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+`;
+
+const ReplyIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background: ${jiraTheme.primaryLight};
+  border-radius: 3px;
+  font-size: 0.8125rem;
+  color: ${jiraTheme.primary};
+
+  strong { font-weight: 600; }
+`;
+
+const ReplyIndicatorClose = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: ${jiraTheme.text.muted};
+  cursor: pointer;
+
+  &:hover { color: ${jiraTheme.text.primary}; }
+`;
+
+const CommentEditArea = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const CommentEditActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+`;
+
+const CancelBtn = styled.button`
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8125rem;
+  background: transparent;
+  border: 1px solid ${jiraTheme.border};
+  border-radius: 3px;
+  color: ${jiraTheme.text.secondary};
+  cursor: pointer;
+  transition: all 0.12s;
+
+  &:hover {
+    background: ${jiraTheme.bg.hover};
+  }
+`;
+
+const SubmitBtn = styled.button`
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8125rem;
+  background: ${jiraTheme.primary};
+  border: none;
+  border-radius: 3px;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) {
+    background: ${jiraTheme.primaryHover};
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+`;
+
+const EmojiPickerWrapper = styled.div`
+  position: relative;
+`;
+
+const ReactionBar = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+`;
+
+const ReactionChip = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.875rem;
+  background: ${jiraTheme.primaryLight};
+  border: 1px solid ${jiraTheme.primary}33;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+
+  &:hover {
+    background: ${jiraTheme.primary}22;
+    border-color: ${jiraTheme.primary};
+  }
+`;
+
+const ReactionCount = styled.span`
+  font-size: 0.75rem;
+  color: ${jiraTheme.text.secondary};
+  font-weight: 500;
+`;
+
+const AddReactionChip = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  background: ${jiraTheme.bg.hover};
+  border: 1px solid ${jiraTheme.border};
+  border-radius: 12px;
+  cursor: pointer;
+  color: ${jiraTheme.text.secondary};
+  transition: all 0.12s;
+
+  &:hover {
+    background: ${jiraTheme.primary}15;
+    border-color: ${jiraTheme.primary}44;
+    color: ${jiraTheme.primary};
+  }
+`;
+
+const spinAnimation = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
+const CommentSpinner = styled.div`
+  width: 14px;
+  height: 14px;
+  border: 2px solid ${jiraTheme.border};
+  border-top-color: ${jiraTheme.primary};
+  border-radius: 50%;
+  animation: ${spinAnimation} 0.6s linear infinite;
 `;
 
 const Loading = styled.div`

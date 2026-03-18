@@ -1,0 +1,1 @@
+var e={width:156,height:125},t={width:435,height:125},n={width:300,height:300},r=function(r){return r===`image`?e:r===`square`?n:r===`horizontal`?t:e};export{r as n,e as t};

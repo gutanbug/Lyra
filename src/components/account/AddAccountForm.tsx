@@ -210,12 +210,18 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
       };
 
       // API 토큰이 변경되었거나 신규 추가일 때만 검증
+      let userMeta: Record<string, unknown> = editAccount?.metadata || {};
       if (apiToken.trim() || !isEdit) {
-        const isValid = await integrationController.validate(serviceType, credentials);
-        if (!isValid) {
+        const result = await integrationController.validate(serviceType, credentials);
+        if (!result || (typeof result === 'object' && !(result as any).valid)) {
           newSnackbar(snackbarDispatch, '연결 실패. URL, 이메일, API 토큰을 확인해주세요.', 'ERROR');
           setIsSubmitting(false);
           return;
+        }
+        // 검증 성공 시 사용자 정보 저장
+        if (typeof result === 'object') {
+          const r = result as Record<string, unknown>;
+          userMeta = { ...userMeta, userDisplayName: r.userDisplayName, userAccountId: r.userAccountId };
         }
       }
 
@@ -224,6 +230,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
           serviceType,
           displayName: displayName.trim(),
           credentials,
+          metadata: userMeta,
         });
         newSnackbar(snackbarDispatch, '계정이 수정되었습니다.', 'SUCCESS');
       } else {
@@ -231,6 +238,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
           serviceType,
           displayName: displayName.trim(),
           credentials,
+          metadata: userMeta,
         };
         await accountController.add(account);
         newSnackbar(snackbarDispatch, '계정이 추가되었습니다.', 'SUCCESS');

@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";import{s as n}from"./context-DmxiAQOO.js";var r=e(t()),i=function(e){return(0,r.useMemo)(function(){return n(e?.envKey,e?.baseUrlOverride)},[e?.baseUrlOverride,e?.envKey])};export{i as t};

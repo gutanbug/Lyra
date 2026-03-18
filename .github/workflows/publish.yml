@@ -37,14 +37,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        run: pnpm test -- --watchAll=false
-        env:
-          NODE_OPTIONS: --openssl-legacy-provider
+        run: pnpm test -- --run
 
       - name: Build Electron app
         run: pnpm electron:build
         env:
-          NODE_OPTIONS: --openssl-legacy-provider
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts

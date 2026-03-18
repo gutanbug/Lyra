@@ -71,6 +71,27 @@ export class ConfluenceClient {
     return withRetry429(() => this.v1.get('/user/current').then((r) => r.data));
   }
 
+  /** displayName으로 사용자 검색 → accountId 배열 반환 */
+  private async searchUsersByName(name: string): Promise<string[]> {
+    try {
+      const { data } = await withRetry429(() =>
+        this.v1.get('/search/user', {
+          params: { cql: `user.fullname ~ "${escapeCql(name)}"`, limit: 10 },
+        })
+      );
+      const r = data as Record<string, unknown>;
+      const results = (r.results ?? []) as Record<string, unknown>[];
+      return results
+        .map((u) => {
+          const user = (u.user ?? u) as Record<string, unknown>;
+          return String(user.accountId || '');
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   async getSpaces(limit = 250): Promise<unknown> {
     const allResults: unknown[] = [];
     let cursor: string | undefined;
@@ -143,12 +164,30 @@ export class ConfluenceClient {
    * GET /wiki/rest/api/content/:pageId?expand=body.storage,version,space,history
    */
   async getPageContent(pageId: string): Promise<Record<string, unknown>> {
+    // 본문 + 메타데이터 (ancestors 제외 — 깊은 계층에서 500 유발)
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}`, {
-        params: { expand: 'body.storage,version,space,history,history.createdBy,ancestors' },
+        params: { expand: 'body.storage,version,space,history,history.createdBy' },
       })
     );
-    return data as Record<string, unknown>;
+    const result = data as Record<string, unknown>;
+
+    // ancestors는 v2 API로 별도 조회
+    try {
+      const { data: ancestorsData } = await withRetry429(() =>
+        this.v2.get(`/pages/${pageId}/ancestors`)
+      );
+      const d = ancestorsData as Record<string, unknown>;
+      const ancestors = (d.results ?? []) as Record<string, unknown>[];
+      result.ancestors = ancestors.map((a) => ({
+        id: String(a.id),
+        title: a.title,
+      }));
+    } catch {
+      result.ancestors = [];
+    }
+
+    return result;
   }
 
   /**
@@ -216,51 +255,66 @@ export class ConfluenceClient {
     throw new Error(`Failed to download attachment: ${downloadUrl}`);
   }
 
-  async getSpacePages(spaceKey: string, limit = 500): Promise<unknown> {
-    const cql = `type = page AND space = "${escapeCql(spaceKey)}" ORDER BY title ASC`;
+  /** v1 child/page 페이지네이션 헬퍼 */
+  private async fetchChildPages(parentId: string, spaceKey?: string): Promise<Record<string, unknown>[]> {
     const allResults: Record<string, unknown>[] = [];
     let start = 0;
 
     do {
       const { data } = await withRetry429(() =>
-        this.v1.get('/search', {
-          params: {
-            cql,
-            limit: Math.min(limit - allResults.length, 100),
-            start,
-            expand: 'content.space,content.version,content.ancestors',
-          },
+        this.v1.get(`/content/${parentId}/child/page`, {
+          params: { limit: 100, start, expand: 'children.page' },
         })
       );
 
-      const r = data as Record<string, unknown>;
-      const results = (r.results ?? []) as Record<string, unknown>[];
+      const d = data as Record<string, unknown>;
+      const results = (d.results ?? []) as Record<string, unknown>[];
       if (!Array.isArray(results) || results.length === 0) break;
 
-      for (const item of results) {
-        const content = (item.content ?? item) as Record<string, unknown>;
-        const space = (content.space ?? {}) as Record<string, unknown>;
-        const ancestors = (content.ancestors ?? []) as Record<string, unknown>[];
-        const version = (content.version ?? {}) as Record<string, unknown>;
-        const parentId = ancestors.length > 0
-          ? String((ancestors[ancestors.length - 1] as Record<string, unknown>).id)
-          : null;
-
+      for (const page of results) {
+        const children = (page.children as Record<string, unknown>)?.page as Record<string, unknown> | undefined;
+        const childSize = (children?.size as number) ?? 0;
         allResults.push({
-          id: String(content.id),
-          title: content.title,
+          id: String(page.id),
+          title: page.title,
           parentId,
-          spaceKey: space.key ?? spaceKey,
-          version: version.number ?? 1,
+          spaceKey,
+          hasChildren: childSize > 0,
         });
       }
 
       start += results.length;
-      const totalSize = r.totalSize as number | undefined;
-      if (totalSize != null && start >= totalSize) break;
-    } while (allResults.length < limit);
+      const size = d.size as number | undefined;
+      if (size != null && size < 100) break;
+    } while (true);
 
-    return { results: allResults };
+    return allResults;
+  }
+
+  /** 스페이스의 루트(최상위) 페이지 조회 — v1 API */
+  async getSpacePages(spaceKey: string): Promise<unknown> {
+    // 스페이스 홈페이지 ID 조회
+    const { data: spaceData } = await withRetry429(() =>
+      this.v1.get(`/space/${spaceKey}`, {
+        params: { expand: 'homepage' },
+      })
+    );
+    const space = spaceData as Record<string, unknown>;
+    const homepage = space.homepage as Record<string, unknown> | undefined;
+
+    if (!homepage?.id) {
+      return { results: [] };
+    }
+
+    // 홈페이지의 자식 = 스페이스 루트 페이지들
+    const results = await this.fetchChildPages(String(homepage.id), spaceKey);
+    return { results };
+  }
+
+  /** 특정 페이지의 직접 자식 페이지 조회 — v1 API */
+  async getChildPages(pageId: string): Promise<unknown> {
+    const results = await this.fetchChildPages(pageId);
+    return { results };
   }
 
   async searchPages(params: {
@@ -282,7 +336,13 @@ export class ConfluenceClient {
     } else if (field === 'title_body') {
       conditions.push(`(title ~ "${q}" OR text ~ "${q}")`);
     } else if (field === 'contributor') {
-      conditions.push(`contributor = "${q}"`);
+      // 이름으로 사용자 검색 → accountId로 contributor CQL 실행
+      const userIds = await this.searchUsersByName(params.query);
+      if (userIds.length === 0) {
+        return { results: [] };
+      }
+      const contributorCql = userIds.map((id) => `contributor = "${escapeCql(id)}"`).join(' OR ');
+      conditions.push(`(${contributorCql})`);
     } else {
       // 'all' — text는 title, body, 댓글 등 전체를 포함
       conditions.push(`text ~ "${q}"`);

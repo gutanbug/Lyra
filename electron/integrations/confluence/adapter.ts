@@ -20,11 +20,15 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
   readonly displayName = 'Confluence';
   readonly icon = '📄';
 
-  async validateCredentials(credentials: JiraCredentials): Promise<boolean> {
+  async validateCredentials(credentials: JiraCredentials): Promise<boolean | Record<string, unknown>> {
     try {
       const client = new ConfluenceClient(credentials);
-      await client.getCurrentUser();
-      return true;
+      const user = await client.getCurrentUser() as Record<string, unknown>;
+      return {
+        valid: true,
+        userDisplayName: user.displayName || user.publicName || '',
+        userAccountId: user.accountId || '',
+      };
     } catch {
       return false;
     }
@@ -42,8 +46,10 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
 
   getActions() {
     return {
+      getCurrentUser: (params: unknown) => this.getCurrentUser(params),
       getSpaces: (params: unknown) => this.getSpaces(params),
       getSpacePages: (params: unknown) => this.getSpacePages(params),
+      getChildPages: (params: unknown) => this.getChildPages(params),
       getMyPages: (params: unknown) => this.getMyPages(params),
       searchPages: (params: unknown) => this.searchPages(params),
       getPageContent: (params: unknown) => this.getPageContent(params),
@@ -51,6 +57,12 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
       getPageAttachments: (params: unknown) => this.getPageAttachments(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
     };
+  }
+
+  private async getCurrentUser(params?: unknown): Promise<unknown> {
+    const { credentials } = (params || {}) as InvokeParams;
+    const client = new ConfluenceClient(credentials);
+    return client.getCurrentUser();
   }
 
   private async getSpaces(params?: unknown): Promise<unknown> {
@@ -63,7 +75,14 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     const p = (params || {}) as InvokeParams;
     if (!p.spaceKey) throw new Error('spaceKey is required');
     const client = new ConfluenceClient(p.credentials);
-    return client.getSpacePages(p.spaceKey, p.limit);
+    return client.getSpacePages(p.spaceKey);
+  }
+
+  private async getChildPages(params?: unknown): Promise<unknown> {
+    const p = (params || {}) as InvokeParams;
+    if (!p.pageId) throw new Error('pageId is required');
+    const client = new ConfluenceClient(p.credentials);
+    return client.getChildPages(p.pageId);
   }
 
   private async getMyPages(params?: unknown): Promise<unknown> {

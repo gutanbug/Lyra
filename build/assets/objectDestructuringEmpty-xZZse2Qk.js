@@ -1,0 +1,1 @@
+function e(e){if(e==null)throw TypeError(`Cannot destructure `+e)}export{e as t};

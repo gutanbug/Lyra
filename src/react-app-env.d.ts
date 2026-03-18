@@ -1,11 +1,19 @@
-/// <reference types="react-scripts" />
-
 declare global {
   interface Window {
+    electronAPI?: {
+      versions: {
+        node: string;
+        chrome: string;
+        electron: string;
+      };
+      openExternal: (url: string) => Promise<void>;
+    };
     workspaceAPI?: {
       settings: {
         getSelectedProjects: (accountId: string) => Promise<string[]>;
         setSelectedProjects: (accountId: string, keys: string[]) => Promise<void>;
+        getSelectedSpaces: (accountId: string) => Promise<string[]>;
+        setSelectedSpaces: (accountId: string, keys: string[]) => Promise<void>;
       };
       account: {
         getAll: () => Promise<unknown[]>;

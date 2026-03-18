@@ -53,7 +53,7 @@ const TabContext = createContext<TabState>({
 export const useSplitView = () => useContext(TabContext);
 export const useTabs = () => useContext(TabContext);
 
-export const SplitViewProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SplitViewProvider = ({ children }: { children: React.ReactNode }) => {
   // ─── Tab state ───
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);

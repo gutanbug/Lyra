@@ -110,6 +110,7 @@ const ConfluencePageDetailView = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const history = useHistory();
   const { activeAccount } = useAccount();
+  const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
   const { addTab } = useTabs();
   const layoutRef = useRef<HTMLDivElement>(null);
 
@@ -466,7 +467,7 @@ const ConfluencePageDetailView = () => {
             </MetaItem>
             <MetaItem>
               <MetaLabel>작성자</MetaLabel>
-              <MetaValue>{page.authorName || '-'}</MetaValue>
+              <MetaValue $isMe={page.authorName === myDisplayName}>{page.authorName || '-'}</MetaValue>
             </MetaItem>
             <MetaItem>
               <MetaLabel>생성일</MetaLabel>
@@ -544,6 +545,9 @@ const Layout = styled.div`
 `;
 
 const ToolbarArea = styled.div`
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -721,8 +725,9 @@ const MetaLabel = styled.span`
   margin-bottom: 0.25rem;
 `;
 
-const MetaValue = styled.span`
-  color: ${confluenceTheme.text.primary};
+const MetaValue = styled.span<{ $isMe?: boolean }>`
+  color: ${({ $isMe }) => ($isMe ? confluenceTheme.primary : confluenceTheme.text.primary)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
 `;
 
 const Section = styled.div`
@@ -780,7 +785,7 @@ const RichContent = styled.div`
   h2 { font-size: 1.125rem; }
   h3 { font-size: 1rem; }
   h4, h5, h6 { font-size: 0.875rem; }
-  h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
+  h1:first-of-type, h2:first-of-type, h3:first-of-type { margin-top: 0; }
 
   ul, ol {
     margin: 0.5rem 0;
@@ -806,17 +811,25 @@ const RichContent = styled.div`
   pre {
     background: #263238;
     color: #EEFFFF;
-    border-radius: 3px;
+    border-radius: 6px;
     padding: 0.75rem 1rem;
     margin: 0.5rem 0;
     overflow-x: auto;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre;
+    word-wrap: normal;
+    overflow-wrap: normal;
 
     code {
       background: none;
       border: none;
       padding: 0;
       color: inherit;
-      font-size: 0.8125rem;
+      font-size: inherit;
+      font-family: inherit;
+      white-space: inherit;
     }
   }
 

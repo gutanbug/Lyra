@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "ESNext",
+    "useDefineForClassFields": true,
     "lib": [
       "dom",
       "dom.iterable",
@@ -22,6 +23,7 @@
     "noEmit": true, 
     "jsx": "react-jsx",
     "sourceMap": false,
+    "types": ["vite/client", "vitest/globals"],
     "typeRoots": [
       "./node_modules/@types",
       "./@types"

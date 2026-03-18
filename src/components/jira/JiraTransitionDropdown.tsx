@@ -1,5 +1,5 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
+import { RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { getStatusColor } from 'lib/utils/jiraUtils';
@@ -9,13 +9,13 @@ interface Props {
   target: { issueKey: string; top: number; left: number };
   transitions: JiraTransition[];
   isLoading: boolean;
-  dropdownRef: React.RefObject<HTMLDivElement>;
+  dropdownRef: RefObject<HTMLDivElement>;
   onSelect: (issueKey: string, transitionId: string, toName: string, toCategory: string) => void;
   onClose: () => void;
 }
 
 const JiraTransitionDropdown = ({ target, transitions, isLoading, dropdownRef, onSelect, onClose }: Props) => {
-  return ReactDOM.createPortal(
+  return createPortal(
     <Overlay onClick={onClose}>
       <Dropdown
         ref={dropdownRef}
@@ -43,7 +43,7 @@ const JiraTransitionDropdown = ({ target, transitions, isLoading, dropdownRef, o
         )}
       </Dropdown>
     </Overlay>,
-    document.body
+    document.getElementById('portal-root') || document.body
   );
 };
 

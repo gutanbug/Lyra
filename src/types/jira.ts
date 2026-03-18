@@ -38,6 +38,8 @@ export interface NormalizedDetail {
   key: string;
   summary: string;
   descriptionHtml: string;
+  /** 원본 ADF JSON (atlaskit/renderer용) */
+  descriptionAdf: unknown;
   statusName: string;
   statusCategory: string;
   assigneeName: string;
@@ -57,6 +59,7 @@ export interface NormalizedComment {
   author: string;
   authorId: string;
   bodyHtml: string;
+  rawBody: unknown;
   created: string;
   updated: string;
   replyToId: string;

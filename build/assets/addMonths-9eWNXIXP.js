@@ -1,0 +1,1 @@
+import{n as e,t}from"./toDate-EZgBZ5Av.js";import{t as n}from"./toInteger-BIK7KhiQ.js";function r(r,i){e(2,arguments);var a=t(r),o=n(i);if(isNaN(o))return new Date(NaN);if(!o)return a;var s=a.getDate(),c=new Date(a.getTime());return c.setMonth(a.getMonth()+o+1,0),s>=c.getDate()?c:(a.setFullYear(c.getFullYear(),c.getMonth(),s),a)}export{r as t};

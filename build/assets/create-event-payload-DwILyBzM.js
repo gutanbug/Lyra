@@ -1,0 +1,1 @@
+import{a as e,o as t}from"./regenerator-65McjSpF.js";var n=`media`;t();var r=function(t){var n=[...arguments].slice(1)[0],r=e(t.split(`.`),4),i=r[0],a=r[1],o=r[2],s=r[3];return i===`screen`?{eventType:i,name:a,action:`viewed`,attributes:n}:{eventType:i,actionSubject:a,action:o,actionSubjectId:s,attributes:n}};export{n,r as t};

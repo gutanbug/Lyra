@@ -33,4 +33,15 @@ export const SettingsManager = {
     all[accountId] = keys;
     store.set('selectedSpaces', all);
   },
+
+  /** 계정 삭제 시 관련 설정 모두 제거 */
+  removeAccount(accountId: string): void {
+    const projects = store.get('selectedProjects', {});
+    delete projects[accountId];
+    store.set('selectedProjects', projects);
+
+    const spaces = store.get('selectedSpaces', {});
+    delete spaces[accountId];
+    store.set('selectedSpaces', spaces);
+  },
 };

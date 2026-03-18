@@ -1,1 +1,0 @@
-import"./react-CImqQUc5.js";import"./base-new-Bt_zkQSW.js";import{t as e}from"./people-group-DZtIP9wF.js";export default e();

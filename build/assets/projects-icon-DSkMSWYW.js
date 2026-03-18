@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";import{n,t as r}from"./extends-B9xiNNeF.js";import"./base-new-Bt_zkQSW.js";import{t as i}from"./project-D4XN9EO1.js";n();var a=e(t()),o=e(i()),s=function(e){return a.createElement(o.default,r({color:`var(--ds-icon, #44546F)`,spacing:`spacious`},e))};export{s as ProjectsIcon};

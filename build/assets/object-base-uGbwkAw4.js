@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t());function r(e){var t=e.label,r=t===void 0?``:t,i=e.size,a=i===void 0?`medium`:i,o=e.testId,s=e.color,c=e.icon;return n.createElement(c,{label:r,size:a===`medium`?`medium`:`small`,color:s,testId:o})}export{r as t};

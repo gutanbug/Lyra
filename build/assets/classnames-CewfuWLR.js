@@ -1,1 +1,0 @@
-var e=`media-viewer-popup`;export{e as t};

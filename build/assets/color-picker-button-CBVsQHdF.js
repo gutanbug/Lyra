@@ -1,1 +1,0 @@
-import{r as e}from"./lib-CbCynfC5.js";var t=e({colorPickerMenuLabel:{id:`fabric.editor.colorPicker.menuLabel`,defaultMessage:`Color picker menu`,description:`The label for the color picker menu popup window`}});export{t};

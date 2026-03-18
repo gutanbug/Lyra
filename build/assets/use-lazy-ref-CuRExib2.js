@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t()),r={};function i(e){var t=(0,n.useRef)(r);return t.current===r&&(t.current=e()),t}export{i as t};

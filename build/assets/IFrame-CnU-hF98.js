@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";import{n,t as r}from"./extends-B9xiNNeF.js";import{n as i,t as a}from"./objectWithoutProperties-D3b-KWkA.js";n(),i();var o=e(t()),s=[`childRef`,`className`],c=function(e){var t=e.childRef,n=e.className,i=a(e,s);return o.createElement(`iframe`,r({className:n},i,{ref:t,title:i.title}))};export{c as t};

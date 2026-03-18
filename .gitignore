@@ -399,6 +399,9 @@ $RECYCLE.BIN/
 
 # Custom Ignore files -------------
 
+# Build output
+build/
+
 # Electron
 dist-electron/
 release/

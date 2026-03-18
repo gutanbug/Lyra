@@ -1,1 +1,0 @@
-import{i as e,r as t}from"./toPropertyKey-BMShWF1c.js";import{n,t as r}from"./toDate-EZgBZ5Av.js";e();function i(e){return n(1,arguments),e instanceof Date||t(e)===`object`&&Object.prototype.toString.call(e)===`[object Date]`}function a(e){if(n(1,arguments),!i(e)&&typeof e!=`number`)return!1;var t=r(e);return!isNaN(Number(t))}export{a as t};

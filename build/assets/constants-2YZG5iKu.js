@@ -1,1 +1,0 @@
-var e=`data-theme`,t=`data-subtree-theme`,n=`data-color-mode`,r=`data-contrast-mode`,i=`data-custom-theme`,a=`--ds-elevation-surface-current`;export{t as a,i,r as n,e as o,a as r,n as t};

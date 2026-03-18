@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{n as t,t as n}from"./16-D1y8eq7m.js";import{t as r}from"./file-S089GN5_.js";import{n as i,t as a}from"./utils-CHPHfXAa.js";var o=e(n()),s=e(t()),c=i(e(r()).default,`grayBold`,a(o.default,s.default));c.displayName=`FileIconWithColor`;export{c as t};

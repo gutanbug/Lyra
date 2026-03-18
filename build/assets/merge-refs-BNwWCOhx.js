@@ -1,1 +1,0 @@
-import{i as e,r as t}from"./toPropertyKey-BMShWF1c.js";e();function n(e){return function(n){e.forEach(function(e){typeof e==`function`?e(n):e!==null&&t(e)===`object`&&(e.current=n)})}}export{n as t};

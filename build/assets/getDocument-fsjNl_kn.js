@@ -1,1 +1,0 @@
-var e=function(){return typeof document<`u`?document:null};export{e as t};

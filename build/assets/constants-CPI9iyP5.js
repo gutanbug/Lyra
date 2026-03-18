@@ -1,1 +1,0 @@
-var e=`wide`;export{e as t};

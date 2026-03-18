@@ -1,1 +1,0 @@
-import{o as e}from"./chunk-zsgVPwQN.js";import{t}from"./react-CImqQUc5.js";var n=e(t()),r=(0,n.createContext)(`elevation.surface`),i=function(){return(0,n.useContext)(r)};r.displayName=`SurfaceProvider`;export{i as n,r as t};

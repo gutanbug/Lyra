@@ -1297,7 +1297,7 @@ const JiraIssueDetail = () => {
                       <ChildIssueSummary>{ci.summary || '(제목 없음)'}</ChildIssueSummary>
                     </ChildIssueLeft>
                     <ChildIssueRight>
-                      {ci.assigneeName && <ChildAssignee $isMe={ci.assigneeName === myDisplayName}>{ci.assigneeName}</ChildAssignee>}
+                      <ChildAssignee $isMe={ci.assigneeName === myDisplayName}>{ci.assigneeName || ''}</ChildAssignee>
                       <StatusBadgeBtn
                         $color={getStatusColor(ci.statusName, ci.statusCategory)}
                         onClick={(e) => { e.stopPropagation(); openTransitionDropdown(ci.key, ci.statusName, e); }}
@@ -1321,7 +1321,7 @@ const JiraIssueDetail = () => {
                             <ChildIssueSummary>{gc.summary || '(제목 없음)'}</ChildIssueSummary>
                           </ChildIssueLeft>
                           <ChildIssueRight>
-                            {gc.assigneeName && <ChildAssignee $isMe={gc.assigneeName === myDisplayName}>{gc.assigneeName}</ChildAssignee>}
+                            <ChildAssignee $isMe={gc.assigneeName === myDisplayName}>{gc.assigneeName || ''}</ChildAssignee>
                             <StatusBadgeBtn
                               $color={getStatusColor(gc.statusName, gc.statusCategory)}
                               onClick={(e) => { e.stopPropagation(); openTransitionDropdown(gc.key, gc.statusName, e); }}

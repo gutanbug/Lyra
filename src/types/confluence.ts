@@ -38,6 +38,8 @@ export interface ConfluencePageDetail {
   id: string;
   title: string;
   bodyHtml: string;
+  /** ADF JSON (body.atlas_doc_format) — 존재 시 @atlaskit/renderer로 렌더링 */
+  bodyAdf?: unknown;
   spaceKey: string;
   spaceName: string;
   authorName: string;
@@ -51,5 +53,7 @@ export interface ConfluenceComment {
   id: string;
   author: string;
   bodyHtml: string;
+  /** ADF JSON (body.atlas_doc_format) — 존재 시 @atlaskit/renderer로 렌더링 */
+  bodyAdf?: unknown;
   created: string;
 }

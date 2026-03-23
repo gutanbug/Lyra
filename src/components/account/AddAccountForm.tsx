@@ -221,7 +221,7 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         // 검증 성공 시 사용자 정보 저장
         if (typeof result === 'object') {
           const r = result as Record<string, unknown>;
-          userMeta = { ...userMeta, userDisplayName: r.userDisplayName, userAccountId: r.userAccountId };
+          userMeta = { ...userMeta, userDisplayName: r.userDisplayName, userAccountId: r.userAccountId, userAvatarUrl: r.userAvatarUrl || '' };
         }
       }
 

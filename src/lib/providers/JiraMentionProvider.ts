@@ -14,26 +14,35 @@ interface JiraMentionProviderConfig {
 
 export class JiraMentionProvider extends AbstractMentionResource {
   private config: JiraMentionProviderConfig;
-  private lastQuery = '';
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _isFiltering = false;
+  private _destroyed = false;
+  private _abortController: AbortController | null = null;
 
   constructor(config: JiraMentionProviderConfig) {
     super();
     this.config = config;
   }
 
+  /**
+   * 디바운스를 사용하지 않음 — Atlaskit typeahead가 매 keystroke마다
+   * subscribe → filter → resolve 사이클을 실행하므로,
+   * 디바운스를 걸면 이전 Promise가 resolve되지 않아 typeahead가 멈춤.
+   */
   filter(query?: string): void {
+    if (this._destroyed) return;
     const q = query || '';
-    this.lastQuery = q;
+    this._isFiltering = true;
 
-    // 디바운스 (200ms)
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.searchUsers(q);
-    }, 200);
+    // 이전 검색 요청 취소
+    if (this._abortController) {
+      this._abortController.abort();
+    }
+    this._abortController = new AbortController();
+
+    this.searchUsers(q, this._abortController.signal);
   }
 
-  private async searchUsers(query: string): Promise<void> {
+  private async searchUsers(query: string, signal: AbortSignal): Promise<void> {
     try {
       const result = await integrationController.invoke({
         accountId: this.config.accountId,
@@ -44,6 +53,9 @@ export class JiraMentionProvider extends AbstractMentionResource {
           query,
         },
       });
+
+      // 취소됐거나 destroyed 상태면 무시
+      if (signal.aborted || this._destroyed) return;
 
       const users = (result || []) as Array<{
         accountId: string;
@@ -57,19 +69,20 @@ export class JiraMentionProvider extends AbstractMentionResource {
         name: u.displayName,
         mentionName: u.displayName,
         avatarUrl: u.avatarUrl || '',
-        nickname: u.emailAddress || '',
+        nickname: u.displayName,
       }));
-
-      // 쿼리가 변경되었으면 이전 결과 무시
-      if (query !== this.lastQuery) return;
 
       const mentionsResult: MentionsResult = {
         mentions,
         query,
       };
 
+      this._isFiltering = false;
       this._notifyListeners(mentionsResult);
+      this._notifyAllResultsListeners(mentionsResult);
     } catch (err) {
+      if (signal.aborted || this._destroyed) return;
+      this._isFiltering = false;
       console.error('[JiraMentionProvider] search error:', err);
       this._notifyErrorListeners(err instanceof Error ? err : new Error(String(err)), query);
     }
@@ -85,6 +98,13 @@ export class JiraMentionProvider extends AbstractMentionResource {
   }
 
   isFiltering(_query: string): boolean {
-    return false;
+    return this._isFiltering;
+  }
+
+  destroy(): void {
+    this._destroyed = true;
+    if (this._abortController) {
+      this._abortController.abort();
+    }
   }
 }

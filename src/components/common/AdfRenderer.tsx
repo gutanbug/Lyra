@@ -20,6 +20,16 @@ export interface LinkMeta {
   issueKey?: string;
   statusName?: string;
   statusCategory?: string;
+  /** Jira statusCategory.key — 항상 'new' | 'indeterminate' | 'done' 중 하나 */
+  statusCategoryKey?: string;
+}
+
+/** 첨부파일 메타 정보 (비이미지) */
+export interface FileMeta {
+  filename: string;
+  mediaType: string;
+  size: number;
+  downloadUrl: string;
 }
 
 interface AdfRendererProps {
@@ -35,6 +45,10 @@ interface AdfRendererProps {
   mediaUrlMap?: Record<string, string>;
   /** URL → 링크 메타 정보 매핑 (inlineCard를 리치 링크로 표시) */
   linkMetaMap?: Record<string, LinkMeta>;
+  /** media ID → 파일 메타 매핑 (비이미지 첨부파일 카드 표시) */
+  fileMetaMap?: Record<string, FileMeta>;
+  /** 파일 카드 클릭 핸들러 */
+  onFileClick?: (fileMeta: FileMeta) => void;
 }
 
 /** ADF document 유효성 간단 체크 */
@@ -58,13 +72,73 @@ function getLinkDisplayText(url: string, meta?: LinkMeta): string {
  * 1. mediaSingle/media 노드 → external 이미지 변환
  * 2. inlineCard/blockCard/embedCard → 텍스트 링크 변환 (메타 정보 반영)
  */
+/** 파일 크기를 사람이 읽을 수 있는 형태로 변환 */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** 파일 확장자에 따른 아이콘 색상 */
+function getFileIconColor(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'pdf') return '#E5322D';
+  if (['doc', 'docx'].includes(ext)) return '#2B579A';
+  if (['xls', 'xlsx'].includes(ext)) return '#217346';
+  if (['ppt', 'pptx'].includes(ext)) return '#D24726';
+  if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return '#F0A30A';
+  return '#6B778C';
+}
+
 function preprocessAdf(
   node: unknown,
   urlMap: Record<string, string>,
   linkMeta: Record<string, LinkMeta>,
+  fileMeta: Record<string, FileMeta>,
 ): unknown {
   if (!node || typeof node !== 'object') return node;
   const n = node as Record<string, unknown>;
+
+  // media 노드를 이미지 또는 파일 카드로 변환하는 헬퍼
+  // 주의: 원본 media 노드를 Atlaskit에 그대로 전달하면 Media API 로드를 시도해 무한 로딩됨
+  const convertMedia = (c: Record<string, unknown>): { node: unknown; valid: boolean } => {
+    const attrs = c.attrs as Record<string, unknown> | undefined;
+
+    // 이미 external로 변환된 노드는 그대로 통과
+    if (attrs?.type === 'external') return { node: c, valid: true };
+
+    // type:file media 노드 처리
+    if (typeof attrs?.id === 'string') {
+      const mediaId = attrs.id;
+      const url = urlMap[mediaId];
+      if (url) {
+        // 이미지 → external media로 변환
+        return {
+          node: { type: 'media', attrs: { type: 'external', url, width: attrs.width, height: attrs.height } },
+          valid: true,
+        };
+      }
+      // 비이미지 파일 메타가 있으면 파일 카드 텍스트 노드로 변환
+      const fmeta = fileMeta[mediaId];
+      if (fmeta) {
+        const sizeStr = formatFileSize(fmeta.size);
+        return {
+          node: {
+            type: 'paragraph',
+            content: [{
+              type: 'text',
+              text: `📎 ${fmeta.filename} (${sizeStr})`,
+              marks: [{ type: 'link', attrs: { href: `#__file__:${mediaId}`, __fileMeta: JSON.stringify(fmeta) } }],
+            }],
+          },
+          valid: true,
+        };
+      }
+    }
+
+    // 미매칭 media 노드 → 빈 텍스트로 변환 (Atlaskit에 원본 전달 방지)
+    return { node: { type: 'text', text: '' }, valid: false };
+  };
 
   // mediaSingle/mediaGroup
   if (n.type === 'mediaSingle' || n.type === 'mediaGroup') {
@@ -75,22 +149,13 @@ function preprocessAdf(
       for (const child of children) {
         const c = child as Record<string, unknown>;
         if (c.type === 'media') {
-          const attrs = c.attrs as Record<string, unknown> | undefined;
-          if (attrs && attrs.type === 'file' && typeof attrs.id === 'string') {
-            const url = urlMap[attrs.id];
-            if (url) {
-              converted.push({
-                type: 'media',
-                attrs: { type: 'external', url, width: attrs.width, height: attrs.height },
-              });
-              hasValidMedia = true;
-            }
-          } else {
-            converted.push(child);
+          const result = convertMedia(c);
+          if (result.valid) {
+            converted.push(result.node);
             hasValidMedia = true;
           }
         } else {
-          converted.push(preprocessAdf(child, urlMap, linkMeta));
+          converted.push(preprocessAdf(child, urlMap, linkMeta, fileMeta) as Record<string, unknown>);
           hasValidMedia = true;
         }
       }
@@ -99,20 +164,41 @@ function preprocessAdf(
       }
       return { ...n, content: converted };
     }
-    return node;
+    return { type: 'paragraph', content: [] };
   }
 
   // 단독 media 노드
   if (n.type === 'media') {
+    const result = convertMedia(n as Record<string, unknown>);
+    return result.node;
+  }
+
+  // mediaInline 노드 (인라인 첨부파일 — Atlaskit에 전달하면 Media API 로드 시도)
+  if (n.type === 'mediaInline') {
     const attrs = n.attrs as Record<string, unknown> | undefined;
-    if (attrs && attrs.type === 'file' && typeof attrs.id === 'string') {
-      const url = urlMap[attrs.id];
+    if (typeof attrs?.id === 'string') {
+      const mediaId = attrs.id;
+      const url = urlMap[mediaId];
       if (url) {
-        return { type: 'media', attrs: { type: 'external', url, width: attrs.width, height: attrs.height } };
+        // 이미지 → 인라인 이미지로 변환
+        return {
+          type: 'text',
+          text: '',
+          marks: [{ type: 'link', attrs: { href: url } }],
+        };
       }
-      return { type: 'text', text: '' };
+      const fmeta = fileMeta[mediaId];
+      if (fmeta) {
+        const sizeStr = formatFileSize(fmeta.size);
+        return {
+          type: 'text',
+          text: `📎 ${fmeta.filename} (${sizeStr})`,
+          marks: [{ type: 'link', attrs: { href: `#__file__:${mediaId}`, __fileMeta: JSON.stringify(fmeta) } }],
+        };
+      }
     }
-    return node;
+    // 미매칭 mediaInline → 빈 텍스트 (Atlaskit Media API 로드 방지)
+    return { type: 'text', text: '' };
   }
 
   // inlineCard → 텍스트 링크
@@ -169,97 +255,199 @@ function preprocessAdf(
     return node;
   }
 
+  // text 노드의 link mark — linkMeta에 있으면 표시 텍스트를 제목으로 교체
+  if (n.type === 'text' && Array.isArray(n.marks)) {
+    const marks = n.marks as Record<string, unknown>[];
+    const linkMark = marks.find((m) => m.type === 'link');
+    if (linkMark) {
+      const attrs = linkMark.attrs as Record<string, unknown> | undefined;
+      const href = attrs?.href as string | undefined;
+      if (href) {
+        const meta = linkMeta[href];
+        if (meta) {
+          const displayText = getLinkDisplayText(href, meta);
+          const text = n.text as string;
+          // URL이 텍스트와 동일하거나 텍스트가 URL 전체인 경우만 교체
+          if (text === href || text.startsWith('http')) {
+            return { ...n, text: displayText };
+          }
+        }
+      }
+    }
+  }
+
   const content = n.content as unknown[] | undefined;
   if (Array.isArray(content)) {
     return {
       ...n,
-      content: content.map((child) => preprocessAdf(child, urlMap, linkMeta)),
+      content: content.map((child) => preprocessAdf(child, urlMap, linkMeta, fileMeta)),
     };
   }
 
   return node;
 }
 
-/** 상태 카테고리별 색상 */
-function getStatusBadgeColor(category: string): { bg: string; color: string } {
-  switch (category.toLowerCase()) {
-    case 'done': case '완료': return { bg: '#E3FCEF', color: '#006644' };
-    case 'in progress': case '진행 중': return { bg: '#DEEBFF', color: '#0747A6' };
-    case 'to do': case '새 작업': case 'new': return { bg: '#F4F5F7', color: '#42526E' };
-    default: return { bg: '#F4F5F7', color: '#42526E' };
-  }
+/**
+ * statusCategoryKey 기반으로 뱃지 색상 결정.
+ * Jira statusCategory.key는 항상 'new' | 'indeterminate' | 'done' 중 하나.
+ * key가 없으면 colorName/name으로 폴백.
+ */
+function getStatusBadgeColor(meta: LinkMeta): { bg: string; color: string } {
+  const key = (meta.statusCategoryKey || '').toLowerCase();
+  // key 기반 — 가장 정확
+  if (key === 'done') return { bg: '#E3FCEF', color: '#006644' };
+  if (key === 'indeterminate') return { bg: '#DEEBFF', color: '#0747A6' };
+  if (key === 'new') return { bg: '#F4F5F7', color: '#42526E' };
+  // key가 없으면 statusCategory(name/colorName)로 폴백
+  const s = ((meta.statusCategory || '') + ' ' + (meta.statusName || '')).toLowerCase();
+  if (s.includes('done') || s.includes('완료') || s.includes('green')) return { bg: '#E3FCEF', color: '#006644' };
+  if (s.includes('progress') || s.includes('진행') || s.includes('indeterminate') || s.includes('yellow') || s.includes('blue-gray')) return { bg: '#DEEBFF', color: '#0747A6' };
+  if (s.includes('to do') || s.includes('해야') || s.includes('new')) return { bg: '#F4F5F7', color: '#42526E' };
+  return { bg: '#F4F5F7', color: '#42526E' };
 }
 
-const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', className, mediaUrlMap, linkMetaMap }: AdfRendererProps) => {
+const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', className, mediaUrlMap, linkMetaMap, fileMetaMap, onFileClick }: AdfRendererProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const handleLinkClick = useCallback(
     (event: React.SyntheticEvent, url?: string) => {
       if (!url) return;
       event.preventDefault();
+      // 파일 카드 클릭 처리
+      if (url.startsWith('#__file__:') && onFileClick && fileMetaMap) {
+        const mediaId = url.replace('#__file__:', '');
+        const fmeta = fileMetaMap[mediaId];
+        if (fmeta) {
+          onFileClick(fmeta);
+          return;
+        }
+      }
       onLinkClick?.(url);
     },
-    [onLinkClick]
+    [onLinkClick, onFileClick, fileMetaMap]
   );
 
   const processedDoc = useMemo(() => {
     if (!isValidAdf(adfDoc)) return null;
-    return preprocessAdf(adfDoc, mediaUrlMap ?? {}, linkMetaMap ?? {});
-  }, [adfDoc, mediaUrlMap, linkMetaMap]);
+    return preprocessAdf(adfDoc, mediaUrlMap ?? {}, linkMetaMap ?? {}, fileMetaMap ?? {});
+  }, [adfDoc, mediaUrlMap, linkMetaMap, fileMetaMap]);
 
   // DOM 후처리: 링크를 리치 카드로 변환
+  // ReactRenderer의 비동기 DOM 업데이트 이후 실행되도록 약간의 지연 적용
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el || !linkMetaMap || Object.keys(linkMetaMap).length === 0) return;
 
-    const links = el.querySelectorAll<HTMLAnchorElement>('a[href]');
-    links.forEach((a) => {
-      const href = a.getAttribute('href') || '';
-      const meta = linkMetaMap[href];
-      if (!meta || a.dataset.richCard) return;
-      a.dataset.richCard = 'true';
+    const applyRichCards = () => {
+      const links = el.querySelectorAll<HTMLAnchorElement>('a[href]');
+      links.forEach((a) => {
+        const href = a.getAttribute('href') || '';
+        const meta = linkMetaMap[href];
+        if (!meta) return;
 
-      if (meta.type === 'jira' && meta.issueKey) {
-        // Jira 이슈 카드: [키] 제목 [상태 뱃지]
-        a.textContent = '';
-        a.className = 'rich-link-card jira-card';
-
-        const keySpan = document.createElement('span');
-        keySpan.className = 'rich-link-key';
-        keySpan.textContent = meta.issueKey;
-        a.appendChild(keySpan);
-
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'rich-link-title';
-        titleSpan.textContent = meta.title;
-        a.appendChild(titleSpan);
-
-        if (meta.statusName) {
-          const badge = document.createElement('span');
-          badge.className = 'rich-link-status';
-          const colors = getStatusBadgeColor(meta.statusCategory || '');
-          badge.style.background = colors.bg;
-          badge.style.color = colors.color;
-          badge.textContent = meta.statusName;
-          a.appendChild(badge);
+        // 이미 처리된 카드는 statusCategory가 갱신되었을 수 있으므로 뱃지만 업데이트
+        if (a.dataset.richCard === 'true') {
+          if (meta.type === 'jira' && meta.statusName) {
+            const badge = a.querySelector('.rich-link-status') as HTMLSpanElement | null;
+            if (badge) {
+              const colors = getStatusBadgeColor(meta);
+              badge.style.background = colors.bg;
+              badge.style.color = colors.color;
+            }
+          }
+          return;
         }
-      } else if (meta.type === 'confluence') {
-        // Confluence 페이지 카드: [📄] 제목
-        a.textContent = '';
-        a.className = 'rich-link-card confluence-card';
+        a.dataset.richCard = 'true';
 
+        if (meta.type === 'jira' && meta.issueKey) {
+          a.textContent = '';
+          a.className = 'rich-link-card jira-card';
+
+          const keySpan = document.createElement('span');
+          keySpan.className = 'rich-link-key';
+          keySpan.textContent = meta.issueKey;
+          a.appendChild(keySpan);
+
+          const titleSpan = document.createElement('span');
+          titleSpan.className = 'rich-link-title';
+          titleSpan.textContent = meta.title;
+          a.appendChild(titleSpan);
+
+          if (meta.statusName) {
+            const badge = document.createElement('span');
+            badge.className = 'rich-link-status';
+            const colors = getStatusBadgeColor(meta);
+            badge.style.background = colors.bg;
+            badge.style.color = colors.color;
+            badge.textContent = meta.statusName;
+            a.appendChild(badge);
+          }
+        } else if (meta.type === 'confluence') {
+          a.textContent = '';
+          a.className = 'rich-link-card confluence-card';
+
+          const icon = document.createElement('span');
+          icon.className = 'rich-link-icon confluence-page-icon';
+          icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 32 32" fill="none"><path d="M3.8 22.6c-.4.7-.9 1.5-1.2 2-.3.5-.1 1.1.4 1.4l5.8 3.5c.5.3 1.1.1 1.4-.3.3-.5.7-1.1 1.2-1.9 2.2-3.5 4.4-3.1 8.4-1.2l5.9 2.8c.5.2 1.1 0 1.4-.5l2.9-6.2c.2-.5 0-1.1-.5-1.3-1.7-.8-5-2.4-8.1-3.8-6.7-3.2-13.4-3.2-17.6 5.5z" fill="#1868DB"/><path d="M28.2 9.4c.4-.7.9-1.5 1.2-2 .3-.5.1-1.1-.4-1.4L23.2 2.5c-.5-.3-1.1-.1-1.4.3-.3.5-.7 1.1-1.2 1.9-2.2 3.5-4.4 3.1-8.4 1.2L6.3 3.1c-.5-.2-1.1 0-1.4.5L2 9.8c-.2.5 0 1.1.5 1.3 1.7.8 5 2.4 8.1 3.8 6.7 3.2 13.4 3.2 17.6-5.5z" fill="#6DA2EE"/></svg>';
+          a.appendChild(icon);
+
+          const titleSpan = document.createElement('span');
+          titleSpan.className = 'rich-link-title';
+          titleSpan.textContent = meta.title;
+          a.appendChild(titleSpan);
+        }
+      });
+    };
+
+    // 파일 카드 스타일 적용 (href 유지 — Atlaskit ReactRenderer의 link.onClick 핸들러에 위임)
+    const applyFileCards = () => {
+      const fileLinks = el.querySelectorAll<HTMLAnchorElement>('a[href^="#__file__:"]');
+      fileLinks.forEach((a) => {
+        if (a.dataset.fileCard === 'true') return;
+        a.dataset.fileCard = 'true';
+
+        const href = a.getAttribute('href') || '';
+        const mediaId = href.replace('#__file__:', '');
+        const fmeta = fileMetaMap?.[mediaId];
+        if (!fmeta) return;
+
+        const filename = fmeta.filename;
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        const iconColor = getFileIconColor(filename);
+
+        a.textContent = '';
+        a.className = 'file-card';
+        // href 유지 — Atlaskit의 eventHandlers.link.onClick이 이 값을 읽어 handleLinkClick에 전달
+
+        // lucide-react FileText 아이콘 (stroke 기반)
         const icon = document.createElement('span');
-        icon.className = 'rich-link-icon';
-        icon.textContent = '\uD83D\uDCC4'; // 📄
+        icon.className = 'file-card-icon';
+        icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M16 13h-2"/></svg>`;
         a.appendChild(icon);
 
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'rich-link-title';
-        titleSpan.textContent = meta.title;
-        a.appendChild(titleSpan);
-      }
-    });
-  }, [processedDoc, linkMetaMap]);
+        const info = document.createElement('span');
+        info.className = 'file-card-info';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-card-name';
+        nameSpan.textContent = filename;
+        info.appendChild(nameSpan);
+
+        const detailSpan = document.createElement('span');
+        detailSpan.className = 'file-card-detail';
+        detailSpan.textContent = `${ext.toUpperCase()} · ${formatFileSize(fmeta.size)}`;
+        info.appendChild(detailSpan);
+
+        a.appendChild(info);
+      });
+    };
+
+    // 즉시 실행 + ReactRenderer의 비동기 DOM 업데이트 대응
+    applyRichCards();
+    applyFileCards();
+    const timer = setTimeout(() => { applyRichCards(); applyFileCards(); }, 100);
+    return () => clearTimeout(timer);
+  }, [processedDoc, linkMetaMap, fileMetaMap]);
 
   if (!processedDoc) {
     return null;
@@ -286,7 +474,6 @@ const Wrapper = styled.div`
   font-size: 0.875rem;
   color: ${jiraTheme.text.primary};
   line-height: 1.6;
-  overflow: hidden;
 
   /* mediaSingle 이미지가 컨테이너를 넘치지 않도록 제한 */
   .rich-media-item {
@@ -356,9 +543,62 @@ const Wrapper = styled.div`
   .rich-link-icon {
     font-size: 0.875rem;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+  .rich-link-icon.confluence-page-icon svg {
+    display: block;
   }
   a.confluence-card .rich-link-title {
     max-width: 400px;
+  }
+
+  /* 파일 첨부 카드 */
+  a.file-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid ${jiraTheme.border};
+    background: ${jiraTheme.bg.subtle};
+    text-decoration: none !important;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    transition: background 0.12s, border-color 0.12s;
+    max-width: 400px;
+
+    &:hover {
+      background: ${jiraTheme.bg.hover};
+      border-color: ${jiraTheme.primary};
+    }
+  }
+  .file-card-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+  .file-card-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .file-card-name {
+    color: ${jiraTheme.text.primary};
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-card-detail {
+    color: ${jiraTheme.text.muted};
+    font-size: 0.6875rem;
+  }
+
+  /* 테이블 셀 오버플로 방지 */
+  th, td {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   /* Atlaskit 인라인 코드 — 자체 스타일을 오버라이드하여 회색 배경 통일 */
@@ -380,6 +620,31 @@ const Wrapper = styled.div`
     padding: 0 !important;
     color: inherit !important;
     font-size: inherit !important;
+  }
+
+  /* 코드 블록 — Jira 스타일 (회색 배경) */
+  .code-block {
+    background: ${jiraTheme.bg.subtle} !important;
+    border: 1px solid ${jiraTheme.border} !important;
+    border-radius: 3px !important;
+    margin: 0.5rem 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .code-block .code-content code,
+  .code-block code {
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    color: inherit !important;
+    font-size: inherit !important;
+  }
+
+  .code-block .line-number-gutter {
+    color: ${jiraTheme.text.muted};
+    user-select: none;
   }
 
   /* 블록인용 */

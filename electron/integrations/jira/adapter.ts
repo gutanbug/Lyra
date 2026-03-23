@@ -17,6 +17,7 @@ interface InvokeParams {
   commentId?: string;
   body?: unknown;
   query?: string;
+  assigneeAccountId?: string | null;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -28,10 +29,12 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     try {
       const client = new JiraClient(credentials);
       const user = await client.getCurrentUser() as Record<string, unknown>;
+      const avatarUrls = user.avatarUrls as Record<string, string> | undefined;
       return {
         valid: true,
         userDisplayName: user.displayName || '',
         userAccountId: user.accountId || '',
+        userAvatarUrl: avatarUrls?.['48x48'] || avatarUrls?.['24x24'] || '',
       };
     } catch {
       return false;
@@ -70,6 +73,7 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       transitionIssue: (params: unknown) => this.transitionIssue(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
       searchAssignableUsers: (params: unknown) => this.searchAssignableUsers(params),
+      assignIssue: (params: unknown) => this.assignIssue(params),
       addComment: (params: unknown) => this.addComment(params),
       updateComment: (params: unknown) => this.updateComment(params),
       deleteComment: (params: unknown) => this.deleteComment(params),
@@ -162,6 +166,14 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!issueKey) throw new Error('issueKey is required');
     const client = new JiraClient(credentials);
     return client.searchConfluenceByIssue(issueKey);
+  }
+
+  private async assignIssue(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, assigneeAccountId } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    const client = new JiraClient(credentials);
+    await client.assignIssue(issueKey, assigneeAccountId ?? null);
+    return { success: true };
   }
 
   private async searchAssignableUsers(params: unknown): Promise<unknown> {

@@ -62,6 +62,7 @@ export class ConfluenceClient {
     const authConfig = {
       auth: { username: credentials.email, password: credentials.apiToken },
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      timeout: 30_000,
     };
     this.v2 = axios.create({ baseURL: `${baseUrl}/wiki/api/v2`, ...authConfig });
     this.v1 = axios.create({ baseURL: `${baseUrl}/wiki/rest/api`, ...authConfig });
@@ -167,7 +168,7 @@ export class ConfluenceClient {
     // 본문 + 메타데이터 (ancestors 제외 — 깊은 계층에서 500 유발)
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}`, {
-        params: { expand: 'body.storage,version,space,history,history.createdBy' },
+        params: { expand: 'body.storage,body.atlas_doc_format,version,space,history,history.createdBy' },
       })
     );
     const result = data as Record<string, unknown>;
@@ -198,7 +199,7 @@ export class ConfluenceClient {
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}/child/comment`, {
         params: {
-          expand: 'body.storage,version,history',
+          expand: 'body.storage,body.atlas_doc_format,version,history',
           limit: 100,
         },
       })
@@ -214,7 +215,7 @@ export class ConfluenceClient {
   async getPageAttachments(pageId: string): Promise<unknown[]> {
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}/child/attachment`, {
-        params: { limit: 100, expand: 'extensions,version' },
+        params: { limit: 100, expand: 'extensions,version,metadata' },
       })
     );
     const r = data as Record<string, unknown>;
@@ -243,7 +244,7 @@ export class ConfluenceClient {
     for (const url of candidates) {
       try {
         const { data, headers } = await withRetry429(() =>
-          this.v1.get(url, { responseType: 'arraybuffer', baseURL: '' })
+          this.v1.get(url, { responseType: 'arraybuffer', baseURL: '', timeout: 60_000 })
         );
         const mimeType = headers['content-type'] || 'application/octet-stream';
         const base64 = Buffer.from(data).toString('base64');
@@ -315,6 +316,136 @@ export class ConfluenceClient {
   async getChildPages(pageId: string): Promise<unknown> {
     const results = await this.fetchChildPages(pageId);
     return { results };
+  }
+
+  /** 페이지 제목만 경량 조회 (본문/ancestors 제외) */
+  private async getPageTitle(pageId: string): Promise<string> {
+    const { data } = await withRetry429(() =>
+      this.v1.get(`/content/${pageId}`, { params: {} })
+    );
+    return String((data as Record<string, unknown>).title || '');
+  }
+
+  /** URL에서 Confluence 페이지 ID 추출 */
+  private extractPageIdFromUrl(url: string): string | null {
+    const m1 = url.match(/\/pages\/(\d+)/);
+    if (m1) return m1[1];
+    const m2 = url.match(/pageId=(\d+)/);
+    if (m2) return m2[1];
+    return null;
+  }
+
+  /**
+   * Confluence tiny link (/wiki/x/{key}) → 페이지 ID + 제목 해석
+   * HEAD 요청으로 리다이렉트 Location만 확인 (전체 HTML 다운로드 방지)
+   */
+  async resolveTinyLink(tinyKey: string): Promise<{ pageId: string; title: string } | null> {
+    const siteBase = this.v1.defaults.baseURL?.replace(/\/wiki\/rest\/api$/, '') || '';
+    const tinyUrl = `${siteBase}/wiki/x/${tinyKey}`;
+    const auth = this.v1.defaults.auth as { username: string; password: string } | undefined;
+    const authOpt = auth ? { auth } : {};
+
+    let pageId: string | null = null;
+
+    // 방법 1: HEAD + maxRedirects:0 → Location 헤더에서 page ID 추출 (가장 빠름)
+    try {
+      const response = await axios.head(tinyUrl, {
+        ...authOpt,
+        maxRedirects: 0,
+        validateStatus: (s: number) => s >= 200 && s < 400,
+      });
+      pageId = this.extractPageIdFromUrl(String(response.headers?.location || ''));
+    } catch (err) {
+      // 3xx가 에러로 throw 되는 경우 — response에서 Location 추출
+      const res = (err as any)?.response;
+      if (res?.headers?.location) {
+        pageId = this.extractPageIdFromUrl(String(res.headers.location));
+      }
+    }
+
+    // 방법 2: GET + 리다이렉트 따라가기 → 최종 URL에서 추출
+    if (!pageId) {
+      try {
+        const response = await axios.get(tinyUrl, {
+          ...authOpt,
+          maxRedirects: 10,
+          validateStatus: () => true,
+          headers: { Range: 'bytes=0-1' }, // 본문 최소화
+        });
+        const finalUrl = String(response.request?.res?.responseUrl || '');
+        pageId = this.extractPageIdFromUrl(finalUrl);
+      } catch { /* ignore */ }
+    }
+
+    if (!pageId) return null;
+
+    // 경량 제목 조회 (본문/ancestors 없이)
+    try {
+      const title = await this.getPageTitle(pageId);
+      return { pageId, title };
+    } catch {
+      return { pageId, title: '' };
+    }
+  }
+
+  /**
+   * 여러 tiny link를 일괄 해석 (병렬 실행)
+   */
+  async resolveTinyLinks(tinyKeys: string[]): Promise<Record<string, { pageId: string; title: string }>> {
+    const results: Record<string, { pageId: string; title: string }> = {};
+    const siteBase = this.v1.defaults.baseURL?.replace(/\/wiki\/rest\/api$/, '') || '';
+    const auth = this.v1.defaults.auth as { username: string; password: string } | undefined;
+    const authOpt = auth ? { auth } : {};
+
+    // 1단계: 모든 tiny key → page ID 병렬 해석 (HEAD, 빠름)
+    const pageIdMap = new Map<string, string>(); // tinyKey → pageId
+    await Promise.all(tinyKeys.map(async (tk) => {
+      const tinyUrl = `${siteBase}/wiki/x/${tk}`;
+      let pageId: string | null = null;
+      try {
+        const response = await axios.head(tinyUrl, {
+          ...authOpt,
+          maxRedirects: 0,
+          validateStatus: (s: number) => s >= 200 && s < 400,
+        });
+        pageId = this.extractPageIdFromUrl(String(response.headers?.location || ''));
+      } catch (err) {
+        const res = (err as any)?.response;
+        if (res?.headers?.location) {
+          pageId = this.extractPageIdFromUrl(String(res.headers.location));
+        }
+      }
+      if (!pageId) {
+        try {
+          const response = await axios.get(tinyUrl, {
+            ...authOpt,
+            maxRedirects: 10,
+            validateStatus: () => true,
+            headers: { Range: 'bytes=0-1' },
+          });
+          pageId = this.extractPageIdFromUrl(String(response.request?.res?.responseUrl || ''));
+        } catch { /* ignore */ }
+      }
+      if (pageId) pageIdMap.set(tk, pageId);
+    }));
+
+    // 2단계: 고유 page ID → 제목 병렬 조회 (경량)
+    const uniquePageIds = [...new Set(pageIdMap.values())];
+    const titleMap = new Map<string, string>();
+    await Promise.all(uniquePageIds.map(async (pid) => {
+      try {
+        const title = await this.getPageTitle(pid);
+        titleMap.set(pid, title);
+      } catch {
+        titleMap.set(pid, '');
+      }
+    }));
+
+    // 3단계: 결과 매핑
+    for (const [tk, pid] of pageIdMap.entries()) {
+      results[tk] = { pageId: pid, title: titleMap.get(pid) || '' };
+    }
+    return results;
   }
 
   async searchPages(params: {

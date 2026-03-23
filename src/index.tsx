@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import createCache from '@emotion/cache'
 import { CacheProvider } from '@emotion/react'
@@ -18,15 +17,13 @@ emotionCache.compat = true;
 const container = document.getElementById('root')!;
 const root = createRoot(container);
 root.render(
-	<StrictMode>
-		<CacheProvider value={emotionCache}>
-			<HashRouter>
-				<AppProvider>
-					<HelmetProvider>
-						<App />
-					</HelmetProvider>
-				</AppProvider>
-			</HashRouter>
-		</CacheProvider>
-	</StrictMode>
+	<CacheProvider value={emotionCache}>
+		<HashRouter>
+			<AppProvider>
+				<HelmetProvider>
+					<App />
+				</HelmetProvider>
+			</AppProvider>
+		</HashRouter>
+	</CacheProvider>
 );

@@ -7,6 +7,13 @@ export interface JiraTransition {
   };
 }
 
+export interface JiraAssignableUser {
+  accountId: string;
+  displayName: string;
+  avatarUrl: string;
+  emailAddress?: string;
+}
+
 export interface NormalizedIssue {
   id: string;
   key: string;

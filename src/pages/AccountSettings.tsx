@@ -1,12 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useHistory } from 'react-router-dom';
 import styled from 'styled-components';
-import { ArrowLeft, Check, Loader } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import AddAccountForm from 'components/account/AddAccountForm';
 import AccountList from 'components/account/AccountList';
 import { useAccount } from 'modules/contexts/account';
-import { integrationController } from 'controllers/account';
 import { isAtlassianAccount } from 'types/account';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
@@ -63,134 +62,11 @@ const SHORTCUT_SECTIONS = [
   },
 ];
 
-/** Atlassian 계정 커스텀 설정 (Jira 프로젝트 / Confluence 스페이스 선택) */
+/** Atlassian 계정 커스텀 설정 (준비 중) */
 const AtlassianSettings = ({ account }: { account: Account }) => {
-  const [projects, setProjects] = useState<{ key: string; name: string }[]>([]);
-  const [spaces, setSpaces] = useState<{ key: string; name: string }[]>([]);
-  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
-  const [selectedSpaces, setSelectedSpaces] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-
-  // 프로젝트/스페이스 목록 + 저장된 선택 로드
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-
-    (async () => {
-      try {
-        // 저장된 설정 로드
-        const savedProjects = await window.workspaceAPI?.settings.getSelectedProjects(account.id) ?? [];
-        const savedSpaces = await window.workspaceAPI?.settings.getSelectedSpaces(account.id) ?? [];
-        if (cancelled) return;
-        setSelectedProjects(new Set(savedProjects));
-        setSelectedSpaces(new Set(savedSpaces));
-
-        // Jira 프로젝트 목록
-        const jiraResult = await integrationController.invoke({
-          accountId: account.id,
-          serviceType: 'jira',
-          action: 'getProjects',
-          params: {},
-        });
-        if (!cancelled) {
-          const raw = ((jiraResult as any)?.values ?? jiraResult ?? []) as Record<string, unknown>[];
-          setProjects(
-            (Array.isArray(raw) ? raw : []).map((p) => ({
-              key: String(p.key || ''),
-              name: String(p.name || ''),
-            })).filter((p) => p.key)
-          );
-        }
-
-        // Confluence 스페이스 목록
-        const confResult = await integrationController.invoke({
-          accountId: account.id,
-          serviceType: 'confluence',
-          action: 'getSpaces',
-          params: {},
-        });
-        if (!cancelled) {
-          const raw = ((confResult as any)?.results ?? []) as Record<string, unknown>[];
-          setSpaces(
-            raw.map((s) => ({
-              key: String(s.key || ''),
-              name: String(s.name || ''),
-            })).filter((s) => s.key)
-          );
-        }
-      } catch (err) {
-        console.error('[AtlassianSettings] load error:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [account.id]);
-
-  const toggleProject = useCallback((key: string) => {
-    setSelectedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      window.workspaceAPI?.settings.setSelectedProjects(account.id, Array.from(next));
-      return next;
-    });
-  }, [account.id]);
-
-  const toggleSpace = useCallback((key: string) => {
-    setSelectedSpaces((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      window.workspaceAPI?.settings.setSelectedSpaces(account.id, Array.from(next));
-      window.dispatchEvent(new CustomEvent('lyra:confluence-space-settings-changed'));
-      return next;
-    });
-  }, [account.id]);
-
-  if (loading) {
-    return <SettingsLoading><Loader size={16} /><span>설정 로딩 중...</span></SettingsLoading>;
-  }
-
   return (
     <SettingsSections>
-      <SettingsSection>
-        <SettingsSectionTitle>Jira 프로젝트</SettingsSectionTitle>
-        <SettingsSectionDesc>사이드바에 표시할 프로젝트를 선택하세요.</SettingsSectionDesc>
-        <CheckList>
-          {projects.map((p) => (
-            <CheckItem key={p.key} onClick={() => toggleProject(p.key)}>
-              <CheckBox $checked={selectedProjects.has(p.key)}>
-                {selectedProjects.has(p.key) && <Check size={12} />}
-              </CheckBox>
-              <CheckLabel>
-                <CheckName>{p.name}</CheckName>
-                <CheckKey>{p.key}</CheckKey>
-              </CheckLabel>
-            </CheckItem>
-          ))}
-          {projects.length === 0 && <EmptyCheck>프로젝트가 없습니다.</EmptyCheck>}
-        </CheckList>
-      </SettingsSection>
-
-      <SettingsSection>
-        <SettingsSectionTitle>Confluence 스페이스</SettingsSectionTitle>
-        <SettingsSectionDesc>사이드바에 표시할 스페이스를 선택하세요.</SettingsSectionDesc>
-        <CheckList>
-          {spaces.map((s) => (
-            <CheckItem key={s.key} onClick={() => toggleSpace(s.key)}>
-              <CheckBox $checked={selectedSpaces.has(s.key)}>
-                {selectedSpaces.has(s.key) && <Check size={12} />}
-              </CheckBox>
-              <CheckLabel>
-                <CheckName>{s.name}</CheckName>
-                {!s.key.startsWith('~') && <CheckKey>{s.key}</CheckKey>}
-              </CheckLabel>
-            </CheckItem>
-          ))}
-          {spaces.length === 0 && <EmptyCheck>스페이스가 없습니다.</EmptyCheck>}
-        </CheckList>
-      </SettingsSection>
+      <EmptySettingsMsg>설정 항목이 준비 중입니다.</EmptySettingsMsg>
     </SettingsSections>
   );
 };
@@ -626,104 +502,8 @@ const EmptySettingsMsg = styled.div`
 
 // ─── Custom Settings ─────────────────────────
 
-const SettingsLoading = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: ${theme.textMuted};
-  font-size: 0.875rem;
-  padding: 1rem 0;
-
-  svg { animation: spin 1s linear infinite; }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-`;
-
 const SettingsSections = styled.div`
   display: flex;
   flex-direction: column;
   gap: 2rem;
-`;
-
-const SettingsSection = styled.div``;
-
-const SettingsSectionTitle = styled.h3`
-  margin: 0 0 0.25rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: ${theme.textPrimary};
-`;
-
-const SettingsSectionDesc = styled.p`
-  margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
-  color: ${theme.textMuted};
-`;
-
-const CheckList = styled.div`
-  display: flex;
-  flex-direction: column;
-  max-height: 280px;
-  overflow-y: auto;
-  border: 1px solid ${theme.border};
-  border-radius: 8px;
-`;
-
-const CheckItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  transition: background 0.1s;
-
-  &:hover {
-    background: ${theme.bgTertiary};
-  }
-
-  & + & {
-    border-top: 1px solid ${theme.border};
-  }
-`;
-
-const CheckBox = styled.div<{ $checked: boolean }>`
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1.5px solid ${({ $checked }) => ($checked ? theme.blue : theme.border)};
-  background: ${({ $checked }) => ($checked ? theme.blue : 'transparent')};
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.15s;
-`;
-
-const CheckLabel = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-  flex: 1;
-`;
-
-const CheckName = styled.span`
-  font-size: 0.8125rem;
-  color: ${theme.textPrimary};
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const CheckKey = styled.span`
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
-  flex-shrink: 0;
-`;
-
-const EmptyCheck = styled.div`
-  padding: 1rem;
-  text-align: center;
-  color: ${theme.textMuted};
-  font-size: 0.8125rem;
 `;

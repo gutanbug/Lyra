@@ -91,6 +91,12 @@ function normalizeIssue(raw: Record<string, unknown>): Record<string, unknown> {
     const cat = status.statusCategory as Record<string, unknown> | undefined;
     result.status = {
       name: status.name,
+      statusCategory: {
+        name: cat?.name ?? '',
+        key: cat?.key ?? '',
+        colorName: cat?.colorName ?? '',
+      },
+      // 하위 호환
       category: cat?.name ?? '',
       color: cat?.colorName ?? '',
     };
@@ -373,6 +379,18 @@ export class JiraClient {
       avatarUrl: (u.avatarUrls as Record<string, string>)?.['24x24'] || '',
       emailAddress: u.emailAddress || '',
     }));
+  }
+
+  /**
+   * 이슈 담당자 지정
+   * PUT /rest/api/3/issue/:issueIdOrKey/assignee
+   */
+  async assignIssue(issueIdOrKey: string, accountId: string | null): Promise<void> {
+    await withRetry429(() =>
+      this.client.put(`/issue/${issueIdOrKey}/assignee`, {
+        accountId: accountId,
+      })
+    );
   }
 
   /**

@@ -13,6 +13,8 @@ interface InvokeParams {
   spaceKey?: string;
   downloadUrl?: string;
   searchField?: 'all' | 'title' | 'body' | 'title_body';
+  tinyKey?: string;
+  tinyKeys?: string[];
 }
 
 export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -56,6 +58,8 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
       getPageComments: (params: unknown) => this.getPageComments(params),
       getPageAttachments: (params: unknown) => this.getPageAttachments(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
+      resolveTinyLink: (params: unknown) => this.resolveTinyLink(params),
+      resolveTinyLinks: (params: unknown) => this.resolveTinyLinks(params),
     };
   }
 
@@ -133,5 +137,19 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!downloadUrl) throw new Error('downloadUrl is required');
     const client = new ConfluenceClient(credentials);
     return client.getAttachmentContent(downloadUrl);
+  }
+
+  private async resolveTinyLink(params?: unknown): Promise<unknown> {
+    const { credentials, tinyKey } = (params || {}) as InvokeParams;
+    if (!tinyKey) throw new Error('tinyKey is required');
+    const client = new ConfluenceClient(credentials);
+    return client.resolveTinyLink(tinyKey);
+  }
+
+  private async resolveTinyLinks(params?: unknown): Promise<unknown> {
+    const { credentials, tinyKeys } = (params || {}) as InvokeParams;
+    if (!tinyKeys || tinyKeys.length === 0) return {};
+    const client = new ConfluenceClient(credentials);
+    return client.resolveTinyLinks(tinyKeys);
   }
 }

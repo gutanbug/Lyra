@@ -73,7 +73,7 @@ const AccountProvider = ({ children }: { children: React.ReactNode }) => {
         }) as Record<string, unknown>;
         if (user?.displayName) {
           await accountController.update(activeAccount.id, {
-            metadata: { ...meta, userDisplayName: user.displayName, userAccountId: user.accountId || '' },
+            metadata: { ...meta, userDisplayName: user.displayName, userAccountId: user.accountId || '', userAvatarUrl: ((user.avatarUrls as Record<string, string> | undefined)?.['48x48'] || (user.avatarUrls as Record<string, string> | undefined)?.['24x24'] || '') },
           });
           await refresh();
         }

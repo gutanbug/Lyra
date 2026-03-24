@@ -188,3 +188,222 @@ export const SectionToggleArrow = styled.span`
   width: 1rem;
   text-align: center;
 `;
+
+// ── 오버레이 & 라이트박스 (Jira/Confluence 공통) ──
+
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to { opacity: 1; }
+`;
+
+const zoomIn = keyframes`
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+`;
+
+export const OVERLAY_Z = {
+  lightbox: 200,
+  fileLoading: 999,
+  pdf: 1000,
+} as const;
+
+export const LightboxOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: ${OVERLAY_Z.lightbox};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+  animation: ${fadeIn} 0.2s ease;
+`;
+
+export const LightboxImage = styled.img`
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  animation: ${zoomIn} 0.2s ease;
+`;
+
+export const LightboxClose = styled.button`
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+`;
+
+export const PdfOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: ${OVERLAY_Z.pdf};
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  animation: ${fadeIn} 0.2s ease;
+`;
+
+export const PdfHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+`;
+
+export const PdfTitle = styled.span`
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+export const PdfClose = styled.button`
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+`;
+
+export const PdfFrame = styled.iframe`
+  flex: 1;
+  border: none;
+  background: white;
+  margin: 0 2rem 2rem;
+  border-radius: 6px;
+`;
+
+export const FileLoadingOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: ${OVERLAY_Z.fileLoading};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+`;
+
+export const FileLoadingSpinner = styled.div`
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: ${spin} 0.7s linear infinite;
+`;
+
+// ── 에디터 액션 버튼 (Jira/Confluence 공통) ──
+
+export const EditorActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+`;
+
+export const SaveButton = styled.button<{ $theme: ServiceTheme }>`
+  padding: 0.375rem 1rem;
+  background: ${({ $theme }) => $theme.primary};
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+
+  &:hover { opacity: 0.9; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+export const CancelButton = styled.button<{ $theme: ServiceTheme }>`
+  padding: 0.375rem 1rem;
+  background: transparent;
+  color: ${({ $theme }) => $theme.text.secondary};
+  border: 1px solid ${({ $theme }) => $theme.border};
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover { background: ${({ $theme }) => $theme.bg.hover}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+export const EditIconButton = styled.button<{ $theme: ServiceTheme }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: ${({ $theme }) => $theme.text.muted};
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: ${({ $theme }) => $theme.bg.hover};
+    border-color: ${({ $theme }) => $theme.border};
+    color: ${({ $theme }) => $theme.text.primary};
+  }
+`;
+
+export const EditButtonWithLabel = styled.button<{ $theme: ServiceTheme }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: transparent;
+  border: 1px solid ${({ $theme }) => $theme.border};
+  border-radius: 4px;
+  color: ${({ $theme }) => $theme.text.muted};
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: ${({ $theme }) => $theme.bg.hover};
+    border-color: ${({ $theme }) => $theme.primary};
+    color: ${({ $theme }) => $theme.primary};
+  }
+`;

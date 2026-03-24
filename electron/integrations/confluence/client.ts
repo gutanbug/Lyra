@@ -192,6 +192,29 @@ export class ConfluenceClient {
   }
 
   /**
+   * 페이지 본문 수정
+   * PUT /wiki/api/v2/pages/:pageId
+   */
+  async updatePageBody(pageId: string, title: string, bodyAdf: unknown, currentVersion: number): Promise<Record<string, unknown>> {
+    const { data } = await withRetry429(() =>
+      this.v2.put(`/pages/${pageId}`, {
+        id: pageId,
+        status: 'current',
+        title,
+        body: {
+          representation: 'atlas_doc_format',
+          value: typeof bodyAdf === 'string' ? bodyAdf : JSON.stringify(bodyAdf),
+        },
+        version: {
+          number: currentVersion + 1,
+          message: 'Edited via Lyra',
+        },
+      })
+    );
+    return data as Record<string, unknown>;
+  }
+
+  /**
    * 페이지 댓글 조회
    * GET /wiki/rest/api/content/:pageId/child/comment?expand=body.storage,version,history
    */

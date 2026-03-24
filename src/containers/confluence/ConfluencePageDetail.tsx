@@ -1,18 +1,27 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { useParams, useHistory } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
+import { Edit2 } from 'lucide-react';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { transition } from 'lib/styles/styles';
+import {
+  EditorActions, SaveButton, CancelButton, EditButtonWithLabel,
+  LightboxOverlay, LightboxClose, LightboxImage,
+  PdfOverlay, PdfHeader, PdfTitle, PdfClose, PdfFrame,
+  FileLoadingOverlay, FileLoadingSpinner,
+} from 'lib/styles/commonStyles';
 import { resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
 import { enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
 import { useRichContentLinkHandler, useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
+import { useFilePreview } from 'lib/hooks/useFilePreview';
 import { useTabs } from 'modules/contexts/splitView';
 import { isAtlassianAccount } from 'types/account';
 import type { JiraCredentials } from 'types/account';
 import { str } from 'lib/utils/typeHelpers';
 import { integrationController } from 'controllers/account';
 import AdfRenderer from 'components/common/AdfRenderer';
-import type { FileMeta } from 'components/common/AdfRenderer';
+import AdfBodyEditor from 'components/common/AdfBodyEditor';
+import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
 import { useConfluencePageDetail } from 'lib/hooks/useConfluencePageDetail';
 import ConfluencePageHeader from 'components/confluence/ConfluencePageHeader';
 import ConfluenceComments from 'components/confluence/ConfluenceComments';
@@ -37,59 +46,54 @@ const ConfluencePageDetailView = () => {
     lightboxSrc,
     setLightboxSrc,
     linkMetaMap,
+    setPage,
   } = useConfluencePageDetail(pageId);
 
-  const [previewFile, setPreviewFile] = useState<{ dataUrl: string; filename: string } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // 파일 미리보기 (공통 훅)
+  const { previewFile, previewLoading, handleFileClick, closePreview } = useFilePreview({
+    accountId: activeAccount?.id,
+    serviceType: 'confluence',
+  });
+
+  // 본문 편집 상태
+  const [isEditingBody, setIsEditingBody] = useState(false);
+  const [isSavingBody, setIsSavingBody] = useState(false);
+  const bodyEditorRef = useRef<AdfBodyEditorHandle>(null);
+
+  const handleSaveBody = useCallback(async () => {
+    const adf = await bodyEditorRef.current?.getValue();
+    if (!adf || !activeAccount || !page) return;
+    setIsSavingBody(true);
+    try {
+      await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'confluence',
+        action: 'updatePageBody',
+        params: {
+          pageId: page.id,
+          title: page.title,
+          body: adf,
+          version: page.version,
+        },
+      });
+      setPage((prev) => prev ? { ...prev, bodyAdf: adf, version: prev.version + 1 } : prev);
+      setIsEditingBody(false);
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('409') || msg.includes('conflict')) {
+        alert('다른 사용자가 이 페이지를 수정했습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+      } else {
+        console.error('[ConfluencePageDetail] save body error:', err);
+      }
+    } finally {
+      setIsSavingBody(false);
+    }
+  }, [activeAccount, page, setPage]);
 
   const baseHandleContentClick = useRichContentLinkHandler();
   const handleAdfLinkClick = useAdfLinkHandler(linkMetaMap);
 
   const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
-
-  // ESC 키로 PDF 미리보기 닫기
-  useEffect(() => {
-    if (!previewFile) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPreviewFile(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [previewFile]);
-
-  const handleFileClick = useCallback((fileMeta: FileMeta) => {
-    if (!activeAccount) return;
-    const isPdf = fileMeta.mediaType === 'application/pdf' || fileMeta.filename.toLowerCase().endsWith('.pdf');
-    if (isPdf) {
-      setPreviewLoading(true);
-      integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'getAttachmentContent',
-        params: { downloadUrl: fileMeta.downloadUrl },
-      }).then((dataUrl) => {
-        if (typeof dataUrl === 'string') {
-          setPreviewFile({ dataUrl, filename: fileMeta.filename });
-        }
-      }).catch(() => { /* ignore */ })
-        .finally(() => setPreviewLoading(false));
-    } else {
-      // 비PDF 파일 → 다운로드
-      integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'getAttachmentContent',
-        params: { downloadUrl: fileMeta.downloadUrl },
-      }).then((dataUrl) => {
-        if (typeof dataUrl === 'string') {
-          const link = document.createElement('a');
-          link.href = dataUrl;
-          link.download = fileMeta.filename;
-          link.click();
-        }
-      }).catch(() => { /* ignore */ });
-    }
-  }, [activeAccount]);
 
   const goToList = useCallback(() => history.push('/confluence'), [history]);
 
@@ -244,12 +248,38 @@ const ConfluencePageDetailView = () => {
         />
 
         {/* 본문 */}
-        {(page.bodyAdf || page.bodyHtml) && (
+        {(page.bodyAdf || page.bodyHtml || isEditingBody) && (
           <Section>
-            {page.bodyAdf ? (
-              <AdfRenderer document={page.bodyAdf} appearance="full-width" mediaUrlMap={attachmentUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onLinkClick={handleAdfLinkClick} onFileClick={handleFileClick} />
+            {isEditingBody ? (
+              <>
+                <AdfBodyEditor
+                  ref={bodyEditorRef}
+                  defaultValue={page.bodyAdf}
+                  onSave={handleSaveBody}
+                />
+                <EditorActions>
+                  <CancelButton $theme={confluenceTheme} onClick={() => setIsEditingBody(false)} disabled={isSavingBody}>취소</CancelButton>
+                  <SaveButton $theme={confluenceTheme} onClick={handleSaveBody} disabled={isSavingBody}>
+                    {isSavingBody ? '저장 중...' : '저장'}
+                  </SaveButton>
+                </EditorActions>
+              </>
             ) : (
-              <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: enrichJiraLinksInHtml(resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap), jiraIssueMap) }} />
+              <>
+                {page.bodyAdf && (
+                  <BodyEditRow>
+                    <EditButtonWithLabel $theme={confluenceTheme} onClick={() => setIsEditingBody(true)} title="본문 편집">
+                      <Edit2 size={14} />
+                      <span>편집</span>
+                    </EditButtonWithLabel>
+                  </BodyEditRow>
+                )}
+                {page.bodyAdf ? (
+                  <AdfRenderer document={page.bodyAdf} appearance="full-width" mediaUrlMap={attachmentUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onLinkClick={handleAdfLinkClick} onFileClick={handleFileClick} />
+                ) : (
+                  <RichContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: enrichJiraLinksInHtml(resolveConfluenceAttachments(page.bodyHtml, attachmentUrlMap), jiraIssueMap) }} />
+                )}
+              </>
             )}
           </Section>
         )}
@@ -267,10 +297,10 @@ const ConfluencePageDetailView = () => {
 
       {/* PDF 미리보기 */}
       {previewFile && (
-        <PdfOverlay onClick={() => setPreviewFile(null)}>
+        <PdfOverlay onClick={closePreview}>
           <PdfHeader>
             <PdfTitle>{previewFile.filename}</PdfTitle>
-            <PdfClose onClick={() => setPreviewFile(null)}>&times;</PdfClose>
+            <PdfClose onClick={closePreview}>&times;</PdfClose>
           </PdfHeader>
           <PdfFrame
             src={previewFile.dataUrl}
@@ -282,9 +312,9 @@ const ConfluencePageDetailView = () => {
 
       {/* 파일 로딩 */}
       {previewLoading && (
-        <LoadingOverlay>
-          <LoadingSpinner />
-        </LoadingOverlay>
+        <FileLoadingOverlay>
+          <FileLoadingSpinner />
+        </FileLoadingOverlay>
       )}
 
       {/* 이미지 라이트박스 */}
@@ -648,143 +678,10 @@ const EmptyMsg = styled.div`
   color: ${confluenceTheme.text.secondary};
 `;
 
-// ── 이미지 라이트박스 ──
+// ─── Body Editing ─────────────────────────
 
-const lightboxFadeIn = keyframes`
-  from { opacity: 0; }
-  to { opacity: 1; }
-`;
-
-const lightboxZoomIn = keyframes`
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
-`;
-
-const LightboxOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+const BodyEditRow = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
-  cursor: zoom-out;
-  animation: ${lightboxFadeIn} 0.2s ease;
-`;
-
-const LightboxImage = styled.img`
-  max-width: 90vw;
-  max-height: 90vh;
-  object-fit: contain;
-  border-radius: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  cursor: default;
-  animation: ${lightboxZoomIn} 0.2s ease;
-`;
-
-const LightboxClose = styled.button`
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 50%;
-  color: white;
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-`;
-
-// ── PDF 미리보기 ──
-
-const PdfOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(4px);
-  animation: ${lightboxFadeIn} 0.2s ease;
-`;
-
-const PdfHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: rgba(0, 0, 0, 0.4);
-  flex-shrink: 0;
-`;
-
-const PdfTitle = styled.span`
-  color: white;
-  font-size: 0.875rem;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const PdfClose = styled.button`
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 50%;
-  color: white;
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-`;
-
-const PdfFrame = styled.iframe`
-  flex: 1;
-  border: none;
-  background: white;
-  margin: 0 2rem 2rem;
-  border-radius: 6px;
-`;
-
-const spinKeyframe = keyframes`
-  to { transform: rotate(360deg); }
-`;
-
-const LoadingOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-`;
-
-const LoadingSpinner = styled.div`
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: ${spinKeyframe} 0.7s linear infinite;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
 `;

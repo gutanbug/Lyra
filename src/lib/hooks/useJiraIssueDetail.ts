@@ -659,6 +659,14 @@ export function useJiraIssueDetail({
     }
   }, [activeAccount, pageContents]);
 
+  const updateDescriptionAdf = useCallback((newAdf: unknown) => {
+    setIssue((prev) => prev ? { ...prev, descriptionAdf: newAdf } : prev);
+  }, []);
+
+  const updatePriority = useCallback((newPriority: string) => {
+    setIssue((prev) => prev ? { ...prev, priorityName: newPriority } : prev);
+  }, []);
+
   return {
     issue,
     isLoading,
@@ -686,5 +694,7 @@ export function useJiraIssueDetail({
     goToBreadcrumb,
     goBack,
     toggleConfluencePage,
+    updateDescriptionAdf,
+    updatePriority,
   };
 }

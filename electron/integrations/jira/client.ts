@@ -382,6 +382,32 @@ export class JiraClient {
   }
 
   /**
+   * 이슈 설명(description) 수정
+   * PUT /rest/api/3/issue/:issueIdOrKey
+   */
+  async updateIssueDescription(issueIdOrKey: string, descriptionAdf: unknown): Promise<void> {
+    await withRetry429(() =>
+      this.client.put(`/issue/${issueIdOrKey}`, {
+        fields: { description: descriptionAdf },
+      })
+    );
+    this.searchCache.clear();
+  }
+
+  /**
+   * 이슈 우선순위 변경
+   * PUT /rest/api/3/issue/:issueIdOrKey
+   */
+  async updateIssuePriority(issueIdOrKey: string, priorityName: string): Promise<void> {
+    await withRetry429(() =>
+      this.client.put(`/issue/${issueIdOrKey}`, {
+        fields: { priority: { name: priorityName } },
+      })
+    );
+    this.searchCache.clear();
+  }
+
+  /**
    * 이슈 담당자 지정
    * PUT /rest/api/3/issue/:issueIdOrKey/assignee
    */

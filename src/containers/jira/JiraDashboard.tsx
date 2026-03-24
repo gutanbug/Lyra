@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useHistory } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
@@ -6,11 +6,13 @@ import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
 import { useAssigneeDropdown } from 'lib/hooks/useAssigneeDropdown';
+import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import { useJiraSearch } from 'lib/hooks/useJiraSearch';
 import { groupByEpic } from 'lib/utils/jiraNormalizers';
 import { saveSelectedProjects } from 'lib/utils/storageHelpers';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
+import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
 import JiraSearchToolbar from 'components/jira/JiraSearchToolbar';
 import JiraStatusSummary from 'components/jira/JiraStatusSummary';
 import JiraIssueList from 'components/jira/JiraIssueList';
@@ -75,6 +77,13 @@ const JiraDashboard = () => {
     onAssigned: handleAssigned,
   });
 
+  // 우선순위 드롭다운 (공통 훅)
+  const { priorityTarget, openPriorityDropdown, handlePriorityChange, closePriorityDropdown } = usePriorityDropdown({
+    accountId: activeAccount?.id,
+    serviceType: 'jira',
+    onPriorityChanged: () => search.fetchMyIssues(),
+  });
+
   if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
     return (
       <Layout>
@@ -89,7 +98,7 @@ const JiraDashboard = () => {
 
   const isSearchMode = searchResults !== null;
   const displayIssues = isSearchMode ? searchResults : myIssues;
-  const epicGroups = groupByEpic(displayIssues);
+  const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
 
   return (
@@ -145,6 +154,7 @@ const JiraDashboard = () => {
         onSetDefaultExpandedChildren={setDefaultExpandedChildren}
         onOpenTransitionDropdown={openTransitionDropdown}
         onOpenAssigneeDropdown={openAssigneeDropdown}
+        onOpenPriorityDropdown={openPriorityDropdown}
         onItemContextMenu={handleItemContextMenu}
       />
 
@@ -271,6 +281,14 @@ const JiraDashboard = () => {
           onSearch={searchAssignee}
           onSelect={executeAssign}
           onClose={closeAssignee}
+        />
+      )}
+      {priorityTarget && (
+        <JiraPriorityDropdown
+          target={priorityTarget}
+          currentPriority={priorityTarget.currentPriority}
+          onSelect={handlePriorityChange}
+          onClose={closePriorityDropdown}
         />
       )}
       {/* 아이템 우클릭 메뉴 */}

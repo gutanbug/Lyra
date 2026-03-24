@@ -404,5 +404,6 @@ export function useConfluencePageDetail(pageId: string) {
     lightboxSrc,
     setLightboxSrc,
     linkMetaMap,
+    setPage,
   };
 }

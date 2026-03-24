@@ -2,8 +2,9 @@ import React from 'react';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
-import { getStatusColor, getPriorityColor, formatDate } from 'lib/utils/jiraUtils';
+import { getStatusColor, formatDate } from 'lib/utils/jiraUtils';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
+import JiraPriorityIcon from 'components/jira/JiraPriorityIcon';
 import { StatusBadgeBtn, ChevronIcon } from 'components/jira/jiraIssueStyles';
 import { ExternalLink } from 'lucide-react';
 import type { NormalizedDetail } from 'types/jira';
@@ -15,6 +16,7 @@ interface JiraIssueHeaderProps {
   activeAccount: { credentials: unknown };
   onOpenTransition: (issueKey: string, statusName: string, e: React.MouseEvent) => void;
   onOpenAssignee: (issueKey: string, e: React.MouseEvent) => void;
+  onOpenPriority?: (issueKey: string, priorityName: string, e: React.MouseEvent) => void;
 }
 
 const JiraIssueHeader = ({
@@ -23,6 +25,7 @@ const JiraIssueHeader = ({
   activeAccount,
   onOpenTransition,
   onOpenAssignee,
+  onOpenPriority,
 }: JiraIssueHeaderProps) => {
   return (
     <HeaderCard>
@@ -61,9 +64,9 @@ const JiraIssueHeader = ({
           </StatusBadgeBtn>
         )}
         {issue.priorityName && (
-          <Badge $color={getPriorityColor(issue.priorityName)}>
-            {issue.priorityName}
-          </Badge>
+          <PriorityBadgeBtn onClick={(e) => onOpenPriority?.(issue.key, issue.priorityName, e)} title={issue.priorityName}>
+            <JiraPriorityIcon priority={issue.priorityName} size={18} />
+          </PriorityBadgeBtn>
         )}
       </Badges>
       <Title>{issue.summary || '(제목 없음)'}</Title>
@@ -164,14 +167,24 @@ const Badges = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Badge = styled.span<{ $color?: string }>`
-  display: inline-block;
+const PriorityBadgeBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   padding: 0.3rem 0.625rem;
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 500;
   border-radius: 3px;
-  background: ${({ $color }) => $color || jiraTheme.status.default};
-  color: white;
+  border: 1px solid ${jiraTheme.border};
+  background: ${jiraTheme.bg.subtle};
+  color: ${jiraTheme.text.primary};
+  cursor: pointer;
+  transition: all 0.15s ${transition};
+
+  &:hover {
+    background: ${jiraTheme.bg.hover};
+    border-color: ${jiraTheme.text.muted};
+  }
 `;
 
 const MetaGrid = styled.div`

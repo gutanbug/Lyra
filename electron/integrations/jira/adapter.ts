@@ -18,6 +18,8 @@ interface InvokeParams {
   body?: unknown;
   query?: string;
   assigneeAccountId?: string | null;
+  description?: unknown;
+  priorityName?: string;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -74,6 +76,8 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
       searchAssignableUsers: (params: unknown) => this.searchAssignableUsers(params),
       assignIssue: (params: unknown) => this.assignIssue(params),
+      updateIssueDescription: (params: unknown) => this.updateIssueDescription(params),
+      updateIssuePriority: (params: unknown) => this.updateIssuePriority(params),
       addComment: (params: unknown) => this.addComment(params),
       updateComment: (params: unknown) => this.updateComment(params),
       deleteComment: (params: unknown) => this.deleteComment(params),
@@ -166,6 +170,24 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!issueKey) throw new Error('issueKey is required');
     const client = new JiraClient(credentials);
     return client.searchConfluenceByIssue(issueKey);
+  }
+
+  private async updateIssuePriority(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, priorityName } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (!priorityName) throw new Error('priorityName is required');
+    const client = new JiraClient(credentials);
+    await client.updateIssuePriority(issueKey, priorityName);
+    return { success: true };
+  }
+
+  private async updateIssueDescription(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, description } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (description === undefined) throw new Error('description is required');
+    const client = new JiraClient(credentials);
+    await client.updateIssueDescription(issueKey, description);
+    return { success: true };
   }
 
   private async assignIssue(params: unknown): Promise<unknown> {

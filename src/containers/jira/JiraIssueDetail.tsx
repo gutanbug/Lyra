@@ -1,9 +1,15 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
+import {
+  EditorActions, SaveButton, CancelButton, EditIconButton,
+  LightboxOverlay, LightboxImage,
+  PdfOverlay, PdfHeader, PdfTitle, PdfClose, PdfFrame,
+  FileLoadingOverlay, FileLoadingSpinner,
+} from 'lib/styles/commonStyles';
 import { buildCommentThreads } from 'lib/utils/jiraNormalizers';
 import { normalizeComments, prependMentionToAdf } from 'lib/utils/jiraNormalizers';
 import { extractInlineCardUrls } from 'lib/utils/adfUtils';
@@ -12,12 +18,17 @@ import { useAssigneeDropdown } from 'lib/hooks/useAssigneeDropdown';
 import { useRichContentLinkHandler, useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import { useJiraComments } from 'lib/hooks/useJiraComments';
 import { useJiraIssueDetail } from 'lib/hooks/useJiraIssueDetail';
+import { useFilePreview } from 'lib/hooks/useFilePreview';
+import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
 import AdfRenderer from 'components/common/AdfRenderer';
-import type { FileMeta } from 'components/common/AdfRenderer';
+import AdfBodyEditor from 'components/common/AdfBodyEditor';
+import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
+import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
 import { integrationController } from 'controllers/account';
+import { Edit2 } from 'lucide-react';
 import JiraIssueHeader from 'components/jira/JiraIssueHeader';
 import JiraIssueComments from 'components/jira/JiraIssueComments';
 import JiraChildIssues from 'components/jira/JiraChildIssues';
@@ -89,6 +100,8 @@ const JiraIssueDetail = () => {
     goToBreadcrumb,
     goBack,
     toggleConfluencePage,
+    updateDescriptionAdf,
+    updatePriority,
   } = useJiraIssueDetail({
     issueKey,
     activeAccount,
@@ -112,51 +125,43 @@ const JiraIssueDetail = () => {
     onAssigned: handleAssigned,
   });
 
-  // 파일 미리보기 상태
-  const [previewFile, setPreviewFile] = useState<{ dataUrl: string; filename: string } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // 파일 미리보기 (공통 훅)
+  const { previewFile, previewLoading, handleFileClick, closePreview } = useFilePreview({
+    accountId: activeAccount?.id,
+    serviceType: 'jira',
+  });
 
-  useEffect(() => {
-    if (!previewFile) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPreviewFile(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [previewFile]);
+  // 설명 편집 상태
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const [isSavingDesc, setIsSavingDesc] = useState(false);
+  const descEditorRef = useRef<AdfBodyEditorHandle>(null);
 
-  const handleFileClick = useCallback((fileMeta: FileMeta) => {
-    if (!activeAccount) return;
-    const isPdf = fileMeta.mediaType === 'application/pdf' || fileMeta.filename.toLowerCase().endsWith('.pdf');
-    if (isPdf) {
-      setPreviewLoading(true);
-      integrationController.invoke({
+  const handleSaveDescription = useCallback(async () => {
+    const adf = await descEditorRef.current?.getValue();
+    if (!adf || !activeAccount || !issueKey) return;
+    setIsSavingDesc(true);
+    try {
+      await integrationController.invoke({
         accountId: activeAccount.id,
         serviceType: 'jira',
-        action: 'getAttachmentContent',
-        params: { contentUrl: fileMeta.downloadUrl },
-      }).then((dataUrl) => {
-        if (typeof dataUrl === 'string') {
-          setPreviewFile({ dataUrl, filename: fileMeta.filename });
-        }
-      }).catch(() => { /* ignore */ })
-        .finally(() => setPreviewLoading(false));
-    } else {
-      integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'getAttachmentContent',
-        params: { contentUrl: fileMeta.downloadUrl },
-      }).then((dataUrl) => {
-        if (typeof dataUrl === 'string') {
-          const link = document.createElement('a');
-          link.href = dataUrl;
-          link.download = fileMeta.filename;
-          link.click();
-        }
-      }).catch(() => { /* ignore */ });
+        action: 'updateIssueDescription',
+        params: { issueKey, description: adf },
+      });
+      updateDescriptionAdf(adf);
+      setIsEditingDesc(false);
+    } catch (err) {
+      console.error('[JiraIssueDetail] save description error:', err);
+    } finally {
+      setIsSavingDesc(false);
     }
-  }, [activeAccount]);
+  }, [activeAccount, issueKey, updateDescriptionAdf]);
+
+  // 우선순위 드롭다운 (공통 훅)
+  const { priorityTarget, openPriorityDropdown, handlePriorityChange, closePriorityDropdown } = usePriorityDropdown({
+    accountId: activeAccount?.id,
+    serviceType: 'jira',
+    onPriorityChanged: (_key, name) => updatePriority(name),
+  });
 
   if (!activeAccount) {
     return (
@@ -227,13 +232,39 @@ const JiraIssueDetail = () => {
           activeAccount={activeAccount}
           onOpenTransition={openTransitionDropdown}
           onOpenAssignee={openAssigneeDropdown}
+          onOpenPriority={openPriorityDropdown}
         />
 
         {/* 설명 */}
-        {issue.descriptionAdf && (
+        {(issue.descriptionAdf || isEditingDesc) && (
           <Section>
-            <SectionTitle>설명</SectionTitle>
-            <AdfRenderer document={issue.descriptionAdf} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onFileClick={handleFileClick} />
+            <SectionHeader>
+              <SectionTitle>설명</SectionTitle>
+              {!isEditingDesc && (
+                <EditIconButton $theme={jiraTheme} onClick={() => setIsEditingDesc(true)} title="설명 편집">
+                  <Edit2 size={14} />
+                </EditIconButton>
+              )}
+            </SectionHeader>
+            {isEditingDesc ? (
+              <>
+                <AdfBodyEditor
+                  ref={descEditorRef}
+                  defaultValue={issue.descriptionAdf}
+                  accountId={activeAccount.id}
+                  issueKey={issueKey}
+                  onSave={handleSaveDescription}
+                />
+                <EditorActions>
+                  <CancelButton $theme={jiraTheme} onClick={() => setIsEditingDesc(false)} disabled={isSavingDesc}>취소</CancelButton>
+                  <SaveButton $theme={jiraTheme} onClick={handleSaveDescription} disabled={isSavingDesc}>
+                    {isSavingDesc ? '저장 중...' : '저장'}
+                  </SaveButton>
+                </EditorActions>
+              </>
+            ) : (
+              <AdfRenderer document={issue.descriptionAdf} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onFileClick={handleFileClick} />
+            )}
           </Section>
         )}
 
@@ -279,6 +310,7 @@ const JiraIssueDetail = () => {
           myDisplayName={myDisplayName}
           onOpenTransition={openTransitionDropdown}
           onOpenAssignee={openAssigneeDropdown}
+          onOpenPriority={openPriorityDropdown}
         />
 
         {/* 댓글 */}
@@ -361,12 +393,21 @@ const JiraIssueDetail = () => {
         />
       )}
 
+      {priorityTarget && issue && (
+        <JiraPriorityDropdown
+          target={priorityTarget}
+          currentPriority={issue.priorityName}
+          onSelect={handlePriorityChange}
+          onClose={closePriorityDropdown}
+        />
+      )}
+
       {/* PDF 미리보기 */}
       {previewFile && (
-        <PdfOverlay onClick={() => setPreviewFile(null)}>
+        <PdfOverlay onClick={closePreview}>
           <PdfHeader>
             <PdfTitle>{previewFile.filename}</PdfTitle>
-            <PdfClose onClick={() => setPreviewFile(null)}>&times;</PdfClose>
+            <PdfClose onClick={closePreview}>&times;</PdfClose>
           </PdfHeader>
           <PdfFrame
             src={previewFile.dataUrl}
@@ -501,10 +542,17 @@ const Section = styled.div`
 `;
 
 const SectionTitle = styled.h2`
-  margin: 0 0 1rem 0;
+  margin: 0;
   font-size: 1rem;
   font-weight: 600;
   color: ${jiraTheme.text.primary};
+`;
+
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
 `;
 
 const Loading = styled.div`
@@ -566,107 +614,3 @@ const AttachmentFilename = styled.span`
   white-space: nowrap;
 `;
 
-const LightboxOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.7);
-  cursor: pointer;
-`;
-
-const LightboxImage = styled.img`
-  max-width: 90vw;
-  max-height: 90vh;
-  object-fit: contain;
-  border-radius: 4px;
-  cursor: default;
-`;
-
-const pdfFadeIn = keyframes`
-  from { opacity: 0; }
-  to { opacity: 1; }
-`;
-
-const PdfOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(4px);
-  animation: ${pdfFadeIn} 0.2s ease;
-`;
-
-const PdfHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: rgba(0, 0, 0, 0.4);
-  flex-shrink: 0;
-`;
-
-const PdfTitle = styled.span`
-  color: white;
-  font-size: 0.875rem;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const PdfClose = styled.button`
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 50%;
-  color: white;
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-`;
-
-const PdfFrame = styled.iframe`
-  flex: 1;
-  border: none;
-  background: white;
-  margin: 0 2rem 2rem;
-  border-radius: 6px;
-`;
-
-const spinKeyframe = keyframes`
-  to { transform: rotate(360deg); }
-`;
-
-const FileLoadingOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-`;
-
-const FileLoadingSpinner = styled.div`
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: ${spinKeyframe} 0.7s linear infinite;
-`;

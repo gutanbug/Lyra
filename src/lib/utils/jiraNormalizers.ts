@@ -236,6 +236,7 @@ export function parseChildIssues(result: unknown): ChildIssue[] {
         statusName: str(statusObj?.name),
         statusCategory: str(statusObj?.category) || str(statusCatObj?.name) || str(statusCatObj?.key) || str(statusCatObj?.colorName),
         assigneeName: str(assigneeObj?.displayName) || str(assigneeObj?.display_name) || str(assigneeObj?.name),
+        assigneeAvatarUrl: (() => { const av = obj(assigneeObj?.avatarUrls); return str(av?.['48x48']) || str(av?.['32x32']) || str(av?.['24x24']) || str(assigneeObj?.avatarUrl) || ''; })(),
         issueTypeName: str(issueTypeObj?.name),
         priorityName: str(priorityObj?.name),
       };
@@ -319,16 +320,31 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
   const NO_EPIC = '__no_epic__';
 
   const epicKeys = new Set<string>();
+  const issueByKey = new Map<string, NormalizedIssue>();
   for (const issue of issues) {
+    issueByKey.set(issue.key, issue);
     if (isEpicType(issue.issueTypeName)) {
       epicKeys.add(issue.key);
     }
   }
 
+  // 부모 체인을 따라 에픽 조상을 찾는 함수
+  const findEpicAncestor = (issue: NormalizedIssue): string | null => {
+    const visited = new Set<string>();
+    let current: NormalizedIssue | undefined = issue;
+    while (current && current.parentKey) {
+      if (visited.has(current.parentKey)) break; // 순환 방지
+      visited.add(current.parentKey);
+      if (epicKeys.has(current.parentKey)) return current.parentKey;
+      current = issueByKey.get(current.parentKey);
+    }
+    return null;
+  };
+
   for (const issue of issues) {
     if (isEpicType(issue.issueTypeName)) {
       if (!epicMap.has(issue.key)) {
-        epicMap.set(issue.key, { key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName, statusName: issue.statusName, statusCategory: issue.statusCategory, assigneeName: issue.assigneeName, children: [] });
+        epicMap.set(issue.key, { key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName, statusName: issue.statusName, statusCategory: issue.statusCategory, assigneeName: issue.assigneeName, priorityName: issue.priorityName, children: [] });
       } else {
         const g = epicMap.get(issue.key)!;
         g.summary = issue.summary;
@@ -336,19 +352,23 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
         g.statusName = issue.statusName;
         g.statusCategory = issue.statusCategory;
         g.assigneeName = issue.assigneeName;
+        g.priorityName = issue.priorityName;
       }
       continue;
     }
 
-    const parentKey = issue.parentKey && epicKeys.has(issue.parentKey) ? issue.parentKey : NO_EPIC;
+    const epicAncestor = findEpicAncestor(issue);
+    const parentKey = epicAncestor || NO_EPIC;
     if (!epicMap.has(parentKey)) {
+      const parentIssue = epicAncestor ? issueByKey.get(epicAncestor) : null;
       epicMap.set(parentKey, {
         key: parentKey,
-        summary: parentKey === NO_EPIC ? '기타' : (issue.parentSummary || parentKey),
+        summary: parentKey === NO_EPIC ? '기타' : (parentIssue?.summary || issue.parentSummary || parentKey),
         issueTypeName: parentKey === NO_EPIC ? '' : 'Epic',
         statusName: '',
         statusCategory: '',
         assigneeName: '',
+        priorityName: '',
         children: [],
       });
     }

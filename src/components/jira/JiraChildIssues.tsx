@@ -4,6 +4,7 @@ import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { getStatusColor } from 'lib/utils/jiraUtils';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
+import JiraPriorityIcon from 'components/jira/JiraPriorityIcon';
 import { StatusBadgeBtn, ChevronIcon } from 'components/jira/jiraIssueStyles';
 import type { ChildIssue } from 'types/jira';
 
@@ -20,6 +21,7 @@ interface JiraChildIssuesProps {
   myDisplayName: string | undefined;
   onOpenTransition: (issueKey: string, statusName: string, e: React.MouseEvent) => void;
   onOpenAssignee: (issueKey: string, e: React.MouseEvent) => void;
+  onOpenPriority: (issueKey: string, priorityName: string, e: React.MouseEvent) => void;
 }
 
 const JiraChildIssues = ({
@@ -31,6 +33,7 @@ const JiraChildIssues = ({
   myDisplayName,
   onOpenTransition,
   onOpenAssignee,
+  onOpenPriority,
 }: JiraChildIssuesProps) => {
   if (childIssues.length === 0 && !childIssuesLoading) return null;
 
@@ -69,7 +72,13 @@ const JiraChildIssues = ({
                 <ChildIssueSummary>{ci.summary || '(제목 없음)'}</ChildIssueSummary>
               </ChildIssueLeft>
               <ChildIssueRight>
-                <ChildAssignee $isMe={ci.assigneeName === myDisplayName} onClick={(e) => { e.stopPropagation(); onOpenAssignee(ci.key, e); }}>{ci.assigneeName || ''}</ChildAssignee>
+                <PriorityBtn onClick={(e) => { e.stopPropagation(); onOpenPriority(ci.key, ci.priorityName, e); }} title={ci.priorityName}>
+                  {ci.priorityName && <JiraPriorityIcon priority={ci.priorityName} size={16} />}
+                </PriorityBtn>
+                <ChildAssignee $isMe={ci.assigneeName === myDisplayName} onClick={(e) => { e.stopPropagation(); onOpenAssignee(ci.key, e); }}>
+                  {ci.assigneeAvatarUrl && <AssigneeAvatar src={ci.assigneeAvatarUrl} alt="" />}
+                  {ci.assigneeName || '미지정'}
+                </ChildAssignee>
                 <StatusBadgeBtn
                   $color={getStatusColor(ci.statusName, ci.statusCategory)}
                   onClick={(e) => { e.stopPropagation(); onOpenTransition(ci.key, ci.statusName, e); }}
@@ -93,7 +102,13 @@ const JiraChildIssues = ({
                       <ChildIssueSummary>{gc.summary || '(제목 없음)'}</ChildIssueSummary>
                     </ChildIssueLeft>
                     <ChildIssueRight>
-                      <ChildAssignee $isMe={gc.assigneeName === myDisplayName} onClick={(e) => { e.stopPropagation(); onOpenAssignee(gc.key, e); }}>{gc.assigneeName || ''}</ChildAssignee>
+                      <PriorityBtn onClick={(e) => { e.stopPropagation(); onOpenPriority(gc.key, gc.priorityName, e); }} title={gc.priorityName}>
+                        {gc.priorityName && <JiraPriorityIcon priority={gc.priorityName} size={16} />}
+                      </PriorityBtn>
+                      <ChildAssignee $isMe={gc.assigneeName === myDisplayName} onClick={(e) => { e.stopPropagation(); onOpenAssignee(gc.key, e); }}>
+                        {gc.assigneeAvatarUrl && <AssigneeAvatar src={gc.assigneeAvatarUrl} alt="" />}
+                        {gc.assigneeName || '미지정'}
+                      </ChildAssignee>
                       <StatusBadgeBtn
                         $color={getStatusColor(gc.statusName, gc.statusCategory)}
                         onClick={(e) => { e.stopPropagation(); onOpenTransition(gc.key, gc.statusName, e); }}
@@ -113,7 +128,7 @@ const JiraChildIssues = ({
   );
 };
 
-export default JiraChildIssues;
+export default React.memo(JiraChildIssues);
 
 const Section = styled.div`
   padding: 1.5rem;
@@ -181,25 +196,35 @@ const ChildIssueSummary = styled.span`
 
 const ChildIssueRight = styled.div`
   display: grid;
-  grid-template-columns: 5rem 6rem;
+  grid-template-columns: 24px 7rem minmax(80px, 140px);
   align-items: center;
-  gap: 1.5rem;
+  gap: 0.75rem;
   flex-shrink: 0;
   justify-items: start;
+`;
 
-  & > :first-child {
-    justify-self: end;
-  }
+const PriorityBtn = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0.125rem;
+
+  &:hover { background: ${jiraTheme.bg.hover}; }
 `;
 
 const ChildAssignee = styled.span<{ $isMe?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.75rem;
   color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : '#6b778c')};
   font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: right;
+  justify-content: flex-end;
   cursor: pointer;
   border-radius: 3px;
   padding: 0.125rem 0.25rem;
@@ -207,6 +232,13 @@ const ChildAssignee = styled.span<{ $isMe?: boolean }>`
   &:hover {
     background: ${jiraTheme.bg.hover};
   }
+`;
+
+const AssigneeAvatar = styled.img`
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
 `;
 
 const GrandchildToggle = styled.span<{ $visible?: boolean }>`

@@ -4,6 +4,7 @@ import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { getStatusColor } from 'lib/utils/jiraUtils';
 import JiraTaskIcon, { resolveTaskType, TASK_TYPE_LABELS, TASK_TYPE_COLORS } from 'components/jira/JiraTaskIcon';
+import JiraPriorityIcon from 'components/jira/JiraPriorityIcon';
 import { Loader } from 'lucide-react';
 import type { NormalizedIssue, EpicGroup } from 'types/jira';
 
@@ -33,6 +34,7 @@ interface JiraIssueListProps {
   onSetDefaultExpandedChildren: React.Dispatch<React.SetStateAction<Set<string>>>;
   onOpenTransitionDropdown: (issueKey: string, statusName: string, e: React.MouseEvent) => void;
   onOpenAssigneeDropdown: (issueKey: string, e: React.MouseEvent) => void;
+  onOpenPriorityDropdown: (issueKey: string, priorityName: string, e: React.MouseEvent) => void;
   onItemContextMenu: (e: React.MouseEvent, path: string, label: string) => void;
 }
 
@@ -62,6 +64,7 @@ const JiraIssueList = ({
   onSetDefaultExpandedChildren,
   onOpenTransitionDropdown,
   onOpenAssigneeDropdown,
+  onOpenPriorityDropdown,
   onItemContextMenu,
 }: JiraIssueListProps) => {
 
@@ -106,6 +109,12 @@ const JiraIssueList = ({
             </IssueKey>
           </IssueKeyCell>
           <IssueSummary>{issue.summary || '(제목 없음)'}</IssueSummary>
+          <PriorityCell title={issue.priorityName || ''} onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(issue.key, issue.priorityName, e); }}>
+            {issue.priorityName && <JiraPriorityIcon priority={issue.priorityName} size={16} />}
+          </PriorityCell>
+          <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
+            {issue.assigneeName || '미지정'}
+          </AssigneeText>
           <StatusBadgeBtn
             $color={getStatusColor(issue.statusName, issue.statusCategory)}
             onClick={(e) => { e.stopPropagation(); onOpenTransitionDropdown(issue.key, issue.statusName, e); }}
@@ -113,9 +122,6 @@ const JiraIssueList = ({
             {issue.statusName || '-'}
             <ChevronIcon>{'\u25BE'}</ChevronIcon>
           </StatusBadgeBtn>
-          <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
-            {issue.assigneeName || '미지정'}
-          </AssigneeText>
         </IssueRow>,
       );
 
@@ -175,6 +181,12 @@ const JiraIssueList = ({
             </IssueKey>
           </IssueKeyCell>
           <IssueSummary>{issue.summary || '(제목 없음)'}</IssueSummary>
+          <PriorityCell title={issue.priorityName || ''} onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(issue.key, issue.priorityName, e); }}>
+            {issue.priorityName && <JiraPriorityIcon priority={issue.priorityName} size={16} />}
+          </PriorityCell>
+          <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
+            {issue.assigneeName || '미지정'}
+          </AssigneeText>
           <StatusBadgeBtn
             $color={getStatusColor(issue.statusName, issue.statusCategory)}
             onClick={(e) => { e.stopPropagation(); onOpenTransitionDropdown(issue.key, issue.statusName, e); }}
@@ -182,9 +194,6 @@ const JiraIssueList = ({
             {issue.statusName || '-'}
             <ChevronIcon>{'\u25BE'}</ChevronIcon>
           </StatusBadgeBtn>
-          <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
-            {issue.assigneeName || '미지정'}
-          </AssigneeText>
         </IssueRow>,
       );
 
@@ -250,6 +259,12 @@ const JiraIssueList = ({
                         </EpicKey>
                         <EpicSummary>{epic.summary}</EpicSummary>
                       </EpicHeaderLeft>
+                      <EpicPriority onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(epic.key, epic.priorityName, e); }} title={epic.priorityName || ''}>
+                        {epic.priorityName && <JiraPriorityIcon priority={epic.priorityName} size={16} />}
+                      </EpicPriority>
+                      <EpicAssignee $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(epic.key, e); }}>
+                        {epic.assigneeName || '미지정'}
+                      </EpicAssignee>
                       {epic.statusName ? (
                         <StatusBadgeBtn
                           $color={getStatusColor(epic.statusName, epic.statusCategory)}
@@ -259,9 +274,6 @@ const JiraIssueList = ({
                           <ChevronIcon>{'\u25BE'}</ChevronIcon>
                         </StatusBadgeBtn>
                       ) : <span />}
-                      <EpicAssignee $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(epic.key, e); }}>
-                        {epic.assigneeName || '미지정'}
-                      </EpicAssignee>
                       <EpicCount>{epicChildren.length}</EpicCount>
                     </EpicHeader>
 
@@ -271,8 +283,9 @@ const JiraIssueList = ({
                           <TableHeader>
                             <span>키</span>
                             <span>요약</span>
-                            <span>상태</span>
+                            <span>P</span>
                             <span>담당자</span>
+                            <span>상태</span>
                           </TableHeader>
                         )}
                         {epicChildren.map((issue) => {
@@ -310,6 +323,12 @@ const JiraIssueList = ({
                                   </IssueKey>
                                 </IssueKeyCell>
                                 <IssueSummary>{issue.summary || '(제목 없음)'}</IssueSummary>
+                                <PriorityCell title={issue.priorityName || ''} onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(issue.key, issue.priorityName, e); }}>
+                                  {issue.priorityName && <JiraPriorityIcon priority={issue.priorityName} size={16} />}
+                                </PriorityCell>
+                                <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
+                                  {issue.assigneeName || '미지정'}
+                                </AssigneeText>
                                 <StatusBadgeBtn
                                   $color={getStatusColor(issue.statusName, issue.statusCategory)}
                                   onClick={(e) => { e.stopPropagation(); onOpenTransitionDropdown(issue.key, issue.statusName, e); }}
@@ -317,9 +336,6 @@ const JiraIssueList = ({
                                   {issue.statusName || '-'}
                                   <ChevronIcon>{'\u25BE'}</ChevronIcon>
                                 </StatusBadgeBtn>
-                                <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
-                                  {issue.assigneeName || '미지정'}
-                                </AssigneeText>
                               </IssueRow>
                               {isChildExpanded && renderBrowseChildren(issue.key, 1)}
                             </React.Fragment>
@@ -386,6 +402,14 @@ const JiraIssueList = ({
                         )}
                         <EpicSummary>{group.summary}</EpicSummary>
                       </EpicHeaderLeft>
+                      {group.key !== '__no_epic__' ? (
+                        <EpicPriority onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(group.key, group.priorityName, e); }} title={group.priorityName || ''}>
+                          {group.priorityName && <JiraPriorityIcon priority={group.priorityName} size={16} />}
+                        </EpicPriority>
+                      ) : <span />}
+                      <EpicAssignee $clickable={group.key !== '__no_epic__'} onClick={(e) => { if (group.key !== '__no_epic__') { e.stopPropagation(); onOpenAssigneeDropdown(group.key, e); } }}>
+                        {group.key !== '__no_epic__' ? (group.assigneeName || '미지정') : ''}
+                      </EpicAssignee>
                       {group.key !== '__no_epic__' && group.statusName ? (
                         <StatusBadgeBtn
                           $color={getStatusColor(group.statusName, group.statusCategory)}
@@ -395,9 +419,6 @@ const JiraIssueList = ({
                           <ChevronIcon>{'\u25BE'}</ChevronIcon>
                         </StatusBadgeBtn>
                       ) : <span />}
-                      <EpicAssignee $clickable={group.key !== '__no_epic__'} onClick={(e) => { if (group.key !== '__no_epic__') { e.stopPropagation(); onOpenAssigneeDropdown(group.key, e); } }}>
-                        {group.key !== '__no_epic__' ? (group.assigneeName || '미지정') : ''}
-                      </EpicAssignee>
                       <EpicCount>{group.children.length}</EpicCount>
                     </EpicHeader>
 
@@ -406,8 +427,9 @@ const JiraIssueList = ({
                         <TableHeader>
                           <span>키</span>
                           <span>요약</span>
-                          <span>상태</span>
+                          <span>P</span>
                           <span>담당자</span>
+                          <span>상태</span>
                         </TableHeader>
                         {group.children.map((issue) => {
                           const childChildren = defaultChildrenMap[issue.key] || [];
@@ -449,6 +471,12 @@ const JiraIssueList = ({
                                   </IssueKey>
                                 </IssueKeyCell>
                                 <IssueSummary>{issue.summary || '(제목 없음)'}</IssueSummary>
+                                <PriorityCell title={issue.priorityName || ''} onClick={(e) => { e.stopPropagation(); onOpenPriorityDropdown(issue.key, issue.priorityName, e); }}>
+                                  {issue.priorityName && <JiraPriorityIcon priority={issue.priorityName} size={16} />}
+                                </PriorityCell>
+                                <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
+                                  {issue.assigneeName || '미지정'}
+                                </AssigneeText>
                                 <StatusBadgeBtn
                                   $color={getStatusColor(issue.statusName, issue.statusCategory)}
                                   onClick={(e) => { e.stopPropagation(); onOpenTransitionDropdown(issue.key, issue.statusName, e); }}
@@ -456,9 +484,6 @@ const JiraIssueList = ({
                                   {issue.statusName || '-'}
                                   <ChevronIcon>{'\u25BE'}</ChevronIcon>
                                 </StatusBadgeBtn>
-                                <AssigneeText $isMe={issue.assigneeName === myDisplayName} $clickable onClick={(e) => { e.stopPropagation(); onOpenAssigneeDropdown(issue.key, e); }}>
-                                  {issue.assigneeName || '미지정'}
-                                </AssigneeText>
                               </IssueRow>
                               {isChildExpanded && renderDefaultChildren(issue.key, 1)}
                             </React.Fragment>
@@ -574,10 +599,10 @@ const EpicCard = styled.div`
 
 const EpicHeader = styled.div`
   display: grid;
-  grid-template-columns: 1fr minmax(70px, 110px) minmax(70px, 110px) auto;
+  grid-template-columns: 1fr 24px 5rem minmax(80px, 140px) auto;
   gap: 0.75rem;
   align-items: center;
-  padding: 0.625rem 1rem;
+  padding: 0.625rem 1rem 0.625rem 2.25rem;
   background: #F8F9FB;
   cursor: pointer;
   user-select: none;
@@ -589,7 +614,7 @@ const EpicHeader = styled.div`
 
   @media (max-width: 900px) {
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.5rem 0.75rem 0.5rem 1.25rem;
   }
 `;
 
@@ -627,16 +652,42 @@ const EpicSummary = styled.span`
   flex: 1;
 `;
 
+const EpicPriority = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    background: #fff;
+    box-shadow: 0 0 0 1px ${jiraTheme.border};
+  }
+`;
+
 const EpicAssignee = styled.span<{ $clickable?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
   font-size: 0.75rem;
+  line-height: 1;
   color: ${jiraTheme.text.secondary};
   white-space: nowrap;
   cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
-  border-radius: 3px;
-  padding: 0.125rem 0.25rem;
+  border-radius: 4px;
+  padding: 0 0.375rem;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 
   &:hover {
-    ${({ $clickable }) => $clickable && `background: ${jiraTheme.bg.hover};`}
+    ${({ $clickable }) => $clickable && `
+      background: #fff;
+      color: ${jiraTheme.text.primary};
+      box-shadow: 0 0 0 1px ${jiraTheme.border};
+    `}
   }
 `;
 
@@ -652,9 +703,11 @@ const EpicCount = styled.span`
 
 const IssueTable = styled.div``;
 
+const GRID_COLS = 'minmax(140px, 220px) 1fr 24px 5rem minmax(80px, 140px)';
+
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: minmax(140px, 220px) 1fr minmax(70px, 110px) minmax(70px, 110px);
+  grid-template-columns: ${GRID_COLS};
   gap: 0.75rem;
   padding: 0.4rem 1rem 0.4rem 2.25rem;
   background: #ECEEF2;
@@ -664,10 +717,11 @@ const TableHeader = styled.div`
   color: ${jiraTheme.text.muted};
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  text-align: center;
+  text-align: left;
+  white-space: nowrap;
 
   @media (max-width: 900px) {
-    grid-template-columns: minmax(80px, 120px) 1fr minmax(60px, 90px);
+    grid-template-columns: minmax(80px, 120px) 1fr 24px minmax(70px, 120px);
     gap: 0.5rem;
     padding-left: 1.25rem;
 
@@ -680,13 +734,14 @@ const TableHeader = styled.div`
     padding-left: 1rem;
 
     span:nth-child(3),
-    span:nth-child(4) { display: none; }
+    span:nth-child(4),
+    span:nth-child(5) { display: none; }
   }
 `;
 
 const IssueRow = styled.div`
   display: grid;
-  grid-template-columns: minmax(140px, 220px) 1fr minmax(70px, 110px) minmax(70px, 110px);
+  grid-template-columns: ${GRID_COLS};
   gap: 0.75rem;
   padding: 0.5rem 1rem 0.5rem 2.25rem;
   background: ${jiraTheme.bg.default};
@@ -699,7 +754,7 @@ const IssueRow = styled.div`
   &:hover { background: #F5F7FA; }
 
   @media (max-width: 900px) {
-    grid-template-columns: minmax(80px, 120px) 1fr minmax(60px, 90px);
+    grid-template-columns: minmax(80px, 120px) 1fr 24px minmax(70px, 120px);
     gap: 0.5rem;
     padding-left: 1.25rem;
   }
@@ -744,6 +799,17 @@ const IssueSummary = styled.span`
   white-space: nowrap;
 `;
 
+const PriorityCell = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0.125rem;
+
+  &:hover { background: ${jiraTheme.bg.hover}; }
+`;
+
 const StatusBadgeBtn = styled.button<{ $color?: string }>`
   display: inline-flex;
   align-items: center;
@@ -758,7 +824,8 @@ const StatusBadgeBtn = styled.button<{ $color?: string }>`
   letter-spacing: 0.01em;
   border: none;
   cursor: pointer;
-  justify-self: center;
+  justify-self: start;
+  white-space: nowrap;
   transition: filter 0.15s;
 
   &:hover { filter: brightness(0.9); }

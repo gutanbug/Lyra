@@ -38,6 +38,7 @@ export interface EpicGroup {
   statusName: string;
   statusCategory: string;
   assigneeName: string;
+  priorityName: string;
   children: NormalizedIssue[];
 }
 
@@ -94,6 +95,7 @@ export interface ChildIssue {
   statusName: string;
   statusCategory: string;
   assigneeName: string;
+  assigneeAvatarUrl: string;
   issueTypeName: string;
   priorityName: string;
 }

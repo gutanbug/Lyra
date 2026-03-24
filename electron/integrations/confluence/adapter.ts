@@ -15,6 +15,9 @@ interface InvokeParams {
   searchField?: 'all' | 'title' | 'body' | 'title_body';
   tinyKey?: string;
   tinyKeys?: string[];
+  title?: string;
+  body?: unknown;
+  version?: number;
 }
 
 export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -60,6 +63,7 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
       resolveTinyLink: (params: unknown) => this.resolveTinyLink(params),
       resolveTinyLinks: (params: unknown) => this.resolveTinyLinks(params),
+      updatePageBody: (params: unknown) => this.updatePageBody(params),
     };
   }
 
@@ -151,5 +155,15 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!tinyKeys || tinyKeys.length === 0) return {};
     const client = new ConfluenceClient(credentials);
     return client.resolveTinyLinks(tinyKeys);
+  }
+
+  private async updatePageBody(params?: unknown): Promise<unknown> {
+    const { credentials, pageId, title, body, version } = (params || {}) as InvokeParams;
+    if (!pageId) throw new Error('pageId is required');
+    if (!title) throw new Error('title is required');
+    if (body === undefined) throw new Error('body is required');
+    if (version == null) throw new Error('version is required');
+    const client = new ConfluenceClient(credentials);
+    return client.updatePageBody(pageId, title, body, version);
   }
 }

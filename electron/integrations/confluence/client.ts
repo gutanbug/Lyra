@@ -279,16 +279,21 @@ export class ConfluenceClient {
     throw new Error(`Failed to download attachment: ${downloadUrl}`);
   }
 
-  /** v1 child/page 페이지네이션 헬퍼 */
+  /** v1 API 기반 자식 페이지 조회 (children.page expand로 hasChildren도 함께 확인) */
   private async fetchChildPages(parentId: string, spaceKey?: string): Promise<Record<string, unknown>[]> {
     const allResults: Record<string, unknown>[] = [];
-    let start = 0;
+    let startAt = 0;
+    const pageSize = 250;
 
     do {
+      const params: Record<string, unknown> = {
+        limit: pageSize,
+        start: startAt,
+        expand: 'children.page',
+      };
+
       const { data } = await withRetry429(() =>
-        this.v1.get(`/content/${parentId}/child/page`, {
-          params: { limit: 100, start, expand: 'children.page' },
-        })
+        this.v1.get(`/content/${parentId}/child/page`, { params })
       );
 
       const d = data as Record<string, unknown>;
@@ -296,26 +301,91 @@ export class ConfluenceClient {
       if (!Array.isArray(results) || results.length === 0) break;
 
       for (const page of results) {
-        const children = (page.children as Record<string, unknown>)?.page as Record<string, unknown> | undefined;
-        const childSize = (children?.size as number) ?? 0;
+        const p = page as Record<string, unknown>;
+        // children.page.size > 0 이면 하위 페이지가 있음
+        const childrenObj = (p.children ?? {}) as Record<string, unknown>;
+        const childPage = (childrenObj.page ?? {}) as Record<string, unknown>;
+        const childSize = Number(childPage.size ?? 0);
+
         allResults.push({
-          id: String(page.id),
-          title: page.title,
+          id: String(p.id),
+          title: String(p.title || ''),
           parentId,
           spaceKey,
           hasChildren: childSize > 0,
         });
       }
 
-      start += results.length;
-      const size = d.size as number | undefined;
-      if (size != null && size < 100) break;
+      const size = Number(d.size ?? results.length);
+      if (size < pageSize) break;
+      startAt += size;
     } while (true);
 
     return allResults;
   }
 
-  /** 스페이스의 루트(최상위) 페이지 조회 — v1 API */
+  /** v2 cursor pagination 헬퍼 */
+  private extractV2Cursor(data: Record<string, unknown>): string | undefined {
+    const links = data._links as Record<string, string> | undefined;
+    const next = links?.next;
+    if (!next) return undefined;
+    const match = next.match(/[?&]cursor=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : undefined;
+  }
+
+  /**
+   * v2 GET /{type}/{id}/direct-children — 폴더/페이지의 직접 자식 조회
+   * Database, Embed, Folder, Page, Whiteboard 모든 타입 반환
+   */
+  private async fetchDirectChildren(
+    parentType: 'pages' | 'folders',
+    parentId: string,
+  ): Promise<Record<string, unknown>[]> {
+    const allResults: Record<string, unknown>[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const params: Record<string, unknown> = { limit: 250 };
+      if (cursor) params.cursor = cursor;
+
+      const { data } = await withRetry429(() =>
+        this.v2.get(`/${parentType}/${parentId}/direct-children`, { params })
+      );
+
+      const d = data as Record<string, unknown>;
+      const results = (d.results ?? []) as Record<string, unknown>[];
+      if (!Array.isArray(results) || results.length === 0) break;
+
+      for (const item of results) {
+        const i = item as Record<string, unknown>;
+        const itemType = String(i.type || '');
+        const title = String(i.title || '').trim();
+        const status = String(i.status || 'current');
+        // page와 folder 타입만 포함 (database, embed, whiteboard 등 제외)
+        if (itemType !== 'page' && itemType !== 'folder') continue;
+        // 제목이 없는 항목 제외
+        if (!title) continue;
+        // current 상태가 아닌 항목 제외 (trashed, draft 등)
+        if (status !== 'current') continue;
+        allResults.push({
+          id: String(i.id),
+          title,
+          parentId,
+          type: itemType === 'folder' ? 'folder' : 'page',
+          hasChildren: itemType === 'folder',
+        });
+      }
+
+      cursor = this.extractV2Cursor(d);
+    } while (cursor);
+
+    return allResults;
+  }
+
+  /**
+   * 스페이스의 루트(최상위) 콘텐츠 조회 (폴더 + 페이지)
+   * v2 GET /pages/{homepageId}/direct-children로 한번에 가져옴
+   */
   async getSpacePages(spaceKey: string): Promise<unknown> {
     // 스페이스 홈페이지 ID 조회
     const { data: spaceData } = await withRetry429(() =>
@@ -330,15 +400,58 @@ export class ConfluenceClient {
       return { results: [] };
     }
 
-    // 홈페이지의 자식 = 스페이스 루트 페이지들
-    const results = await this.fetchChildPages(String(homepage.id), spaceKey);
-    return { results };
+    const homepageId = String(homepage.id);
+
+    // v2 direct-children: 폴더 + 페이지를 한번에 정확한 depth로 반환
+    const rootItems = await this.fetchDirectChildren('pages', homepageId);
+
+    // 페이지의 hasChildren을 v1 API로 보정 + 2단계 preload
+    const enriched = await Promise.all(
+      rootItems.map(async (item) => {
+        if (item.type === 'folder') return item;
+        // 페이지: v1 API로 자식 조회 (hasChildren 정확 + preload)
+        try {
+          const children = await this.fetchChildPages(String(item.id), spaceKey);
+          return {
+            ...item,
+            hasChildren: children.length > 0,
+            preloadedChildren: children.length > 0
+              ? children.map((c) => ({ ...c, type: 'page' }))
+              : undefined,
+          };
+        } catch {
+          return item;
+        }
+      })
+    );
+
+    return { results: enriched };
   }
 
   /** 특정 페이지의 직접 자식 페이지 조회 — v1 API */
   async getChildPages(pageId: string): Promise<unknown> {
     const results = await this.fetchChildPages(pageId);
-    return { results };
+    return { results: results.map((r) => ({ ...r, type: 'page' })) };
+  }
+
+  /** 특정 폴더의 자식(페이지 + 하위 폴더) 조회 — v2 GET /folders/{id}/direct-children */
+  async getFolderChildren(folderId: string): Promise<unknown> {
+    const items = await this.fetchDirectChildren('folders', folderId);
+
+    // 페이지의 hasChildren을 v1 API로 보정
+    const enriched = await Promise.all(
+      items.map(async (item) => {
+        if (item.type === 'folder') return item;
+        try {
+          const children = await this.fetchChildPages(String(item.id));
+          return { ...item, hasChildren: children.length > 0 };
+        } catch {
+          return item;
+        }
+      })
+    );
+
+    return { results: enriched };
   }
 
   /** 페이지 제목만 경량 조회 (본문/ancestors 제외) */

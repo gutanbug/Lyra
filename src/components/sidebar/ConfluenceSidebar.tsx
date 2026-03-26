@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 import { theme } from 'lib/styles/theme';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
-import { ChevronRight, ChevronDown, FolderOpen, FileText, Loader, Search, Settings } from 'lucide-react';
+import { ChevronRight, ChevronDown, FolderOpen, FileText, Loader, Search, Settings, Globe } from 'lucide-react';
 
 interface Space {
   id: string;
@@ -18,17 +18,23 @@ interface PageNode {
   title: string;
   parentId: string | null;
   children: PageNode[];
-  /** 자식 로드 가능 여부 (lazy loading) */
   hasChildren: boolean;
-  /** 자식이 이미 로드되었는지 여부 */
   childrenLoaded: boolean;
+  /** 'page' | 'folder' — 폴더는 v2 folder API로 자식 조회 */
+  nodeType: 'page' | 'folder';
+}
+
+/** 스페이스별 페이지 트리 상태 */
+interface SpaceTree {
+  pages: PageNode[];
+  loading: boolean;
+  loaded: boolean;
 }
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-/** 스페이스 설정 로드 (localStorage / Electron settings) */
 async function loadSelectedSpaces(accountId: string): Promise<string[]> {
   try {
     if ((window as any).workspaceAPI?.settings) {
@@ -46,52 +52,51 @@ async function loadSelectedSpaces(accountId: string): Promise<string[]> {
 const ConfluenceSidebar = () => {
   const { activeAccount } = useAccount();
   const history = useHistory();
+  const location = useLocation();
 
-  // 설정된 스페이스 키 목록
+  // 현재 선택된 페이지 ID 추출
+  const activePageId = (() => {
+    const match = location.pathname.match(/\/confluence\/page\/(\d+)/);
+    return match ? match[1] : null;
+  })();
+
   const [configuredSpaceKeys, setConfiguredSpaceKeys] = useState<string[]>([]);
-  // 설정된 스페이스 정보 (API 조회 결과)
   const [configuredSpaces, setConfiguredSpaces] = useState<Space[]>([]);
-  // 현재 선택된 스페이스 (한 개만)
-  const [selectedSpaceKey, setSelectedSpaceKey] = useState<string | null>(null);
-  // 페이지 트리
-  const [pageTree, setPageTree] = useState<PageNode[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // 검색
+  const [expandedSpaceKeys, setExpandedSpaceKeys] = useState<Set<string>>(new Set());
+  const [spaceTrees, setSpaceTrees] = useState<Record<string, SpaceTree>>({});
+  const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(new Set());
+  const [loadingChildIds, setLoadingChildIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
-  // 로딩 상태
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [loadingSpaces, setLoadingSpaces] = useState(false);
-  const [loadingPages, setLoadingPages] = useState(false);
 
-  // 스페이스 설정 로드
+  // 스페이스 로드 취소용
+  const cancelledRef = useRef<Set<string>>(new Set());
+
   const loadSettings = useCallback(async () => {
     if (!activeAccount) return;
     setLoadingSettings(true);
     try {
       const keys = await loadSelectedSpaces(activeAccount.id);
       setConfiguredSpaceKeys(keys);
-      // 설정된 스페이스가 비었으면 초기화
       if (keys.length === 0) {
         setConfiguredSpaces([]);
-        setSelectedSpaceKey(null);
-        setPageTree([]);
+        setExpandedSpaceKeys(new Set());
+        setSpaceTrees({});
       }
     } catch { /* ignore */ }
     setLoadingSettings(false);
   }, [activeAccount]);
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+  useEffect(() => { loadSettings(); }, [loadSettings]);
 
-  // 대시보드에서 스페이스 설정 변경 시 동기화
   useEffect(() => {
     const handler = () => loadSettings();
     window.addEventListener('lyra:confluence-space-settings-changed', handler);
     return () => window.removeEventListener('lyra:confluence-space-settings-changed', handler);
   }, [loadSettings]);
 
-  // 설정된 스페이스 키가 변경되면 API에서 스페이스 정보 조회
+  // 스페이스 정보 조회
   useEffect(() => {
     if (!activeAccount || configuredSpaceKeys.length === 0) {
       setConfiguredSpaces([]);
@@ -117,37 +122,27 @@ const ConfluenceSidebar = () => {
         .filter((s) => s.key && keySet.has(s.key))
         .sort((a, b) => a.name.localeCompare(b.name));
       setConfiguredSpaces(list);
-
-      // 선택된 스페이스가 설정 목록에 없으면 첫 번째로 자동 선택
-      if (list.length > 0) {
-        setSelectedSpaceKey((prev) => {
-          if (prev && list.some((s) => s.key === prev)) return prev;
-          return list[0].key;
-        });
-      } else {
-        setSelectedSpaceKey(null);
-        setPageTree([]);
-      }
     }).catch(() => setConfiguredSpaces([]))
       .finally(() => setLoadingSpaces(false));
   }, [activeAccount, configuredSpaceKeys]);
 
-  // 자식 로딩 중인 노드 ID
-  const [loadingChildIds, setLoadingChildIds] = useState<Set<string>>(new Set());
-
-  /** raw API 결과를 PageNode 배열로 변환 */
   const rawToNodes = useCallback((rawPages: Record<string, unknown>[]): PageNode[] => {
-    return rawPages.map((p) => ({
-      id: str(p.id),
-      title: str(p.title),
-      parentId: p.parentId ? str(p.parentId) : null,
-      children: [],
-      hasChildren: !!p.hasChildren,
-      childrenLoaded: false,
-    }));
+    return rawPages.map((p) => {
+      const preloaded = p.preloadedChildren as Record<string, unknown>[] | undefined;
+      const children = Array.isArray(preloaded) ? rawToNodes(preloaded) : [];
+      const nodeType = str(p.type) === 'folder' ? 'folder' : 'page';
+      return {
+        id: str(p.id),
+        title: str(p.title),
+        parentId: p.parentId ? str(p.parentId) : null,
+        children,
+        hasChildren: !!p.hasChildren,
+        childrenLoaded: children.length > 0,
+        nodeType: nodeType as 'page' | 'folder',
+      };
+    });
   }, []);
 
-  /** 트리에서 특정 노드의 children을 업데이트 (불변) */
   const updateNodeChildren = useCallback((nodes: PageNode[], targetId: string, children: PageNode[]): PageNode[] => {
     return nodes.map((node) => {
       if (node.id === targetId) {
@@ -161,69 +156,113 @@ const ConfluenceSidebar = () => {
     });
   }, []);
 
-  // 선택된 스페이스 변경 시 루트 페이지만 로드
-  useEffect(() => {
-    if (!activeAccount || !selectedSpaceKey) {
-      setPageTree([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingPages(true);
-    setPageTree([]);
-    setExpandedIds(new Set());
-    setLoadingChildIds(new Set());
-    setFilter('');
-
-    (async () => {
-      try {
-        const result = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'confluence',
-          action: 'getSpacePages',
-          params: { spaceKey: selectedSpaceKey },
-        });
-        if (cancelled) return;
-
-        const r = result as Record<string, unknown>;
-        const rawPages = (r.results ?? []) as Record<string, unknown>[];
-        const nodes = rawToNodes(rawPages);
-
-        // Confluence 스페이스 홈 페이지 건너뛰기
-        const finalRoots = (nodes.length === 1 && nodes[0].hasChildren)
-          ? [{ ...nodes[0], childrenLoaded: false }] // 홈 페이지 1개면 자동 펼침 처리
-          : nodes;
-
-        if (!cancelled) setPageTree(finalRoots);
-      } catch (err) {
-        console.error('[ConfluenceSidebar] load error:', err);
-        if (!cancelled) setPageTree([]);
-      } finally {
-        if (!cancelled) setLoadingPages(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [activeAccount, selectedSpaceKey, rawToNodes]);
-
-  /** 자식 페이지 lazy 로드 */
-  const loadChildren = useCallback(async (nodeId: string) => {
+  /** 스페이스 루트 페이지 로드 */
+  const loadSpacePages = useCallback(async (spaceKey: string) => {
     if (!activeAccount) return;
-    setLoadingChildIds((prev) => new Set(prev).add(nodeId));
+
+    setSpaceTrees((prev) => ({
+      ...prev,
+      [spaceKey]: { pages: [], loading: true, loaded: false },
+    }));
+
+    cancelledRef.current.delete(spaceKey);
+
     try {
       const result = await integrationController.invoke({
         accountId: activeAccount.id,
         serviceType: 'confluence',
-        action: 'getChildPages',
-        params: { pageId: nodeId },
+        action: 'getSpacePages',
+        params: { spaceKey },
+      });
+
+      if (cancelledRef.current.has(spaceKey)) return;
+
+      const r = result as Record<string, unknown>;
+      const rawPages = (r.results ?? []) as Record<string, unknown>[];
+      const nodes = rawToNodes(rawPages);
+
+      // preload된 자식이 있는 노드 자동 expand
+      const autoExpandIds = new Set<string>();
+      for (const node of nodes) {
+        if (node.childrenLoaded && node.children.length > 0) {
+          autoExpandIds.add(node.id);
+        }
+      }
+      if (autoExpandIds.size > 0) {
+        setExpandedPageIds((prev) => {
+          const next = new Set(prev);
+          autoExpandIds.forEach((id) => next.add(id));
+          return next;
+        });
+      }
+
+      setSpaceTrees((prev) => ({
+        ...prev,
+        [spaceKey]: { pages: nodes, loading: false, loaded: true },
+      }));
+    } catch (err) {
+      console.error('[ConfluenceSidebar] loadSpacePages error:', err);
+      if (!cancelledRef.current.has(spaceKey)) {
+        setSpaceTrees((prev) => ({
+          ...prev,
+          [spaceKey]: { pages: [], loading: false, loaded: true },
+        }));
+      }
+    }
+  }, [activeAccount, rawToNodes]);
+
+  /** 스페이스 펼치기/접기 */
+  const handleToggleSpace = useCallback((spaceKey: string) => {
+    setExpandedSpaceKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(spaceKey)) {
+        next.delete(spaceKey);
+        cancelledRef.current.add(spaceKey);
+      } else {
+        next.add(spaceKey);
+        // 아직 로드하지 않았으면 로드
+        const tree = spaceTrees[spaceKey];
+        if (!tree || !tree.loaded) {
+          loadSpacePages(spaceKey);
+        }
+      }
+      return next;
+    });
+  }, [spaceTrees, loadSpacePages]);
+
+  /** 자식 노드 lazy 로드 (폴더 → getFolderChildren, 페이지 → getChildPages) */
+  const loadChildren = useCallback(async (nodeId: string, spaceKey: string, nodeType: 'page' | 'folder') => {
+    if (!activeAccount) return;
+    setLoadingChildIds((prev) => new Set(prev).add(nodeId));
+    try {
+      const isFolder = nodeType === 'folder';
+      const result = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'confluence',
+        action: isFolder ? 'getFolderChildren' : 'getChildPages',
+        params: isFolder ? { folderId: nodeId } : { pageId: nodeId },
       });
       const r = result as Record<string, unknown>;
       const rawPages = (r.results ?? []) as Record<string, unknown>[];
       const children = rawToNodes(rawPages);
-      setPageTree((prev) => updateNodeChildren(prev, nodeId, children));
+      setSpaceTrees((prev) => {
+        const tree = prev[spaceKey];
+        if (!tree) return prev;
+        return {
+          ...prev,
+          [spaceKey]: { ...tree, pages: updateNodeChildren(tree.pages, nodeId, children) },
+        };
+      });
     } catch (err) {
       console.error('[ConfluenceSidebar] loadChildren error:', err);
-      // 자식이 없는 것으로 표시
-      setPageTree((prev) => updateNodeChildren(prev, nodeId, []));
+      setSpaceTrees((prev) => {
+        const tree = prev[spaceKey];
+        if (!tree) return prev;
+        return {
+          ...prev,
+          [spaceKey]: { ...tree, pages: updateNodeChildren(tree.pages, nodeId, []) },
+        };
+      });
     } finally {
       setLoadingChildIds((prev) => {
         const next = new Set(prev);
@@ -233,24 +272,24 @@ const ConfluenceSidebar = () => {
     }
   }, [activeAccount, rawToNodes, updateNodeChildren]);
 
-  const handleSelectSpace = useCallback((spaceKey: string) => {
-    setSelectedSpaceKey((prev) => (prev === spaceKey ? prev : spaceKey));
-  }, []);
-
-  const toggleExpand = useCallback((id: string) => {
-    setExpandedIds((prev) => {
+  const handleTogglePage = useCallback((node: PageNode, spaceKey: string) => {
+    const isExpanded = expandedPageIds.has(node.id);
+    setExpandedPageIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(node.id)) next.delete(node.id);
+      else next.add(node.id);
       return next;
     });
-  }, []);
+    if (!isExpanded && node.hasChildren && !node.childrenLoaded) {
+      loadChildren(node.id, spaceKey, node.nodeType);
+    }
+  }, [expandedPageIds, loadChildren]);
 
   const navigateToPage = useCallback((pageId: string) => {
     history.push(`/confluence/page/${pageId}`);
   }, [history]);
 
-  // 검색 필터 적용된 트리
+  // 검색 필터 적용
   const filterTree = useCallback((nodes: PageNode[], query: string): PageNode[] => {
     if (!query) return nodes;
     const q = query.toLowerCase();
@@ -264,27 +303,19 @@ const ConfluenceSidebar = () => {
     return result;
   }, []);
 
-  const displayTree = filter ? filterTree(pageTree, filter) : pageTree;
-
-  const handleToggleExpand = useCallback((node: PageNode) => {
-    const isExpanded = expandedIds.has(node.id);
-    toggleExpand(node.id);
-    // 펼칠 때 자식이 아직 로드되지 않았으면 lazy 로드
-    if (!isExpanded && node.hasChildren && !node.childrenLoaded) {
-      loadChildren(node.id);
-    }
-  }, [expandedIds, toggleExpand, loadChildren]);
-
-  const renderNode = (node: PageNode, depth: number) => {
-    const showAsFolder = node.hasChildren || node.children.length > 0;
-    const isExpanded = expandedIds.has(node.id);
+  /** 페이지/폴더 노드 렌더링 */
+  const renderPageNode = (node: PageNode, depth: number, spaceKey: string) => {
+    const isFolder = node.nodeType === 'folder';
+    const showExpandable = isFolder || node.hasChildren || node.children.length > 0;
+    const isExpanded = expandedPageIds.has(node.id);
     const isLoadingChildren = loadingChildIds.has(node.id);
+    const isActive = !isFolder && activePageId === node.id;
 
     return (
       <div key={node.id}>
-        <TreeRow $depth={depth}>
-          {showAsFolder ? (
-            <ExpandBtn onClick={() => handleToggleExpand(node)}>
+        <TreeRow $depth={depth} $active={isActive}>
+          {showExpandable ? (
+            <ExpandBtn onClick={() => handleTogglePage(node, spaceKey)}>
               {isLoadingChildren
                 ? <Loader size={12} />
                 : isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
@@ -293,28 +324,73 @@ const ConfluenceSidebar = () => {
           ) : (
             <ExpandSpacer />
           )}
-          {showAsFolder
+          {isFolder
             ? <FolderOpen size={15} color={theme.textMuted} />
-            : <FileText size={15} color={theme.textMuted} />
+            : <FileText size={15} color={isActive ? theme.blue : theme.textMuted} />
           }
           <PageTitle
+            $active={isActive}
             onClick={() => {
-              if (showAsFolder) handleToggleExpand(node);
-              navigateToPage(node.id);
+              if (isFolder) {
+                handleTogglePage(node, spaceKey);
+              } else {
+                if (showExpandable) handleTogglePage(node, spaceKey);
+                navigateToPage(node.id);
+              }
             }}
             title={node.title}
           >
             {node.title}
           </PageTitle>
         </TreeRow>
-        {isExpanded && node.children.map((child) => renderNode(child, depth + 1))}
+        {isExpanded && node.children.map((child) => renderPageNode(child, depth + 1, spaceKey))}
       </div>
     );
   };
 
-  const selectedSpaceInfo = configuredSpaces.find((s) => s.key === selectedSpaceKey);
+  /** 스페이스 노드 렌더링 */
+  const renderSpaceNode = (space: Space) => {
+    const isExpanded = expandedSpaceKeys.has(space.key);
+    const tree = spaceTrees[space.key];
+    const isLoading = tree?.loading ?? false;
+    const pages = tree?.pages ?? [];
+    const displayPages = filter ? filterTree(pages, filter) : pages;
 
-  // 로딩 중
+    // 검색 중이고 매칭 결과가 없으면 스페이스 자체를 숨김
+    if (filter && displayPages.length === 0 && !space.name.toLowerCase().includes(filter.toLowerCase())) {
+      return null;
+    }
+
+    return (
+      <div key={space.key}>
+        <SpaceRow
+          $active={isExpanded}
+          onClick={() => handleToggleSpace(space.key)}
+        >
+          <ExpandBtn as="span">
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </ExpandBtn>
+          <Globe size={15} color={isExpanded ? theme.blue : theme.textMuted} />
+          <SpaceName title={space.name}>{space.name}</SpaceName>
+          {!space.key.startsWith('~') && <SpaceKeyLabel>{space.key}</SpaceKeyLabel>}
+        </SpaceRow>
+        {isExpanded && (
+          <SpaceChildren>
+            {isLoading ? (
+              <LoadingRow $indent>
+                <Loader size={12} /><span>페이지 로딩 중...</span>
+              </LoadingRow>
+            ) : displayPages.length === 0 ? (
+              <EmptyMsg $indent>{filter ? '검색 결과가 없습니다.' : '페이지가 없습니다.'}</EmptyMsg>
+            ) : (
+              displayPages.map((node) => renderPageNode(node, 1, space.key))
+            )}
+          </SpaceChildren>
+        )}
+      </div>
+    );
+  };
+
   if (loadingSettings) {
     return (
       <Container>
@@ -323,7 +399,6 @@ const ConfluenceSidebar = () => {
     );
   }
 
-  // 스페이스 설정이 없는 경우
   if (configuredSpaceKeys.length === 0) {
     return (
       <Container>
@@ -342,45 +417,12 @@ const ConfluenceSidebar = () => {
 
   return (
     <Container>
-      {/* 스페이스 선택 영역 */}
-      {configuredSpaces.length > 1 && (
-        <>
-          <SidebarTitle>스페이스</SidebarTitle>
-          {loadingSpaces ? (
-            <LoadingRow><Loader size={14} /><span>로딩 중...</span></LoadingRow>
-          ) : (
-            <SpaceList>
-              {configuredSpaces.map((s) => (
-                <SpaceItem
-                  key={s.key}
-                  $active={selectedSpaceKey === s.key}
-                  onClick={() => handleSelectSpace(s.key)}
-                >
-                  <FolderOpen size={14} />
-                  <SpaceName>{s.name}</SpaceName>
-                  {!s.key.startsWith('~') && <SpaceKeyLabel>{s.key}</SpaceKeyLabel>}
-                </SpaceItem>
-              ))}
-            </SpaceList>
-          )}
-          <Divider />
-        </>
-      )}
+      <SidebarHeader>
+        <SidebarTitle>스페이스</SidebarTitle>
+      </SidebarHeader>
 
-      {/* 스페이스 헤더 (단일 또는 선택된 스페이스) */}
-      {selectedSpaceInfo && (
-        <SpaceHeader>
-          <SpaceHeaderName title={selectedSpaceInfo.name}>
-            {selectedSpaceInfo.name}
-          </SpaceHeaderName>
-          {!selectedSpaceInfo.key.startsWith('~') && (
-            <SpaceHeaderKey>{selectedSpaceInfo.key}</SpaceHeaderKey>
-          )}
-        </SpaceHeader>
-      )}
-
-      {/* 페이지 검색 */}
-      {selectedSpaceKey && pageTree.length > 0 && (
+      {/* 검색 - 펼쳐진 스페이스가 있을 때만 표시 */}
+      {expandedSpaceKeys.size > 0 && (
         <SearchBox>
           <SearchIconWrap><Search size={14} /></SearchIconWrap>
           <SearchInput
@@ -391,16 +433,13 @@ const ConfluenceSidebar = () => {
         </SearchBox>
       )}
 
-      {/* 페이지 트리 */}
-      {loadingPages ? (
-        <LoadingRow><Loader size={14} /><span>페이지 로딩 중...</span></LoadingRow>
-      ) : !selectedSpaceKey ? (
-        <EmptyMsg>스페이스를 선택해주세요.</EmptyMsg>
-      ) : displayTree.length === 0 ? (
-        <EmptyMsg>{filter ? '검색 결과가 없습니다.' : '페이지가 없습니다.'}</EmptyMsg>
+      {loadingSpaces ? (
+        <LoadingRow><Loader size={14} /><span>스페이스 로딩 중...</span></LoadingRow>
+      ) : configuredSpaces.length === 0 ? (
+        <EmptyMsg>설정된 스페이스가 없습니다.</EmptyMsg>
       ) : (
         <TreeContainer>
-          {displayTree.map((node) => renderNode(node, 0))}
+          {configuredSpaces.map((space) => renderSpaceNode(space))}
         </TreeContainer>
       )}
     </Container>
@@ -418,79 +457,18 @@ const Container = styled.div`
   height: 100%;
 `;
 
+const SidebarHeader = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 4px;
+`;
+
 const SidebarTitle = styled.div`
-  padding: 4px 12px;
   font-weight: 600;
   font-size: 0.6875rem;
   color: ${theme.textMuted};
   text-transform: uppercase;
   letter-spacing: 0.05em;
-`;
-
-const SpaceList = styled.div`
-  max-height: 160px;
-  overflow-y: auto;
-`;
-
-const SpaceItem = styled.div<{ $active: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  cursor: pointer;
-  color: ${({ $active }) => ($active ? theme.blue : theme.textPrimary)};
-  background: ${({ $active }) => ($active ? theme.blueLight : 'transparent')};
-  font-weight: ${({ $active }) => ($active ? 600 : 400)};
-  font-size: 0.8125rem;
-  transition: background 0.1s ease;
-
-  &:hover {
-    background: ${({ $active }) => ($active ? theme.blueLight : theme.bgTertiary)};
-  }
-`;
-
-const SpaceName = styled.span`
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1;
-`;
-
-const SpaceKeyLabel = styled.span`
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
-  flex-shrink: 0;
-`;
-
-const SpaceHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-`;
-
-const SpaceHeaderName = styled.span`
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: ${theme.textPrimary};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-`;
-
-const SpaceHeaderKey = styled.span`
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
-  flex-shrink: 0;
-`;
-
-const Divider = styled.hr`
-  border: none;
-  border-top: 1px solid ${theme.border};
-  margin: 4px 0;
 `;
 
 const SearchBox = styled.div`
@@ -533,12 +511,47 @@ const TreeContainer = styled.div`
   overflow-y: auto;
 `;
 
-const TreeRow = styled.div<{ $depth: number }>`
+const SpaceRow = styled.div<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: ${({ $active }) => ($active ? theme.blue : theme.textPrimary)};
+  background: ${({ $active }) => ($active ? theme.blueLight : 'transparent')};
+  font-weight: 600;
+  font-size: 0.8125rem;
+  transition: background 0.1s ease;
+
+  &:hover {
+    background: ${({ $active }) => ($active ? theme.blueLight : theme.bgTertiary)};
+  }
+`;
+
+const SpaceName = styled.span`
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+`;
+
+const SpaceKeyLabel = styled.span`
+  font-size: 0.6875rem;
+  color: ${theme.textMuted};
+  font-weight: 400;
+  flex-shrink: 0;
+`;
+
+const SpaceChildren = styled.div``;
+
+const TreeRow = styled.div<{ $depth: number; $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 5px 8px 5px ${({ $depth }) => 12 + $depth * 16}px;
   min-height: 32px;
+  background: ${({ $active }) => ($active ? theme.bgTertiary : 'transparent')};
 
   &:hover {
     background: ${theme.bgTertiary};
@@ -570,13 +583,14 @@ const ExpandSpacer = styled.span`
   flex-shrink: 0;
 `;
 
-const PageTitle = styled.span`
+const PageTitle = styled.span<{ $active?: boolean }>`
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: ${theme.textSecondary};
+  color: ${({ $active }) => ($active ? theme.blue : theme.textSecondary)};
+  font-weight: ${({ $active }) => ($active ? 600 : 400)};
   cursor: pointer;
   font-size: 0.875rem;
 
@@ -585,11 +599,12 @@ const PageTitle = styled.span`
   }
 `;
 
-const LoadingRow = styled.div`
+const LoadingRow = styled.div<{ $indent?: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px;
+  ${({ $indent }) => $indent && 'padding-left: 44px;'}
   color: ${theme.textMuted};
   font-size: 0.8125rem;
 
@@ -602,8 +617,9 @@ const LoadingRow = styled.div`
   }
 `;
 
-const EmptyMsg = styled.div`
+const EmptyMsg = styled.div<{ $indent?: boolean }>`
   padding: 12px;
+  ${({ $indent }) => $indent && 'padding-left: 44px;'}
   color: ${theme.textMuted};
   font-size: 0.8125rem;
 `;

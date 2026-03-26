@@ -1,7 +1,7 @@
 {
   "name": "lyra",
   "description": "Lyra - Desktop App",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": false,
   "main": "dist-electron/main.js",
   "homepage": "./",

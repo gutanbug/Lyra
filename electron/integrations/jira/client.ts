@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { JiraCredentials } from './types';
 
-const DEFAULT_FIELDS = ['*navigable'];
+const DEFAULT_FIELDS = ['*navigable', 'parent'];
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 

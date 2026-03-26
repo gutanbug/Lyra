@@ -149,6 +149,7 @@ export function useJiraIssueDetail({
           params: {
             jql: `parent = ${detailKey} ORDER BY created ASC`,
             maxResults: 100,
+            skipCache: true,
           },
         });
         for (const ci of parseChildIssues(childResult)) {
@@ -159,7 +160,7 @@ export function useJiraIssueDetail({
         }
       } catch { /* ignore */ }
 
-      // 2) Epic Link 폴백 (classic Jira 프로젝트)
+      // 2) Epic Link 폴백 (classic Jira 프로젝트) — 서브태스크 제외
       if (isEpicType(issueTypeName)) {
         try {
           const epicLinkResult = await integrationController.invoke({
@@ -167,8 +168,9 @@ export function useJiraIssueDetail({
             serviceType: 'jira',
             action: 'searchIssues',
             params: {
-              jql: `"Epic Link" = ${detailKey} ORDER BY created ASC`,
+              jql: `"Epic Link" = ${detailKey} AND issuetype not in subTaskIssueTypes() ORDER BY created ASC`,
               maxResults: 100,
+              skipCache: true,
             },
           });
           for (const ci of parseChildIssues(epicLinkResult)) {
@@ -177,15 +179,41 @@ export function useJiraIssueDetail({
               seenKeys.add(ci.key);
             }
           }
-        } catch { /* Epic Link 미지원 인스턴스 무시 */ }
+        } catch {
+          // subTaskIssueTypes() 미지원 시 parentKey 필터링으로 폴백
+          try {
+            const epicLinkResult = await integrationController.invoke({
+              accountId: activeAccount.id,
+              serviceType: 'jira',
+              action: 'searchIssues',
+              params: {
+                jql: `"Epic Link" = ${detailKey} ORDER BY created ASC`,
+                maxResults: 100,
+                skipCache: true,
+              },
+            });
+            for (const ci of parseChildIssues(epicLinkResult)) {
+              if (!seenKeys.has(ci.key) && (!ci.parentKey || ci.parentKey === detailKey)) {
+                directChildren.push(ci);
+                seenKeys.add(ci.key);
+              }
+            }
+          } catch { /* Epic Link 미지원 인스턴스 무시 */ }
+        }
       }
 
+      // parent/Epic Link 쿼리 결과에서 실제 parent가 현재 이슈가 아닌 항목 제거
+      // parentKey가 있고 detailKey와 다르면 → 다른 이슈의 서브태스크이므로 제외
+      const trueDirectChildren = directChildren.filter(
+        (c) => !c.parentKey || c.parentKey === detailKey
+      );
+
       // 직접 하위 이슈를 먼저 표시 (손자 이슈 로딩 전)
-      setChildIssues(directChildren.map((c) => ({ ...c, grandchildren: [] })));
+      setChildIssues(trueDirectChildren.map((c) => ({ ...c, grandchildren: [] })));
 
       // 3) 각 직접 하위 이슈의 손자 이슈 조회
       const childrenWithGc = await Promise.all(
-        directChildren.map(async (child) => {
+        trueDirectChildren.map(async (child) => {
           let grandchildren: ChildIssue[] = [];
           try {
             const gcResult = await integrationController.invoke({

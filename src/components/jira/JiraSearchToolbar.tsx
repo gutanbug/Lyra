@@ -52,7 +52,12 @@ const JiraSearchToolbar = ({
     <Toolbar>
       <Logo>
         {hasServiceIcon('jira') && (
-          <LogoIconWrap>{getServiceIcon('jira', 24)}</LogoIconWrap>
+          <LogoIconBtn
+            onClick={() => window.dispatchEvent(new Event('lyra:toggle-sidebar'))}
+            title="사이드바 열기/닫기 (⌘\)"
+          >
+            {getServiceIcon('jira', 24)}
+          </LogoIconBtn>
         )}
         Jira
       </Logo>
@@ -176,6 +181,27 @@ const LogoIconWrap = styled.span`
   flex-shrink: 0;
 
   & > svg { width: 100%; height: 100%; }
+`;
+
+const LogoIconBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ${transition};
+
+  & > svg { width: 1.5rem; height: 1.5rem; }
+
+  &:hover {
+    background: ${jiraTheme.bg.hover};
+  }
 `;
 
 const SearchWrapper = styled.div`

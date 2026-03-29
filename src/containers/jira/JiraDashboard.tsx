@@ -9,7 +9,9 @@ import { useAssigneeDropdown } from 'lib/hooks/useAssigneeDropdown';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import { useJiraSearch } from 'lib/hooks/useJiraSearch';
 import { groupByEpic } from 'lib/utils/jiraNormalizers';
+import { isEpicType } from 'lib/utils/jiraUtils';
 import { saveSelectedProjects } from 'lib/utils/storageHelpers';
+import type { NormalizedIssue } from 'types/jira';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
@@ -59,6 +61,7 @@ const JiraDashboard = () => {
     browseExpandedKeys, setBrowseExpandedKeys, browseLoadedChildren,
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
+    selectedStatuses, doneIssues, toggleStatus,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
@@ -97,7 +100,78 @@ const JiraDashboard = () => {
   }
 
   const isSearchMode = searchResults !== null;
-  const displayIssues = isSearchMode ? searchResults : myIssues;
+  const baseIssues = isSearchMode ? searchResults : myIssues;
+
+  // 상태 필터 적용: 선택된 상태가 없으면(초기) 전체 표시, 있으면 필터링
+  const displayIssues = useMemo(() => {
+    // 완료 이슈를 base에 합산 (중복 제거)
+    const keySet = new Set(baseIssues.map((i) => i.key));
+    const merged = [...baseIssues];
+    for (const d of doneIssues) {
+      if (!keySet.has(d.key)) {
+        merged.push(d);
+        keySet.add(d.key);
+      }
+    }
+
+    // 상태 필터 적용
+    let filtered: NormalizedIssue[];
+    if (selectedStatuses.size === 0) {
+      filtered = merged;
+    } else {
+      filtered = merged.filter((issue) =>
+        isEpicType(issue.issueTypeName) || selectedStatuses.has(issue.statusName)
+      );
+    }
+
+    // 에픽 연결 보강: 부모 체인을 따라 에픽을 찾아
+    // 1) 에픽이 목록에 없으면 추가
+    // 2) 비에픽 이슈의 parentKey를 에픽으로 직접 연결 (중간 부모가 없어도 groupByEpic이 작동)
+    const filteredKeys = new Set(filtered.map((i) => i.key));
+    const issueByKey = new Map(merged.map((i) => [i.key, i]));
+    const epicExtras: NormalizedIssue[] = [];
+    const result = filtered.map((issue) => {
+      if (isEpicType(issue.issueTypeName)) return issue;
+      // 이미 parentKey가 에픽이면 그대로
+      if (issue.parentKey && filteredKeys.has(issue.parentKey)) {
+        const parent = issueByKey.get(issue.parentKey);
+        if (parent && isEpicType(parent.issueTypeName)) return issue;
+      }
+      // 부모 체인을 따라 에픽 조상 탐색
+      let epicKey: string | null = null;
+      let epicIssue: NormalizedIssue | undefined;
+      let pk = issue.parentKey;
+      const visited = new Set<string>();
+      while (pk && !visited.has(pk)) {
+        visited.add(pk);
+        const p = issueByKey.get(pk);
+        if (!p) break;
+        if (isEpicType(p.issueTypeName)) {
+          epicKey = p.key;
+          epicIssue = p;
+          break;
+        }
+        pk = p.parentKey;
+      }
+      if (epicKey && epicIssue) {
+        // 에픽이 filtered에 없으면 추가
+        if (!filteredKeys.has(epicKey)) {
+          epicExtras.push(epicIssue);
+          filteredKeys.add(epicKey);
+        }
+        // parentKey를 에픽으로 직접 연결
+        if (issue.parentKey !== epicKey) {
+          return { ...issue, parentKey: epicKey };
+        }
+      }
+      return issue;
+    });
+
+    return epicExtras.length > 0 ? [...result, ...epicExtras] : result;
+
+    return filtered;
+  }, [baseIssues, doneIssues, selectedStatuses]);
+
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
 
@@ -125,7 +199,7 @@ const JiraDashboard = () => {
       />
 
       {!browseProjectKey && !isSearchMode && statusCounts.length > 0 && (
-        <JiraStatusSummary statusCounts={statusCounts} />
+        <JiraStatusSummary statusCounts={statusCounts} selectedStatuses={selectedStatuses} onToggleStatus={toggleStatus} />
       )}
 
       <JiraIssueList

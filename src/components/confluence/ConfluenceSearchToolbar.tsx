@@ -88,7 +88,12 @@ const ConfluenceSearchToolbar = ({
     <Toolbar>
       <Logo>
         {hasServiceIcon('confluence') && (
-          <LogoIconWrap>{getServiceIcon('confluence', 24)}</LogoIconWrap>
+          <LogoIconBtn
+            onClick={() => window.dispatchEvent(new Event('lyra:toggle-sidebar'))}
+            title="사이드바 열기/닫기 (⌘\)"
+          >
+            {getServiceIcon('confluence', 24)}
+          </LogoIconBtn>
         )}
         Confluence
       </Logo>
@@ -234,6 +239,27 @@ const LogoIconWrap = styled.span`
   height: 1.5rem;
   flex-shrink: 0;
   & > svg { width: 100%; height: 100%; }
+`;
+
+const LogoIconBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ${transition};
+
+  & > svg { width: 1.5rem; height: 1.5rem; }
+
+  &:hover {
+    background: ${confluenceTheme.bg.hover};
+  }
 `;
 
 const SearchWrapper = styled.div`

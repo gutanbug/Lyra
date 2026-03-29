@@ -90,14 +90,125 @@ function getFileIconColor(filename: string): string {
   return '#6B778C';
 }
 
+/** ADF 노드에서 텍스트를 추출 */
+function adfNodeText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const n = node as Record<string, unknown>;
+  if (typeof n.text === 'string') return n.text;
+  const content = n.content as unknown[] | undefined;
+  if (Array.isArray(content)) return content.map(adfNodeText).join('');
+  return '';
+}
+
+/** ADF document에서 모든 heading을 수집 */
+function collectHeadings(doc: unknown): { level: number; text: string; id: string }[] {
+  const headings: { level: number; text: string; id: string }[] = [];
+  function walk(node: unknown) {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    if (n.type === 'heading') {
+      const level = Number((n.attrs as Record<string, unknown>)?.level ?? 1);
+      const text = adfNodeText(n).trim();
+      if (text) {
+        headings.push({ level, text, id: encodeURIComponent(text.replace(/\s+/g, '-')) });
+      }
+    }
+    const content = n.content as unknown[] | undefined;
+    if (Array.isArray(content)) content.forEach(walk);
+  }
+  walk(doc);
+  return headings;
+}
+
+/** TOC extension 노드를 heading 기반 목차 bulletList ADF 노드로 변환 */
+function buildTocNode(headings: { level: number; text: string; id: string }[]): unknown {
+  if (headings.length === 0) return { type: 'paragraph', content: [{ type: 'text', text: '(목차 없음)' }] };
+
+  const minLevel = Math.min(...headings.map((h) => h.level));
+
+  const buildList = (items: { level: number; text: string; id: string }[], startIdx: number, baseLevel: number): { node: unknown; nextIdx: number } => {
+    const listItems: unknown[] = [];
+    let i = startIdx;
+
+    while (i < items.length) {
+      const h = items[i];
+      if (h.level < baseLevel) break;
+
+      if (h.level === baseLevel) {
+        const listItem: Record<string, unknown> = {
+          type: 'listItem',
+          content: [{
+            type: 'paragraph',
+            content: [{
+              type: 'text',
+              text: h.text,
+              marks: [{ type: 'link', attrs: { href: `#${h.id}` } }],
+            }],
+          }],
+        };
+        i++;
+
+        // 하위 레벨이 있으면 중첩 리스트 생성
+        if (i < items.length && items[i].level > baseLevel) {
+          const sub = buildList(items, i, items[i].level);
+          (listItem.content as unknown[]).push(sub.node);
+          i = sub.nextIdx;
+        }
+
+        listItems.push(listItem);
+      } else {
+        // 현재 레벨보다 깊으면 중첩 리스트
+        const sub = buildList(items, i, h.level);
+        if (listItems.length > 0) {
+          const lastItem = listItems[listItems.length - 1] as Record<string, unknown>;
+          (lastItem.content as unknown[]).push(sub.node);
+        } else {
+          listItems.push({ type: 'listItem', content: [sub.node] });
+        }
+        i = sub.nextIdx;
+      }
+    }
+
+    return { node: { type: 'bulletList', content: listItems }, nextIdx: i };
+  };
+
+  return buildList(headings, 0, minLevel).node;
+}
+
 function preprocessAdf(
   node: unknown,
   urlMap: Record<string, string>,
   linkMeta: Record<string, LinkMeta>,
   fileMeta: Record<string, FileMeta>,
+  headings?: { level: number; text: string; id: string }[],
 ): unknown {
   if (!node || typeof node !== 'object') return node;
   const n = node as Record<string, unknown>;
+
+  // 최상위 document에서 headings 수집 (한 번만)
+  if (n.type === 'doc' && !headings) {
+    headings = collectHeadings(n);
+  }
+
+  // extension / bodiedExtension 노드 — TOC 매크로 감지
+  if (n.type === 'extension' || n.type === 'bodiedExtension') {
+    const attrs = n.attrs as Record<string, unknown> | undefined;
+    const extKey = String(attrs?.extensionKey || '').toLowerCase();
+    if (extKey === 'toc' || extKey === 'toc-zone') {
+      return buildTocNode(headings ?? []);
+    }
+    // 기타 매크로는 빈 단락으로 대체
+    return { type: 'paragraph', content: [] };
+  }
+
+  // emoji 노드 → Unicode 텍스트 노드로 변환 (EmojiProvider 불필요)
+  if (n.type === 'emoji') {
+    const attrs = n.attrs as Record<string, unknown> | undefined;
+    const text = String(attrs?.text || attrs?.shortName || '');
+    if (text) {
+      return { type: 'text', text };
+    }
+  }
 
   // media 노드를 이미지 또는 파일 카드로 변환하는 헬퍼
   // 주의: 원본 media 노드를 Atlaskit에 그대로 전달하면 Media API 로드를 시도해 무한 로딩됨
@@ -280,7 +391,7 @@ function preprocessAdf(
   if (Array.isArray(content)) {
     return {
       ...n,
-      content: content.map((child) => preprocessAdf(child, urlMap, linkMeta, fileMeta)),
+      content: content.map((child) => preprocessAdf(child, urlMap, linkMeta, fileMeta, headings)),
     };
   }
 
@@ -313,6 +424,15 @@ const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', cl
     (event: React.SyntheticEvent, url?: string) => {
       if (!url) return;
       event.preventDefault();
+      // 앵커 링크 (TOC 목차 등) — 페이지 내 heading으로 스크롤
+      if (url.startsWith('#') && !url.startsWith('#__file__:')) {
+        const id = decodeURIComponent(url.slice(1));
+        const el = window.document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+      }
       // 파일 카드 클릭 처리
       if (url.startsWith('#__file__:') && onFileClick && fileMetaMap) {
         const mediaId = url.replace('#__file__:', '');
@@ -442,10 +562,40 @@ const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', cl
       });
     };
 
+    // heading에 ID 주입 (TOC 앵커 점프용)
+    const applyHeadingIds = () => {
+      const headings = el.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+      headings.forEach((h) => {
+        if (h.id) return;
+        const text = (h.textContent || '').trim();
+        if (text) {
+          h.id = encodeURIComponent(text.replace(/\s+/g, '-'));
+        }
+      });
+    };
+
+    // 코드 블록 줄 번호 gutter inline style 보정
+    const fixCodeBlockGutters = () => {
+      const gutters = el.querySelectorAll<HTMLElement>('.line-number-gutter, td[class*="line-number"]');
+      gutters.forEach((gutter) => {
+        gutter.style.minWidth = '44px';
+        gutter.style.width = '44px';
+        gutter.style.paddingLeft = '8px';
+        gutter.style.paddingRight = '10px';
+        gutter.style.textAlign = 'right';
+        gutter.style.background = '#EBECF0';
+        gutter.style.borderRight = '1px solid #dfe1e6';
+        gutter.style.color = '#6b778c';
+        gutter.style.boxSizing = 'border-box';
+      });
+    };
+
     // 즉시 실행 + ReactRenderer의 비동기 DOM 업데이트 대응
     applyRichCards();
     applyFileCards();
-    const timer = setTimeout(() => { applyRichCards(); applyFileCards(); }, 100);
+    applyHeadingIds();
+    fixCodeBlockGutters();
+    const timer = setTimeout(() => { applyRichCards(); applyFileCards(); applyHeadingIds(); fixCodeBlockGutters(); }, 100);
     return () => clearTimeout(timer);
   }, [processedDoc, linkMetaMap, fileMetaMap]);
 
@@ -642,9 +792,23 @@ const Wrapper = styled.div`
     font-size: inherit !important;
   }
 
-  .code-block .line-number-gutter {
-    color: ${jiraTheme.text.muted};
+  .code-block .line-number-gutter,
+  .code-block td.line-number-gutter,
+  [class*="line-number-gutter"] {
+    color: #6b778c !important;
+    background: #EBECF0 !important;
+    border-right: 1px solid #dfe1e6 !important;
+    min-width: 44px !important;
+    width: 44px !important;
+    padding: 0 10px 0 8px !important;
+    text-align: right !important;
     user-select: none;
+    box-sizing: border-box !important;
+  }
+
+  .code-block .line-number-gutter span,
+  [class*="line-number-gutter"] span {
+    color: #6b778c !important;
   }
 
   /* 블록인용 */

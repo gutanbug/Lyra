@@ -44,6 +44,13 @@ const SidebarLayout = ({ sidebar, children }: Props) => {
     return () => window.removeEventListener('keydown', handler);
   }, [toggle]);
 
+  // 커스텀 이벤트로 사이드바 토글
+  useEffect(() => {
+    const handler = () => toggle();
+    window.addEventListener('lyra:toggle-sidebar', handler);
+    return () => window.removeEventListener('lyra:toggle-sidebar', handler);
+  }, [toggle]);
+
   // 드래그 핸들러
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {

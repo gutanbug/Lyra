@@ -3,7 +3,7 @@ import React from 'react';
 import { integrationController } from 'controllers/account';
 import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
-import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects } from 'lib/utils/storageHelpers';
+import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects, loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -104,6 +104,14 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
   const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(isCacheValid ? cache.browseLoadedChildren : new Set());
 
+  // 상태 필터 (localStorage에서 복원)
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(() => {
+    const saved = loadSelectedStatuses(currentAccountId);
+    return new Set(saved);
+  });
+  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>([]);
+  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(false);
+
   // 상태별 개수 (myIssues + doneCounts 합산)
   const statusCounts = useMemo(() => {
     const countMap = new Map<string, { category: string; count: number }>();
@@ -131,6 +139,112 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     counts.sort((a, b) => catOrder(a.category) - catOrder(b.category));
     return counts;
   }, [myIssues, doneCounts]);
+
+  // 상태 필터 토글
+  const isDoneCategory = useCallback((category: string) => {
+    const l = category.toLowerCase();
+    return l.includes('done') || l.includes('완료');
+  }, []);
+
+  const toggleStatus = useCallback((statusName: string) => {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(statusName)) next.delete(statusName);
+      else next.add(statusName);
+      saveSelectedStatuses(currentAccountId, Array.from(next));
+      return next;
+    });
+  }, [currentAccountId]);
+
+  // 완료 이슈 조회 — 초기 로드 시 함께 호출, 부모 에픽 정보도 포함
+  const fetchDoneIssues = useCallback(async () => {
+    if (!activeAccount) return;
+    try {
+      const pc = buildProjectClause(selectedProjects);
+      const projectClause = pc ? `${pc} AND ` : '';
+      const allDone: NormalizedIssue[] = [];
+      const allKeys = new Set<string>();
+      const pageSize = 100;
+      let pageToken: string | undefined;
+      const maxPages = 20;
+
+      for (let page = 0; page < maxPages; page++) {
+        const result = await integrationController.invoke({
+          accountId: activeAccount.id,
+          serviceType: 'jira',
+          action: 'searchIssues',
+          params: {
+            jql: `${projectClause}assignee = currentUser() AND statusCategory = Done ORDER BY updated DESC`,
+            maxResults: pageSize,
+            skipCache: true,
+            ...(pageToken ? { nextPageToken: pageToken } : {}),
+          },
+        }) as Record<string, unknown>;
+        const issues = parseIssues(result);
+        for (const i of issues) {
+          allDone.push(i);
+          allKeys.add(i.key);
+        }
+        pageToken = result.nextPageToken as string | undefined;
+        if (!pageToken || issues.length < pageSize) break;
+      }
+
+      // 부모/조부모 에픽 조회 (myIssues와 동일 패턴)
+      const missingParentKeys = new Set<string>();
+      for (const issue of allDone) {
+        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
+          missingParentKeys.add(issue.parentKey);
+        }
+      }
+      if (missingParentKeys.size > 0) {
+        try {
+          const parentJql = `key IN (${Array.from(missingParentKeys).join(',')})`;
+          const parentResult = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: { jql: parentJql, maxResults: missingParentKeys.size },
+          });
+          for (const p of parseIssues(parentResult)) {
+            if (!allKeys.has(p.key)) {
+              allDone.push(p);
+              allKeys.add(p.key);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 2단계: 조부모 (에픽) 조회
+      const missingGrandparentKeys = new Set<string>();
+      for (const issue of allDone) {
+        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
+          missingGrandparentKeys.add(issue.parentKey);
+        }
+      }
+      if (missingGrandparentKeys.size > 0) {
+        try {
+          const gpJql = `key IN (${Array.from(missingGrandparentKeys).join(',')})`;
+          const gpResult = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: { jql: gpJql, maxResults: missingGrandparentKeys.size },
+          });
+          for (const gp of parseIssues(gpResult)) {
+            if (!allKeys.has(gp.key)) {
+              allDone.push(gp);
+              allKeys.add(gp.key);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      setDoneIssues(allDone);
+      setDoneIssuesLoaded(true);
+    } catch (err) {
+      console.error('[JiraDashboard] fetchDoneIssues error:', err);
+    }
+  }, [activeAccount, selectedProjects]);
 
   // 스페이스 설정 모달용 필터링
   const filteredProjects = useMemo(() => {
@@ -812,7 +926,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     fetchProjects();
     fetchMyIssues();
     fetchDoneCounts();
-  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts]);
+    fetchDoneIssues();
+  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
 
   const goToIssue = useCallback((key: string) => {
     if (key) history.push(`/jira/issue/${key}`);
@@ -935,7 +1050,9 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     window.dispatchEvent(new CustomEvent('lyra:space-settings-changed'));
     fetchMyIssues();
     fetchDoneCounts();
-  }, [currentAccountId, selectedProjects, fetchMyIssues, fetchDoneCounts]);
+    setDoneIssuesLoaded(false);
+    fetchDoneIssues();
+  }, [currentAccountId, selectedProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
 
   return {
     // State
@@ -979,6 +1096,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     // Computed
     statusCounts,
     filteredProjects,
+    selectedStatuses,
+    doneIssues,
 
     // Callbacks
     fetchProjects,
@@ -1001,5 +1120,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     handleTransitioned,
     handleAssigned,
     saveSpaceSettings,
+    toggleStatus,
   };
 }

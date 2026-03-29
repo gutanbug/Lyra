@@ -421,17 +421,14 @@ const ConfluenceSidebar = () => {
         <SidebarTitle>스페이스</SidebarTitle>
       </SidebarHeader>
 
-      {/* 검색 - 펼쳐진 스페이스가 있을 때만 표시 */}
-      {expandedSpaceKeys.size > 0 && (
-        <SearchBox>
-          <SearchIconWrap><Search size={14} /></SearchIconWrap>
-          <SearchInput
-            placeholder="제목으로 검색"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </SearchBox>
-      )}
+      <SearchBox>
+        <SearchIconWrap><Search size={14} /></SearchIconWrap>
+        <SearchInput
+          placeholder="제목으로 검색"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </SearchBox>
 
       {loadingSpaces ? (
         <LoadingRow><Loader size={14} /><span>스페이스 로딩 중...</span></LoadingRow>

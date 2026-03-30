@@ -230,6 +230,7 @@ export function parseChildIssues(result: unknown): ChildIssue[] {
       const assigneeObj = obj(f.assignee);
       const issueTypeObj = obj(f.issuetype) || obj(f.issue_type) || obj(f.issueType);
       const priorityObj = obj(f.priority);
+      const parentObj = obj(f.parent) || obj(item.parent);
       return {
         key,
         summary: summary.trim(),
@@ -239,6 +240,7 @@ export function parseChildIssues(result: unknown): ChildIssue[] {
         assigneeAvatarUrl: (() => { const av = obj(assigneeObj?.avatarUrls); return str(av?.['48x48']) || str(av?.['32x32']) || str(av?.['24x24']) || str(assigneeObj?.avatarUrl) || ''; })(),
         issueTypeName: str(issueTypeObj?.name),
         priorityName: str(priorityObj?.name),
+        parentKey: str(parentObj?.key) || undefined,
       };
     })
     .filter((i) => i.key);
@@ -357,22 +359,48 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
       continue;
     }
 
-    const epicAncestor = findEpicAncestor(issue);
-    const parentKey = epicAncestor || NO_EPIC;
-    if (!epicMap.has(parentKey)) {
-      const parentIssue = epicAncestor ? issueByKey.get(epicAncestor) : null;
-      epicMap.set(parentKey, {
-        key: parentKey,
-        summary: parentKey === NO_EPIC ? '기타' : (parentIssue?.summary || issue.parentSummary || parentKey),
-        issueTypeName: parentKey === NO_EPIC ? '' : 'Epic',
-        statusName: '',
-        statusCategory: '',
-        assigneeName: '',
-        priorityName: '',
-        children: [],
-      });
+    // 에픽의 직접 자식만 children에 추가 (간접 자식은 defaultChildrenMap에서 표시)
+    // parentKey가 에픽이면 → 직접 자식
+    // parentKey가 없으면 → Epic Link로만 연결된 이슈 (에픽 조상을 찾아 배치)
+    // parentKey가 에픽이 아닌 다른 이슈면 → 간접 자식 → 에픽 children에서 제외
+    if (issue.parentKey && epicKeys.has(issue.parentKey)) {
+      // 직접 자식: parentKey가 에픽인 경우
+      const parentKey = issue.parentKey;
+      if (!epicMap.has(parentKey)) {
+        const parentIssue = issueByKey.get(parentKey);
+        epicMap.set(parentKey, {
+          key: parentKey,
+          summary: parentIssue?.summary || issue.parentSummary || parentKey,
+          issueTypeName: 'Epic',
+          statusName: '',
+          statusCategory: '',
+          assigneeName: '',
+          priorityName: '',
+          children: [],
+        });
+      }
+      epicMap.get(parentKey)!.children.push(issue);
+    } else if (!issue.parentKey || !issueByKey.has(issue.parentKey)) {
+      // parentKey가 없거나, parentKey가 목록에 없는 경우 → 에픽 조상 탐색
+      const epicAncestor = findEpicAncestor(issue);
+      const parentKey = epicAncestor || NO_EPIC;
+      if (!epicMap.has(parentKey)) {
+        const parentIssue = epicAncestor ? issueByKey.get(epicAncestor) : null;
+        epicMap.set(parentKey, {
+          key: parentKey,
+          summary: parentKey === NO_EPIC ? '기타' : (parentIssue?.summary || issue.parentSummary || parentKey),
+          issueTypeName: parentKey === NO_EPIC ? '' : 'Epic',
+          statusName: '',
+          statusCategory: '',
+          assigneeName: '',
+          priorityName: '',
+          children: [],
+        });
+      }
+      epicMap.get(parentKey)!.children.push(issue);
     }
-    epicMap.get(parentKey)!.children.push(issue);
+    // else: parentKey가 다른 이슈(스토리 등)인 경우 → 에픽 children에 넣지 않음
+    // defaultChildrenMap에서 해당 스토리 하위로 표시됨
   }
 
   const groups = Array.from(epicMap.values()).filter((g) => g.children.length > 0);

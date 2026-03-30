@@ -3,7 +3,7 @@ import React from 'react';
 import { integrationController } from 'controllers/account';
 import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
-import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects } from 'lib/utils/storageHelpers';
+import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects, loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -57,6 +57,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
 
   // 전체 이슈 (내 담당)
   const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.myIssues : []);
+  const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(new Set()); // 본인 담당 이슈 키 (부모/조부모 제외)
   const [isLoading, setIsLoading] = useState(false);
 
   // 완료(Done) 상태별 개수 (별도 조회)
@@ -104,11 +105,20 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
   const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(isCacheValid ? cache.browseLoadedChildren : new Set());
 
+  // 상태 필터 (localStorage에서 복원)
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(() => {
+    const saved = loadSelectedStatuses(currentAccountId);
+    return new Set(saved);
+  });
+  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>([]);
+  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(false);
+
   // 상태별 개수 (myIssues + doneCounts 합산)
   const statusCounts = useMemo(() => {
     const countMap = new Map<string, { category: string; count: number }>();
+    // 본인 담당 이슈만 카운트 (계층 구조용 부모/조부모 이슈 제외)
     for (const issue of myIssues) {
-      if (isEpicType(issue.issueTypeName)) continue;
+      if (myIssueKeys.size > 0 && !myIssueKeys.has(issue.key)) continue;
       const name = issue.statusName || '기타';
       const cat = issue.statusCategory || '';
       const entry = countMap.get(name);
@@ -130,7 +140,113 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     };
     counts.sort((a, b) => catOrder(a.category) - catOrder(b.category));
     return counts;
-  }, [myIssues, doneCounts]);
+  }, [myIssues, myIssueKeys, doneCounts]);
+
+  // 상태 필터 토글
+  const isDoneCategory = useCallback((category: string) => {
+    const l = category.toLowerCase();
+    return l.includes('done') || l.includes('완료');
+  }, []);
+
+  const toggleStatus = useCallback((statusName: string) => {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(statusName)) next.delete(statusName);
+      else next.add(statusName);
+      saveSelectedStatuses(currentAccountId, Array.from(next));
+      return next;
+    });
+  }, [currentAccountId]);
+
+  // 완료 이슈 조회 — 초기 로드 시 함께 호출, 부모 에픽 정보도 포함
+  const fetchDoneIssues = useCallback(async () => {
+    if (!activeAccount) return;
+    try {
+      const pc = buildProjectClause(selectedProjects);
+      const projectClause = pc ? `${pc} AND ` : '';
+      const allDone: NormalizedIssue[] = [];
+      const allKeys = new Set<string>();
+      const pageSize = 100;
+      let pageToken: string | undefined;
+      const maxPages = 20;
+
+      for (let page = 0; page < maxPages; page++) {
+        const result = await integrationController.invoke({
+          accountId: activeAccount.id,
+          serviceType: 'jira',
+          action: 'searchIssues',
+          params: {
+            jql: `${projectClause}assignee = currentUser() AND statusCategory = Done ORDER BY updated DESC`,
+            maxResults: pageSize,
+            skipCache: true,
+            ...(pageToken ? { nextPageToken: pageToken } : {}),
+          },
+        }) as Record<string, unknown>;
+        const issues = parseIssues(result);
+        for (const i of issues) {
+          allDone.push(i);
+          allKeys.add(i.key);
+        }
+        pageToken = result.nextPageToken as string | undefined;
+        if (!pageToken || issues.length < pageSize) break;
+      }
+
+      // 부모/조부모 에픽 조회 (myIssues와 동일 패턴)
+      const missingParentKeys = new Set<string>();
+      for (const issue of allDone) {
+        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
+          missingParentKeys.add(issue.parentKey);
+        }
+      }
+      if (missingParentKeys.size > 0) {
+        try {
+          const parentJql = `key IN (${Array.from(missingParentKeys).join(',')})`;
+          const parentResult = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: { jql: parentJql, maxResults: missingParentKeys.size },
+          });
+          for (const p of parseIssues(parentResult)) {
+            if (!allKeys.has(p.key)) {
+              allDone.push(p);
+              allKeys.add(p.key);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 2단계: 조부모 (에픽) 조회
+      const missingGrandparentKeys = new Set<string>();
+      for (const issue of allDone) {
+        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
+          missingGrandparentKeys.add(issue.parentKey);
+        }
+      }
+      if (missingGrandparentKeys.size > 0) {
+        try {
+          const gpJql = `key IN (${Array.from(missingGrandparentKeys).join(',')})`;
+          const gpResult = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: { jql: gpJql, maxResults: missingGrandparentKeys.size },
+          });
+          for (const gp of parseIssues(gpResult)) {
+            if (!allKeys.has(gp.key)) {
+              allDone.push(gp);
+              allKeys.add(gp.key);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      setDoneIssues(allDone);
+      setDoneIssuesLoaded(true);
+    } catch (err) {
+      console.error('[JiraDashboard] fetchDoneIssues error:', err);
+    }
+  }, [activeAccount, selectedProjects]);
 
   // 스페이스 설정 모달용 필터링
   const filteredProjects = useMemo(() => {
@@ -251,12 +367,14 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     }
   }, [activeAccount]);
 
-  const fetchChildren = useCallback(async (parentKeys: string[], projectFilter?: string[]): Promise<NormalizedIssue[]> => {
+  const fetchChildren = useCallback(async (parentKeys: string[], projectFilter?: string[], isEpic = false): Promise<NormalizedIssue[]> => {
     if (parentKeys.length === 0 || !activeAccount) return [];
     const allChildren: NormalizedIssue[] = [];
     const seenKeys = new Set<string>();
+    const parentKeySet = new Set(parentKeys);
     const pc = projectFilter && projectFilter.length > 0 ? `${buildProjectClause(projectFilter)} AND ` : '';
 
+    // parent JQL — 직접 자식 반환
     try {
       const jql = `${pc}parent IN (${parentKeys.join(',')}) ORDER BY created ASC`;
       const result = await integrationController.invoke({
@@ -266,31 +384,52 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         params: { jql, maxResults: 200, skipCache: true },
       });
       for (const issue of parseIssues(result)) {
-        if (!seenKeys.has(issue.key)) {
-          allChildren.push(issue);
-          seenKeys.add(issue.key);
-        }
+        if (seenKeys.has(issue.key)) continue;
+        allChildren.push(issue);
+        seenKeys.add(issue.key);
       }
     } catch { /* ignore */ }
 
-    try {
-      const jql = `${pc}"Epic Link" IN (${parentKeys.join(',')}) ORDER BY created ASC`;
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: { jql, maxResults: 200, skipCache: true },
-      });
-      for (const issue of parseIssues(result)) {
-        if (!seenKeys.has(issue.key)) {
+    // Epic Link JQL — 에픽일 때만 실행 (서브태스크 제외)
+    if (isEpic) {
+      try {
+        const jql = `${pc}"Epic Link" IN (${parentKeys.join(',')}) AND issuetype not in subTaskIssueTypes() ORDER BY created ASC`;
+        const result = await integrationController.invoke({
+          accountId: activeAccount.id,
+          serviceType: 'jira',
+          action: 'searchIssues',
+          params: { jql, maxResults: 200, skipCache: true },
+        });
+        for (const issue of parseIssues(result)) {
+          if (seenKeys.has(issue.key)) continue;
           if (!issue.parentKey && parentKeys.length === 1) {
             issue.parentKey = parentKeys[0];
           }
           allChildren.push(issue);
           seenKeys.add(issue.key);
         }
+      } catch {
+        // subTaskIssueTypes() 미지원 시 폴백
+        try {
+          const jql = `${pc}"Epic Link" IN (${parentKeys.join(',')}) ORDER BY created ASC`;
+          const result = await integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchIssues',
+            params: { jql, maxResults: 200, skipCache: true },
+          });
+          for (const issue of parseIssues(result)) {
+            if (seenKeys.has(issue.key)) continue;
+            if (issue.parentKey && !parentKeySet.has(issue.parentKey)) continue;
+            if (!issue.parentKey && parentKeys.length === 1) {
+              issue.parentKey = parentKeys[0];
+            }
+            allChildren.push(issue);
+            seenKeys.add(issue.key);
+          }
+        } catch { /* Epic Link 필드가 없는 인스턴스에서는 무시 */ }
       }
-    } catch { /* Epic Link 필드가 없는 인스턴스에서는 무시 */ }
+    }
 
     return allChildren;
   }, [activeAccount]);
@@ -298,6 +437,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const loadAllDescendants = useCallback(async (issues: NormalizedIssue[], projectFilter?: string[]) => {
     const childrenMap: Record<string, NormalizedIssue[]> = {};
     const loaded = new Set<string>();
+    const issueMap = new Map<string, NormalizedIssue>();
+    for (const i of issues) issueMap.set(i.key, i);
 
     let keysToLoad = issues
       .filter((i) => i.subtaskCount > 0)
@@ -311,9 +452,12 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
           if (loaded.has(key)) return;
           loaded.add(key);
           try {
-            const children = await fetchChildren([key], projectFilter);
+            const parentIssue = issueMap.get(key);
+            const epic = parentIssue ? isEpicType(parentIssue.issueTypeName) : false;
+            const children = await fetchChildren([key], projectFilter, epic);
             childrenMap[key] = children;
             for (const child of children) {
+              issueMap.set(child.key, child);
               if (child.subtaskCount > 0 && !loaded.has(child.key)) {
                 nextKeys.push(child.key);
               }
@@ -341,9 +485,16 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       return;
     }
 
+    // 이슈 타입 확인: myIssues 또는 defaultChildrenMap에서 찾기
+    let epic = false;
+    const parentIssue = myIssues.find((i) => i.key === parentKey);
+    if (parentIssue) {
+      epic = isEpicType(parentIssue.issueTypeName);
+    }
+
     setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
     try {
-      const children = await fetchChildren([parentKey], selectedProjects);
+      const children = await fetchChildren([parentKey], selectedProjects, epic);
       setDefaultChildrenMap((prev) => ({
         ...prev,
         [parentKey]: children,
@@ -378,7 +529,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         },
       });
       const issues = parseIssues(result);
-      const allKeys = new Set(issues.map((i) => i.key));
+      const originalKeys = new Set(issues.map((i) => i.key));
+      const allKeys = new Set(originalKeys);
 
       // 1단계: 직접 부모 조회
       const missingParentKeys = new Set<string>();
@@ -433,10 +585,12 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       }
 
       setMyIssues(issues);
+      setMyIssueKeys(originalKeys);
       loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined);
     } catch (err) {
       console.error('[JiraDashboard] fetchMyIssues error:', err);
       setMyIssues([]);
+      setMyIssueKeys(new Set());
     } finally {
       setIsLoading(false);
     }
@@ -462,7 +616,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         }) as Record<string, unknown>;
         const issues = parseIssues(result);
         for (const issue of issues) {
-          if (isEpicType(issue.issueTypeName)) continue;
           const name = issue.statusName || '완료';
           const cat = issue.statusCategory || 'done';
           const entry = countMap.get(name);
@@ -525,9 +678,12 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const loadBrowseChildren = useCallback(async (parentKey: string) => {
     if (browseLoadedChildren.has(parentKey)) return;
 
+    // browseEpics에서 에픽 여부 확인
+    const epic = browseEpics.some((e) => e.key === parentKey);
+
     setBrowseLoadingChildren((prev) => new Set(prev).add(parentKey));
     try {
-      const children = await fetchChildren([parentKey]);
+      const children = await fetchChildren([parentKey], undefined, epic);
       setBrowseChildrenMap((prev) => ({
         ...prev,
         [parentKey]: children,
@@ -612,7 +768,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       const epicKeys = issues
         .filter((i) => isEpicType(i.issueTypeName))
         .map((i) => i.key);
-      const storyIssues = await fetchChildren(epicKeys, pf);
+      const storyIssues = await fetchChildren(epicKeys, pf, true);
       for (const s of storyIssues) {
         if (!allKeys.has(s.key)) {
           issues.push(s);
@@ -774,7 +930,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     fetchProjects();
     fetchMyIssues();
     fetchDoneCounts();
-  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts]);
+    fetchDoneIssues();
+  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
 
   const goToIssue = useCallback((key: string) => {
     if (key) history.push(`/jira/issue/${key}`);
@@ -897,7 +1054,9 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     window.dispatchEvent(new CustomEvent('lyra:space-settings-changed'));
     fetchMyIssues();
     fetchDoneCounts();
-  }, [currentAccountId, selectedProjects, fetchMyIssues, fetchDoneCounts]);
+    setDoneIssuesLoaded(false);
+    fetchDoneIssues();
+  }, [currentAccountId, selectedProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
 
   return {
     // State
@@ -941,6 +1100,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     // Computed
     statusCounts,
     filteredProjects,
+    selectedStatuses,
+    doneIssues,
 
     // Callbacks
     fetchProjects,
@@ -963,5 +1124,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     handleTransitioned,
     handleAssigned,
     saveSpaceSettings,
+    toggleStatus,
   };
 }

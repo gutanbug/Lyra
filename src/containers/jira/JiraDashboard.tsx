@@ -9,7 +9,9 @@ import { useAssigneeDropdown } from 'lib/hooks/useAssigneeDropdown';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import { useJiraSearch } from 'lib/hooks/useJiraSearch';
 import { groupByEpic } from 'lib/utils/jiraNormalizers';
+import { isEpicType } from 'lib/utils/jiraUtils';
 import { saveSelectedProjects } from 'lib/utils/storageHelpers';
+import type { NormalizedIssue } from 'types/jira';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
@@ -59,6 +61,7 @@ const JiraDashboard = () => {
     browseExpandedKeys, setBrowseExpandedKeys, browseLoadedChildren,
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
+    selectedStatuses, doneIssues, toggleStatus,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
@@ -97,7 +100,54 @@ const JiraDashboard = () => {
   }
 
   const isSearchMode = searchResults !== null;
-  const displayIssues = isSearchMode ? searchResults : myIssues;
+  const baseIssues = isSearchMode ? searchResults : myIssues;
+
+  // 상태 필터 적용: 선택된 상태가 없으면(초기) 전체 표시, 있으면 필터링
+  const displayIssues = useMemo(() => {
+    // 완료 이슈를 base에 합산 (중복 제거)
+    const keySet = new Set(baseIssues.map((i) => i.key));
+    const merged = [...baseIssues];
+    for (const d of doneIssues) {
+      if (!keySet.has(d.key)) {
+        merged.push(d);
+        keySet.add(d.key);
+      }
+    }
+
+    // 상태 필터 적용
+    let filtered: NormalizedIssue[];
+    if (selectedStatuses.size === 0) {
+      filtered = merged;
+    } else {
+      filtered = merged.filter((issue) =>
+        isEpicType(issue.issueTypeName) || selectedStatuses.has(issue.statusName)
+      );
+    }
+
+    // 부모 체인 보강: 필터된 이슈의 조상(스토리, 에픽)이 누락되면 추가하여
+    // 원래 계층 구조(에픽 > 스토리 > 하위항목)를 유지
+    const filteredKeys = new Set(filtered.map((i) => i.key));
+    const issueByKey = new Map(merged.map((i) => [i.key, i]));
+    const extras: NormalizedIssue[] = [];
+
+    for (const issue of filtered) {
+      if (isEpicType(issue.issueTypeName)) continue;
+      // 부모 체인을 따라가며 누락된 조상을 모두 추가
+      let pk = issue.parentKey;
+      const visited = new Set<string>();
+      while (pk && !visited.has(pk) && !filteredKeys.has(pk)) {
+        visited.add(pk);
+        const p = issueByKey.get(pk);
+        if (!p) break;
+        extras.push(p);
+        filteredKeys.add(p.key);
+        pk = p.parentKey;
+      }
+    }
+
+    return extras.length > 0 ? [...filtered, ...extras] : filtered;
+  }, [baseIssues, doneIssues, selectedStatuses]);
+
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
 
@@ -125,7 +175,7 @@ const JiraDashboard = () => {
       />
 
       {!browseProjectKey && !isSearchMode && statusCounts.length > 0 && (
-        <JiraStatusSummary statusCounts={statusCounts} />
+        <JiraStatusSummary statusCounts={statusCounts} selectedStatuses={selectedStatuses} onToggleStatus={toggleStatus} />
       )}
 
       <JiraIssueList

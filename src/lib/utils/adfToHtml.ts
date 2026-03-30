@@ -16,6 +16,12 @@ interface ADFMark {
   attrs?: Record<string, unknown>;
 }
 
+function extractText(node: ADFNode): string {
+  if (node.text) return node.text;
+  if (!node.content) return '';
+  return node.content.map(extractText).join('');
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -84,7 +90,10 @@ function renderNode(node: ADFNode): string {
 
     case 'heading': {
       const level = Math.min(Math.max(Number(node.attrs?.level) || 1, 1), 6);
-      return `<h${level}>${children}</h${level}>`;
+      const headingText = extractText(node).trim();
+      const headingId = headingText ? encodeURIComponent(headingText.replace(/\s+/g, '-')) : '';
+      const idAttr = headingId ? ` id="${headingId}"` : '';
+      return `<h${level}${idAttr}>${children}</h${level}>`;
     }
 
     case 'bulletList':

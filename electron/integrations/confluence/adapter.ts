@@ -11,6 +11,7 @@ interface InvokeParams {
   query?: string;
   pageId?: string;
   spaceKey?: string;
+  folderId?: string;
   downloadUrl?: string;
   searchField?: 'all' | 'title' | 'body' | 'title_body';
   tinyKey?: string;
@@ -55,6 +56,7 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
       getSpaces: (params: unknown) => this.getSpaces(params),
       getSpacePages: (params: unknown) => this.getSpacePages(params),
       getChildPages: (params: unknown) => this.getChildPages(params),
+      getFolderChildren: (params: unknown) => this.getFolderChildren(params),
       getMyPages: (params: unknown) => this.getMyPages(params),
       searchPages: (params: unknown) => this.searchPages(params),
       getPageContent: (params: unknown) => this.getPageContent(params),
@@ -91,6 +93,13 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!p.pageId) throw new Error('pageId is required');
     const client = new ConfluenceClient(p.credentials);
     return client.getChildPages(p.pageId);
+  }
+
+  private async getFolderChildren(params?: unknown): Promise<unknown> {
+    const p = (params || {}) as InvokeParams;
+    if (!p.folderId) throw new Error('folderId is required');
+    const client = new ConfluenceClient(p.credentials);
+    return client.getFolderChildren(p.folderId);
   }
 
   private async getMyPages(params?: unknown): Promise<unknown> {

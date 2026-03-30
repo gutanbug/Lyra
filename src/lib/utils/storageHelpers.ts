@@ -39,6 +39,25 @@ export function saveSelectedProjects(accountId: string, keys: string[]): void {
   } catch { /* ignore */ }
 }
 
+// ── Jira 상태 필터 ──
+
+export function loadSelectedStatuses(accountId: string): string[] {
+  try {
+    const raw = localStorage.getItem(`lyra:jira:selectedStatuses:${accountId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function saveSelectedStatuses(accountId: string, statuses: string[]): void {
+  try {
+    localStorage.setItem(`lyra:jira:selectedStatuses:${accountId}`, JSON.stringify(statuses));
+  } catch { /* ignore */ }
+}
+
 // ── Confluence 스페이스 ──
 
 /**

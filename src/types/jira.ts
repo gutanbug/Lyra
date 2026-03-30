@@ -98,6 +98,7 @@ export interface ChildIssue {
   assigneeAvatarUrl: string;
   issueTypeName: string;
   priorityName: string;
+  parentKey?: string;
 }
 
 export interface ConfluenceLink {

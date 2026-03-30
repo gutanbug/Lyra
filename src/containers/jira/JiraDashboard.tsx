@@ -124,52 +124,28 @@ const JiraDashboard = () => {
       );
     }
 
-    // 에픽 연결 보강: 부모 체인을 따라 에픽을 찾아
-    // 1) 에픽이 목록에 없으면 추가
-    // 2) 비에픽 이슈의 parentKey를 에픽으로 직접 연결 (중간 부모가 없어도 groupByEpic이 작동)
+    // 부모 체인 보강: 필터된 이슈의 조상(스토리, 에픽)이 누락되면 추가하여
+    // 원래 계층 구조(에픽 > 스토리 > 하위항목)를 유지
     const filteredKeys = new Set(filtered.map((i) => i.key));
     const issueByKey = new Map(merged.map((i) => [i.key, i]));
-    const epicExtras: NormalizedIssue[] = [];
-    const result = filtered.map((issue) => {
-      if (isEpicType(issue.issueTypeName)) return issue;
-      // 이미 parentKey가 에픽이면 그대로
-      if (issue.parentKey && filteredKeys.has(issue.parentKey)) {
-        const parent = issueByKey.get(issue.parentKey);
-        if (parent && isEpicType(parent.issueTypeName)) return issue;
-      }
-      // 부모 체인을 따라 에픽 조상 탐색
-      let epicKey: string | null = null;
-      let epicIssue: NormalizedIssue | undefined;
+    const extras: NormalizedIssue[] = [];
+
+    for (const issue of filtered) {
+      if (isEpicType(issue.issueTypeName)) continue;
+      // 부모 체인을 따라가며 누락된 조상을 모두 추가
       let pk = issue.parentKey;
       const visited = new Set<string>();
-      while (pk && !visited.has(pk)) {
+      while (pk && !visited.has(pk) && !filteredKeys.has(pk)) {
         visited.add(pk);
         const p = issueByKey.get(pk);
         if (!p) break;
-        if (isEpicType(p.issueTypeName)) {
-          epicKey = p.key;
-          epicIssue = p;
-          break;
-        }
+        extras.push(p);
+        filteredKeys.add(p.key);
         pk = p.parentKey;
       }
-      if (epicKey && epicIssue) {
-        // 에픽이 filtered에 없으면 추가
-        if (!filteredKeys.has(epicKey)) {
-          epicExtras.push(epicIssue);
-          filteredKeys.add(epicKey);
-        }
-        // parentKey를 에픽으로 직접 연결
-        if (issue.parentKey !== epicKey) {
-          return { ...issue, parentKey: epicKey };
-        }
-      }
-      return issue;
-    });
+    }
 
-    return epicExtras.length > 0 ? [...result, ...epicExtras] : result;
-
-    return filtered;
+    return extras.length > 0 ? [...filtered, ...extras] : filtered;
   }, [baseIssues, doneIssues, selectedStatuses]);
 
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);

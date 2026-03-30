@@ -57,6 +57,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
 
   // 전체 이슈 (내 담당)
   const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.myIssues : []);
+  const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(new Set()); // 본인 담당 이슈 키 (부모/조부모 제외)
   const [isLoading, setIsLoading] = useState(false);
 
   // 완료(Done) 상태별 개수 (별도 조회)
@@ -115,8 +116,9 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   // 상태별 개수 (myIssues + doneCounts 합산)
   const statusCounts = useMemo(() => {
     const countMap = new Map<string, { category: string; count: number }>();
+    // 본인 담당 이슈만 카운트 (계층 구조용 부모/조부모 이슈 제외)
     for (const issue of myIssues) {
-      if (isEpicType(issue.issueTypeName)) continue;
+      if (myIssueKeys.size > 0 && !myIssueKeys.has(issue.key)) continue;
       const name = issue.statusName || '기타';
       const cat = issue.statusCategory || '';
       const entry = countMap.get(name);
@@ -138,7 +140,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     };
     counts.sort((a, b) => catOrder(a.category) - catOrder(b.category));
     return counts;
-  }, [myIssues, doneCounts]);
+  }, [myIssues, myIssueKeys, doneCounts]);
 
   // 상태 필터 토글
   const isDoneCategory = useCallback((category: string) => {
@@ -527,7 +529,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         },
       });
       const issues = parseIssues(result);
-      const allKeys = new Set(issues.map((i) => i.key));
+      const originalKeys = new Set(issues.map((i) => i.key));
+      const allKeys = new Set(originalKeys);
 
       // 1단계: 직접 부모 조회
       const missingParentKeys = new Set<string>();
@@ -582,10 +585,12 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       }
 
       setMyIssues(issues);
+      setMyIssueKeys(originalKeys);
       loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined);
     } catch (err) {
       console.error('[JiraDashboard] fetchMyIssues error:', err);
       setMyIssues([]);
+      setMyIssueKeys(new Set());
     } finally {
       setIsLoading(false);
     }
@@ -611,7 +616,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         }) as Record<string, unknown>;
         const issues = parseIssues(result);
         for (const issue of issues) {
-          if (isEpicType(issue.issueTypeName)) continue;
           const name = issue.statusName || '완료';
           const cat = issue.statusCategory || 'done';
           const entry = countMap.get(name);

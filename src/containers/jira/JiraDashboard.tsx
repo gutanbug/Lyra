@@ -87,18 +87,6 @@ const JiraDashboard = () => {
     onPriorityChanged: () => search.fetchMyIssues(),
   });
 
-  if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
-    return (
-      <Layout>
-        <CenterContent>
-          <EmptyCenter>
-            Atlassian 계정을 추가하고 활성화해주세요. 계정 설정에서 Atlassian을 연결할 수 있습니다.
-          </EmptyCenter>
-        </CenterContent>
-      </Layout>
-    );
-  }
-
   const isSearchMode = searchResults !== null;
   const baseIssues = isSearchMode ? searchResults : myIssues;
 
@@ -150,6 +138,18 @@ const JiraDashboard = () => {
 
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
+
+  if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
+    return (
+      <Layout>
+        <CenterContent>
+          <EmptyCenter>
+            Atlassian 계정을 추가하고 활성화해주세요. 계정 설정에서 Atlassian을 연결할 수 있습니다.
+          </EmptyCenter>
+        </CenterContent>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

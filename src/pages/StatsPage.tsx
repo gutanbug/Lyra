@@ -6,7 +6,7 @@ import { theme } from 'lib/styles/theme';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
 import { isAtlassianAccount } from 'types/account';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
 import { str, obj } from 'lib/utils/typeHelpers';
 import { getStatusCategoryColor } from 'lib/utils/jiraUtils';
 import StatsFilters from 'components/stats/StatsFilters';

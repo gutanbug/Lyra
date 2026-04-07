@@ -3,6 +3,8 @@ import styled from 'styled-components';
 import { IntlProvider } from 'react-intl';
 import { Editor, EditorContext, WithEditorActions, EditorActions } from '@atlaskit/editor-core';
 import { JiraMentionProvider } from 'lib/providers/JiraMentionProvider';
+import { createConfluenceQuickInsertProvider } from 'lib/providers/ConfluenceQuickInsertProvider';
+import { preprocessAdfForEditor } from 'lib/utils/adfUtils';
 import { theme } from 'lib/styles/theme';
 
 export interface AdfCommentEditorHandle {
@@ -29,15 +31,29 @@ interface AdfCommentEditorProps {
   defaultValue?: unknown;
   /** Save 버튼 숨김 (수정 모드에서 별도 저장 버튼 사용 시) */
   hideSaveButton?: boolean;
+  /** Confluence 전용 / 커맨드 활성화 */
+  confluenceMode?: boolean;
 }
 
 // IntlProvider의 onError를 안정적인 참조로 유지하여 re-render 방지
 const noop = () => {};
 
 const AdfCommentEditor = forwardRef<AdfCommentEditorHandle, AdfCommentEditorProps>(
-  ({ placeholder, onSave, onChangeEmpty, disabled, accountId, issueKey, defaultValue, hideSaveButton }, ref) => {
+  ({ placeholder, onSave, onChangeEmpty, disabled, accountId, issueKey, defaultValue, hideSaveButton, confluenceMode }, ref) => {
     const actionsRef = useRef<EditorActions | null>(null);
     const isEmptyRef = useRef(!defaultValue);
+
+    // ADF 전처리: emoji, extension 등 에디터가 지원하지 않는 노드 변환
+    const processedDefaultValue = useMemo(
+      () => defaultValue ? preprocessAdfForEditor(defaultValue) : undefined,
+      [defaultValue],
+    );
+
+    // Confluence 모드: 커스텀 / 커맨드 프로바이더
+    const quickInsertOpts = useMemo(
+      () => confluenceMode ? { provider: createConfluenceQuickInsertProvider() } : true,
+      [confluenceMode],
+    );
     const onChangeEmptyRef = useRef(onChangeEmpty);
     onChangeEmptyRef.current = onChangeEmpty;
 
@@ -122,7 +138,15 @@ const AdfCommentEditor = forwardRef<AdfCommentEditorHandle, AdfCommentEditorProp
                     onSave={handleSave}
                     onChange={handleChange}
                     mentionProvider={mentionProvider}
-                    defaultValue={defaultValue as any}
+                    defaultValue={processedDefaultValue as any}
+                    allowPanel={true}
+                    allowRule={true}
+                    allowDate={true}
+                    allowStatus={true}
+                    allowExpand={true}
+                    allowTasksAndDecisions={true}
+                    codeBlock={{ allowCopyToClipboard: true }}
+                    quickInsert={quickInsertOpts}
                   />
                 </EditorWrapper>
               );

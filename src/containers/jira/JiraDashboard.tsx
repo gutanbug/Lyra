@@ -19,7 +19,7 @@ import JiraSearchToolbar from 'components/jira/JiraSearchToolbar';
 import JiraStatusSummary from 'components/jira/JiraStatusSummary';
 import JiraIssueList from 'components/jira/JiraIssueList';
 import { isAtlassianAccount } from 'types/account';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
 import type { JiraProject } from 'types/jira';
 
 const JiraDashboard = () => {

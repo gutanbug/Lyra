@@ -40,6 +40,8 @@ export interface ConfluencePageDetail {
   bodyHtml: string;
   /** ADF JSON (body.atlas_doc_format) — 존재 시 @atlaskit/renderer로 렌더링 */
   bodyAdf?: unknown;
+  /** Storage format 원본 HTML (view-file 매크로 localId→filename 매핑용) */
+  storageRaw?: string;
   spaceKey: string;
   spaceName: string;
   authorName: string;

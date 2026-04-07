@@ -14,7 +14,7 @@ import { resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
 import { enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
 import { useRichContentLinkHandler, useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import { useFilePreview } from 'lib/hooks/useFilePreview';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
 import { isAtlassianAccount } from 'types/account';
 import type { JiraCredentials } from 'types/account';
 import { str } from 'lib/utils/typeHelpers';
@@ -256,6 +256,7 @@ const ConfluencePageDetailView = () => {
                   ref={bodyEditorRef}
                   defaultValue={page.bodyAdf}
                   onSave={handleSaveBody}
+                  confluenceMode
                 />
                 <EditorActions>
                   <CancelButton $theme={confluenceTheme} onClick={() => setIsEditingBody(false)} disabled={isSavingBody}>취소</CancelButton>

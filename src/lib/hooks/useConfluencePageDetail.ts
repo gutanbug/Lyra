@@ -6,7 +6,7 @@ import type { JiraIssueInfo } from 'lib/utils/jiraLinkEnricher';
 import type { ConfluencePageDetail as PageDetailType, ConfluenceComment } from 'types/confluence';
 import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
 import { str, obj } from 'lib/utils/typeHelpers';
-import { extractAllUrlsFromAdf, extractConfluencePageIdFromUrl, extractConfluenceTinyKey, extractIssueKeyFromUrl, extractMediaIds } from 'lib/utils/adfUtils';
+import { extractAllUrlsFromAdf, extractConfluencePageIdFromUrl, extractConfluenceTinyKey, extractIssueKeyFromUrl, extractMediaInfos, extractViewFileMap } from 'lib/utils/adfUtils';
 import { normalizePageDetail, normalizeComment } from 'lib/utils/confluenceNormalizers';
 import { renderMermaidDiagrams } from 'lib/utils/mermaidLoader';
 
@@ -271,13 +271,17 @@ export function useConfluencePageDetail(pageId: string) {
         // media ID → 첨부파일 매칭
         const fileMetas: Record<string, FileMeta> = {};
         if (detail.bodyAdf && allAtts.length > 0) {
-          const mediaIds = extractMediaIds(detail.bodyAdf);
-          if (mediaIds.length > 0) {
+          const mediaInfos = extractMediaInfos(detail.bodyAdf);
+
+          // Storage format에서 view-file 매크로 localId → filename 매핑 추출
+          const viewFileMap = detail.storageRaw ? extractViewFileMap(detail.storageRaw) : {};
+
+          if (mediaInfos.length > 0) {
             const mediaToAtt = new Map<string, AttInfo>();
             const matchedTitles = new Set<string>();
 
-            // mediaApiFileId 직접 매칭
-            for (const mid of mediaIds) {
+            // 1차: mediaApiFileId 직접 매칭
+            for (const { id: mid } of mediaInfos) {
               const byMediaApi = rawAttachments.find((a) => {
                 const att = a as Record<string, unknown>;
                 const ext = obj(att.extensions);
@@ -296,8 +300,19 @@ export function useConfluencePageDetail(pageId: string) {
               }
             }
 
-            // 순서 기반 폴백
-            const unmatchedMids = mediaIds.filter((mid) => !mediaToAtt.has(mid));
+            // 2차: localId → Storage format filename 매칭 (view-file 매크로)
+            for (const { id: mid, localId, fileName } of mediaInfos) {
+              if (mediaToAtt.has(mid)) continue;
+              // localId로 Storage format의 view-file 매크로 파일명 조회
+              const resolvedName = (localId && viewFileMap[localId]) || fileName;
+              if (resolvedName) {
+                const info = allAtts.find((a) => a.title === resolvedName && !matchedTitles.has(a.title));
+                if (info) { mediaToAtt.set(mid, info); matchedTitles.add(info.title); }
+              }
+            }
+
+            // 3차: 순서 기반 폴백 (위에서 매칭 안 된 것만)
+            const unmatchedMids = mediaInfos.map((m) => m.id).filter((mid) => !mediaToAtt.has(mid));
             const unmatchedAtts = allAtts.filter((a) => !matchedTitles.has(a.title));
             for (let i = 0; i < unmatchedMids.length && i < unmatchedAtts.length; i++) {
               mediaToAtt.set(unmatchedMids[i], unmatchedAtts[i]);

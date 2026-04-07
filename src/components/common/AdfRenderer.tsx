@@ -197,7 +197,18 @@ function preprocessAdf(
     if (extKey === 'toc' || extKey === 'toc-zone') {
       return buildTocNode(headings ?? []);
     }
-    // 기타 매크로는 빈 단락으로 대체
+    // bodiedExtension은 내부 콘텐츠를 보존 (작업 보고서, 컨텐츠 포함 등)
+    if (n.type === 'bodiedExtension' && Array.isArray(n.content) && n.content.length > 0) {
+      const processedContent = n.content.map((child: unknown) =>
+        preprocessAdf(child, urlMap, linkMeta, fileMeta, headings),
+      );
+      return {
+        type: 'panel',
+        attrs: { panelType: 'info' },
+        content: processedContent,
+      };
+    }
+    // 일반 extension (본문 없음) → 빈 단락
     return { type: 'paragraph', content: [] };
   }
 
@@ -878,6 +889,117 @@ const Wrapper = styled.div`
     border: none;
     border-top: 1px solid ${jiraTheme.border};
     margin: 1rem 0;
+  }
+
+  /* ── 작업 항목 (taskList / taskItem) ── */
+  [data-task-list-local-id] {
+    list-style: none;
+    padding-left: 0;
+    margin: 0.25rem 0;
+  }
+  [data-task-local-id] {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    min-height: 24px;
+  }
+  [data-task-local-id] input[type="checkbox"] {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    accent-color: ${jiraTheme.primary};
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  [data-task-local-id] > span,
+  [data-task-local-id] > div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── 결정 사항 (decisionList / decisionItem) ── */
+  [data-decision-list-local-id] {
+    list-style: none;
+    padding-left: 0;
+    margin: 0.25rem 0;
+  }
+  [data-decision-local-id] {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    margin: 0.25rem 0;
+    background: #FFFAE6;
+    border-radius: 4px;
+    border-left: 3px solid #FF991F;
+  }
+  [data-decision-local-id]::before {
+    content: '◆';
+    color: #FF991F;
+    font-size: 0.75rem;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── 펼치기/접기 (expand) ── */
+  [data-node-type="expand"],
+  [data-node-type="nestedExpand"],
+  .ak-renderer-expand {
+    margin: 0.5rem 0;
+    border: 1px solid ${jiraTheme.border};
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  [data-node-type="expand"] > button,
+  [data-node-type="nestedExpand"] > button,
+  .ak-renderer-expand > button,
+  [data-expanded] > button,
+  [data-expanded] > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: ${jiraTheme.bg.subtle};
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: ${jiraTheme.text.primary};
+    text-align: left;
+
+    &:hover {
+      background: ${jiraTheme.bg.hover};
+    }
+  }
+  [data-node-type="expand"] > div:last-child,
+  [data-node-type="nestedExpand"] > div:last-child,
+  .ak-renderer-expand > div:last-child {
+    padding: 0.75rem;
+  }
+
+  /* ── 레이아웃 (layoutSection / layoutColumn) ── */
+  [data-layout-section] {
+    display: flex;
+    gap: 1rem;
+    margin: 0.5rem 0;
+  }
+  [data-layout-column] {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── 날짜 ── */
+  [data-node-type="date"] span,
+  span[data-node-type="date"] {
+    background: #DEEBFF;
+    color: #0747A6;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
   }
 `;
 

@@ -125,7 +125,8 @@ export function normalizePageDetail(raw: Record<string, unknown>): ConfluencePag
   const atlasDocFormat = obj(body?.atlas_doc_format);
   const bodyAdf = atlasDocFormat?.value ? (typeof atlasDocFormat.value === 'string' ? JSON.parse(atlasDocFormat.value as string) : atlasDocFormat.value) : undefined;
   const storage = obj(body?.storage);
-  const bodyHtml = confluenceToHtml(str(storage?.value));
+  const storageRaw = str(storage?.value);
+  const bodyHtml = confluenceToHtml(storageRaw);
 
   const space = obj(raw.space);
   const spaceKey = str(space?.key);
@@ -151,6 +152,7 @@ export function normalizePageDetail(raw: Record<string, unknown>): ConfluencePag
     title,
     bodyHtml,
     bodyAdf,
+    storageRaw: storageRaw || undefined,
     spaceKey,
     spaceName,
     authorName,

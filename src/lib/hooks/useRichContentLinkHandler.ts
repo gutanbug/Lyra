@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
 import { extractConfluenceTinyKey } from 'lib/utils/adfUtils';

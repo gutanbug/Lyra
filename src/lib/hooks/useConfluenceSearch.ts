@@ -198,6 +198,7 @@ export function useConfluenceSearch() {
         params,
       });
       const pages = parsePages(result);
+      pages.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
       setSearchResults(pages);
       setExpandedSpaces(new Set(pages.map((p) => p.spaceId || '__no_space__')));
     } catch (err) {
@@ -231,6 +232,7 @@ export function useConfluenceSearch() {
         params,
       });
       const pages = parsePages(result);
+      pages.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
       setSuggestions(pages);
       setShowSuggestions(pages.length > 0);
       setActiveSuggestionIdx(-1);

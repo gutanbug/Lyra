@@ -11,8 +11,9 @@ const AccountSettings = lazy(() => import('pages/AccountSettings'));
 const StatsPage = lazy(() => import('pages/StatsPage'));
 const NotFound = lazy(() => import('pages/NotFound'));
 import { theme } from 'lib/styles/theme';
-import { useTabs } from 'modules/contexts/splitView';
-import type { Tab } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
+import type { Tab } from 'modules/contexts/tab';
+import { useSplitView } from 'modules/contexts/splitView';
 
 /** 마우스 뒤로가기/앞으로가기 이벤트를 라우터 히스토리에 연결 */
 const useMouseNavigation = (active: boolean) => {
@@ -108,7 +109,8 @@ const TabPanel = ({ tab, navActive = false }: { tab: Tab; navActive?: boolean })
 };
 
 const LayoutPage = () => {
-  const { tabs, activeTabId, closeTab, activateTab, deactivateTab, isSplit, leftPanel, rightPanel } = useTabs();
+  const { tabs, activeTabId, closeTab, activateTab, deactivateTab } = useTabs();
+  const { isSplit, leftPanel, rightPanel } = useSplitView();
   const history = useHistory();
   const location = useLocation();
 

@@ -4,12 +4,13 @@ import styled from 'styled-components';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
+import type { Tab } from 'modules/contexts/tab';
+import { useSplitView } from 'modules/contexts/splitView';
 import { useAccount } from 'modules/contexts/account';
 import { isAtlassianAccount } from 'types/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
-import type { Tab } from 'modules/contexts/splitView';
 
 /** 메뉴 정의 */
 const MENUS = [
@@ -22,8 +23,8 @@ const Header = () => {
   const history = useHistory();
   const {
     tabs, activeTabId, addTab, closeTab, activateTab, deactivateTab, renameTab, closeAllTabs,
-    isSplit, leftPanel, rightPanel, openSplit, closeSplit,
   } = useTabs();
+  const { isSplit, leftPanel, rightPanel, openSplit, closeSplit } = useSplitView();
   const { accounts, activeAccount, setActive } = useAccount();
   const { dispatch: snackbarDispatch } = useContext(snackbarContext);
 

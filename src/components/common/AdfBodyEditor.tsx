@@ -3,6 +3,8 @@ import styled from 'styled-components';
 import { IntlProvider } from 'react-intl';
 import { Editor, EditorContext, WithEditorActions, EditorActions } from '@atlaskit/editor-core';
 import { JiraMentionProvider } from 'lib/providers/JiraMentionProvider';
+import { createConfluenceQuickInsertProvider } from 'lib/providers/ConfluenceQuickInsertProvider';
+import { preprocessAdfForEditor } from 'lib/utils/adfUtils';
 import { theme } from 'lib/styles/theme';
 
 export interface AdfBodyEditorHandle {
@@ -26,14 +28,28 @@ interface AdfBodyEditorProps {
   accountId?: string;
   /** 멘션 검색용 이슈 키 */
   issueKey?: string;
+  /** Confluence 전용 / 커맨드 활성화 (기본 false) */
+  confluenceMode?: boolean;
 }
 
 const noop = () => {};
 
 const AdfBodyEditor = forwardRef<AdfBodyEditorHandle, AdfBodyEditorProps>(
-  ({ defaultValue, onChangeEmpty, onSave, disabled, accountId, issueKey }, ref) => {
+  ({ defaultValue, onChangeEmpty, onSave, disabled, accountId, issueKey, confluenceMode }, ref) => {
     const actionsRef = useRef<EditorActions | null>(null);
     const isEmptyRef = useRef(!defaultValue);
+
+    // ADF 전처리: emoji, extension, media 등 에디터가 지원하지 않는 노드 변환
+    const processedDefaultValue = useMemo(
+      () => defaultValue ? preprocessAdfForEditor(defaultValue) : undefined,
+      [defaultValue],
+    );
+
+    // Confluence 모드: 커스텀 / 커맨드 프로바이더
+    const quickInsertOpts = useMemo(
+      () => confluenceMode ? { provider: createConfluenceQuickInsertProvider() } : true,
+      [confluenceMode],
+    );
     const onChangeEmptyRef = useRef(onChangeEmpty);
     onChangeEmptyRef.current = onChangeEmpty;
     const onSaveRef = useRef(onSave);
@@ -112,13 +128,17 @@ const AdfBodyEditor = forwardRef<AdfBodyEditorHandle, AdfBodyEditorProps>(
                     disabled={disabled}
                     onChange={handleChange}
                     mentionProvider={mentionProvider}
-                    defaultValue={defaultValue as any}
+                    defaultValue={processedDefaultValue as any}
                     allowTables={{ advanced: true }}
                     allowPanel={true}
                     allowRule={true}
                     allowDate={true}
                     allowStatus={true}
+                    allowExpand={true}
+                    allowTasksAndDecisions={true}
+                    allowLayouts={true}
                     codeBlock={{ allowCopyToClipboard: true }}
+                    quickInsert={quickInsertOpts}
                   />
                 </BodyEditorWrapper>
               );

@@ -25,6 +25,7 @@ interface DashboardCache {
   browseExpandedKeys: Set<string>;
   browseLoadedChildren: Set<string>;
   doneCounts: StatusCount[];
+  doneIssues: NormalizedIssue[];
 }
 
 const cache: DashboardCache = {
@@ -44,6 +45,7 @@ const cache: DashboardCache = {
   browseExpandedKeys: new Set(),
   browseLoadedChildren: new Set(),
   doneCounts: [],
+  doneIssues: [],
 };
 
 interface UseJiraSearchOptions {
@@ -110,8 +112,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     const saved = loadSelectedStatuses(currentAccountId);
     return new Set(saved);
   });
-  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>([]);
-  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(false);
+  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.doneIssues : []);
+  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(isCacheValid && cache.doneIssues.length > 0);
 
   // 상태별 개수 (myIssues + doneCounts 합산)
   const statusCounts = useMemo(() => {
@@ -321,12 +323,13 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     cache.defaultChildrenMap = defaultChildrenMap;
     cache.defaultExpandedChildren = defaultExpandedChildren;
     cache.doneCounts = doneCounts;
+    cache.doneIssues = doneIssues;
     cache.browseProjectKey = browseProjectKey;
     cache.browseEpics = browseEpics;
     cache.browseChildrenMap = browseChildrenMap;
     cache.browseExpandedKeys = browseExpandedKeys;
     cache.browseLoadedChildren = browseLoadedChildren;
-  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren]);
+  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren]);
 
   // ── fetch 콜백 ──
 

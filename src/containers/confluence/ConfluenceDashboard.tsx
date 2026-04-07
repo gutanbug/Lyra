@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { transition } from 'lib/styles/styles';
 import { isAtlassianAccount } from 'types/account';
-import { useTabs } from 'modules/contexts/splitView';
+import { useTabs } from 'modules/contexts/tab';
 import { isPersonalSpaceKey } from 'lib/utils/confluenceNormalizers';
 import { useConfluenceSearch } from 'lib/hooks/useConfluenceSearch';
 import ConfluenceSearchToolbar from 'components/confluence/ConfluenceSearchToolbar';

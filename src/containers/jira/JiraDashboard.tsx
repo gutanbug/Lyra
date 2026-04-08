@@ -102,9 +102,9 @@ const JiraDashboard = () => {
       }
     }
 
-    // 상태 필터 적용
+    // 상태 필터 적용 (검색 모드에서는 모든 상태 표시)
     let filtered: NormalizedIssue[];
-    if (selectedStatuses.size === 0) {
+    if (isSearchMode || selectedStatuses.size === 0) {
       filtered = merged;
     } else {
       filtered = merged.filter((issue) =>

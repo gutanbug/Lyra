@@ -723,7 +723,11 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     }
     setIsSearching(true);
     try {
-      const result = await integrationController.invoke({
+      const term = searchQuery.trim();
+      const isKeySearch = KEY_PATTERN.test(term) || NUMBER_ONLY_PATTERN.test(term);
+
+      // 기본 검색과 담당자 검색을 병렬 실행
+      const searchPromise = integrationController.invoke({
         accountId: activeAccount.id,
         serviceType: 'jira',
         action: 'searchIssues',
@@ -733,8 +737,53 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
           skipCache: true,
         },
       });
+
+      // 키 검색이 아닌 경우에만 사용자 검색 수행
+      const userPromise = !isKeySearch
+        ? integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'searchUsers',
+            params: { query: term },
+          }).catch(() => [] as unknown[])
+        : Promise.resolve([] as unknown[]);
+
+      const [result, matchedUsers] = await Promise.all([searchPromise, userPromise]);
       const issues = parseIssues(result);
       const allKeys = new Set(issues.map((i) => i.key));
+
+      // 매칭된 사용자가 있으면 해당 담당자의 이슈를 추가 검색
+      if (Array.isArray(matchedUsers) && matchedUsers.length > 0) {
+        const accountIds = (matchedUsers as { accountId?: string }[])
+          .map((u) => u.accountId)
+          .filter(Boolean) as string[];
+        if (accountIds.length > 0) {
+          const pc = buildProjectClause(selectedProjects);
+          const projectClause = pc ? `${pc} AND ` : '';
+          const assigneeClause = accountIds.length === 1
+            ? `assignee = "${accountIds[0]}"`
+            : `assignee IN (${accountIds.map((id) => `"${id}"`).join(',')})`;
+          try {
+            const assigneeResult = await integrationController.invoke({
+              accountId: activeAccount.id,
+              serviceType: 'jira',
+              action: 'searchIssues',
+              params: {
+                jql: `${projectClause}${assigneeClause} ORDER BY updated DESC`,
+                maxResults: 50,
+                skipCache: true,
+              },
+            });
+            const assigneeIssues = parseIssues(assigneeResult);
+            for (const ai of assigneeIssues) {
+              if (!allKeys.has(ai.key)) {
+                issues.push(ai);
+                allKeys.add(ai.key);
+              }
+            }
+          } catch { /* assignee search failed, continue with base results */ }
+        }
+      }
 
       // 1단계: 부모 조회
       const missingParentKeys = new Set<string>();

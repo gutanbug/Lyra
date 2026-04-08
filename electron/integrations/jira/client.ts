@@ -360,6 +360,27 @@ export class JiraClient {
   }
 
   /**
+   * 사용자 검색 (범용)
+   * GET /rest/api/3/user/search
+   */
+  async searchUsers(query: string): Promise<unknown[]> {
+    const { data } = await withRetry429(() =>
+      this.client.get('/user/search', {
+        params: {
+          query,
+          maxResults: 10,
+        },
+      })
+    );
+    return (data as Record<string, unknown>[]).map((u) => ({
+      accountId: u.accountId,
+      displayName: u.displayName,
+      avatarUrl: (u.avatarUrls as Record<string, string>)?.['24x24'] || '',
+      emailAddress: u.emailAddress || '',
+    }));
+  }
+
+  /**
    * 이슈에 할당 가능한 사용자 검색
    * GET /rest/api/3/user/assignable/search
    */

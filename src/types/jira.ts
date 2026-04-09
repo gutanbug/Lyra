@@ -111,6 +111,7 @@ export interface ConfluenceLink {
 export interface ConfluencePageContent {
   title: string;
   body: string;
+  bodyAdf?: unknown;
 }
 
 export interface JiraAttachment {

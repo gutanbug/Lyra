@@ -221,12 +221,13 @@ export class JiraClient {
 
   /**
    * Confluence 페이지 본문 조회 (같은 Atlassian 인스턴스)
-   * GET /wiki/api/v2/pages/:pageId
+   * GET /wiki/rest/api/content/:pageId
+   * ConfluenceClient.getPageContent와 동일한 expand 사용
    */
   async getConfluencePageContent(pageId: string): Promise<Record<string, unknown>> {
     const { data } = await withRetry429(() =>
-      this.wikiClient.get(`/pages/${pageId}`, {
-        params: { 'body-format': 'storage' },
+      this.wikiV1Client.get(`/content/${pageId}`, {
+        params: { expand: 'body.storage,body.atlas_doc_format,version,space' },
       })
     );
     return data as Record<string, unknown>;

@@ -364,6 +364,7 @@ const JiraIssueDetail = () => {
           pageContents={pageContents}
           toggleConfluencePage={toggleConfluencePage}
           handleContentClick={handleContentClick}
+          onAdfLinkClick={handleAdfLinkClick}
         />
         </>
       </Content>

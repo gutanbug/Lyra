@@ -71,7 +71,7 @@ const JiraSearchToolbar = ({
         <SearchInputWrapper>
           <SearchInput
             data-search-input
-            placeholder="티켓 번호, 제목, 내용 검색..."
+            placeholder="티켓 번호, 제목, 내용, 담당자 검색..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {

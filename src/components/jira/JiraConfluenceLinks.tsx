@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import AdfRenderer from 'components/common/AdfRenderer';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { formatDate } from 'lib/utils/jiraUtils';
@@ -12,6 +13,7 @@ interface JiraConfluenceLinksProps {
   pageContents: Record<string, ConfluencePageContent>;
   toggleConfluencePage: (link: ConfluenceLink) => void;
   handleContentClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onAdfLinkClick?: (url: string) => void;
 }
 
 const JiraConfluenceLinks = ({
@@ -21,6 +23,7 @@ const JiraConfluenceLinks = ({
   pageContents,
   toggleConfluencePage,
   handleContentClick,
+  onAdfLinkClick,
 }: JiraConfluenceLinksProps) => {
   if (confluenceLinks.length === 0) return null;
 
@@ -51,7 +54,11 @@ const JiraConfluenceLinks = ({
                 {isPageLoading ? (
                   <ConfluenceLoading>문서 로딩 중...</ConfluenceLoading>
                 ) : content ? (
-                  <ConfluenceContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: content.body }} />
+                  content.bodyAdf ? (
+                    <AdfContentWrapper><AdfRenderer document={content.bodyAdf} appearance="full-width" onLinkClick={onAdfLinkClick} /></AdfContentWrapper>
+                  ) : (
+                    <ConfluenceContent onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: content.body }} />
+                  )
                 ) : null}
               </ConfluenceBody>
             )}
@@ -325,6 +332,12 @@ const RichContent = styled.div`
   .confluence-panel-note { border-color: ${jiraTheme.issueType.epic}; background: #EAE6FF; }
   .confluence-panel-tip { border-color: ${jiraTheme.status.done}; background: #E3FCEF; }
   .confluence-panel-warning { border-color: ${jiraTheme.priority.medium}; background: #FFFAE6; }
+`;
+
+const AdfContentWrapper = styled.div`
+  font-size: 0.8125rem;
+  max-height: 400px;
+  overflow-y: auto;
 `;
 
 const ConfluenceContent = styled(RichContent)`

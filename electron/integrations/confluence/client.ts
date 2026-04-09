@@ -47,7 +47,7 @@ function normalizeSearchResult(item: Record<string, unknown>): Record<string, un
       accountId: createdBy.accountId ?? versionBy.accountId ?? '',
       displayName: createdBy.displayName ?? versionBy.displayName ?? '',
     },
-    createdAt: history.createdDate ?? '',
+    createdAt: history.createdDate ?? version.when ?? '',
     updatedAt: version.when ?? '',
     version: version.number ?? 1,
   };
@@ -131,7 +131,7 @@ export class ConfluenceClient {
     status?: string;
     spaceKeys?: string[];
   }): Promise<unknown> {
-    const limit = params.limit ?? 100;
+    const limit = params.limit ?? 50;
     const conditions = [
       'type = page',
       'creator = currentUser()',
@@ -148,7 +148,7 @@ export class ConfluenceClient {
         params: {
           cql: `${cql} ORDER BY ${orderBy}`,
           limit,
-          expand: 'content.space,content.version,content.history,content.history.createdBy',
+          expand: 'content.space,content.version',
         },
       })
     );
@@ -590,7 +590,7 @@ export class ConfluenceClient {
     spaceKeys?: string[];
     searchField?: 'all' | 'title' | 'body' | 'title_body' | 'contributor';
   }): Promise<unknown> {
-    const limit = params.limit ?? 100;
+    const limit = params.limit ?? 50;
     const field = params.searchField || 'all';
     const q = escapeCql(params.query);
     const conditions: string[] = ['type = page'];
@@ -625,7 +625,7 @@ export class ConfluenceClient {
         params: {
           cql,
           limit,
-          expand: 'content.space,content.version,content.history,content.history.createdBy',
+          expand: 'content.space,content.version',
         },
       })
     );

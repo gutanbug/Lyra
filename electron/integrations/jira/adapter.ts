@@ -74,6 +74,7 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       getTransitions: (params: unknown) => this.getTransitions(params),
       transitionIssue: (params: unknown) => this.transitionIssue(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
+      searchUsers: (params: unknown) => this.searchUsers(params),
       searchAssignableUsers: (params: unknown) => this.searchAssignableUsers(params),
       assignIssue: (params: unknown) => this.assignIssue(params),
       updateIssueDescription: (params: unknown) => this.updateIssueDescription(params),
@@ -196,6 +197,12 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     const client = new JiraClient(credentials);
     await client.assignIssue(issueKey, assigneeAccountId ?? null);
     return { success: true };
+  }
+
+  private async searchUsers(params: unknown): Promise<unknown> {
+    const { credentials, query = '' } = (params || {}) as InvokeParams;
+    const client = new JiraClient(credentials);
+    return client.searchUsers(query as string);
   }
 
   private async searchAssignableUsers(params: unknown): Promise<unknown> {

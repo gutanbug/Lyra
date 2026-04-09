@@ -221,12 +221,13 @@ export class JiraClient {
 
   /**
    * Confluence 페이지 본문 조회 (같은 Atlassian 인스턴스)
-   * GET /wiki/api/v2/pages/:pageId
+   * GET /wiki/rest/api/content/:pageId
+   * ConfluenceClient.getPageContent와 동일한 expand 사용
    */
   async getConfluencePageContent(pageId: string): Promise<Record<string, unknown>> {
     const { data } = await withRetry429(() =>
-      this.wikiClient.get(`/pages/${pageId}`, {
-        params: { 'body-format': 'storage' },
+      this.wikiV1Client.get(`/content/${pageId}`, {
+        params: { expand: 'body.storage,body.atlas_doc_format,version,space' },
       })
     );
     return data as Record<string, unknown>;
@@ -357,6 +358,27 @@ export class JiraClient {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * 사용자 검색 (범용)
+   * GET /rest/api/3/user/search
+   */
+  async searchUsers(query: string): Promise<unknown[]> {
+    const { data } = await withRetry429(() =>
+      this.client.get('/user/search', {
+        params: {
+          query,
+          maxResults: 10,
+        },
+      })
+    );
+    return (data as Record<string, unknown>[]).map((u) => ({
+      accountId: u.accountId,
+      displayName: u.displayName,
+      avatarUrl: (u.avatarUrls as Record<string, string>)?.['24x24'] || '',
+      emailAddress: u.emailAddress || '',
+    }));
   }
 
   /**

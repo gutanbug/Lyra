@@ -123,7 +123,14 @@ export function normalizePageDetail(raw: Record<string, unknown>): ConfluencePag
 
   const body = obj(raw.body);
   const atlasDocFormat = obj(body?.atlas_doc_format);
-  const bodyAdf = atlasDocFormat?.value ? (typeof atlasDocFormat.value === 'string' ? JSON.parse(atlasDocFormat.value as string) : atlasDocFormat.value) : undefined;
+  let bodyAdf: unknown;
+  if (atlasDocFormat?.value) {
+    if (typeof atlasDocFormat.value === 'string') {
+      try { bodyAdf = JSON.parse(atlasDocFormat.value as string); } catch { /* malformed ADF JSON */ }
+    } else {
+      bodyAdf = atlasDocFormat.value;
+    }
+  }
   const storage = obj(body?.storage);
   const storageRaw = str(storage?.value);
   const bodyHtml = confluenceToHtml(storageRaw);
@@ -173,7 +180,14 @@ export function normalizeComment(raw: Record<string, unknown>): ConfluenceCommen
 
   const body = obj(raw.body);
   const atlasDocFormat = obj(body?.atlas_doc_format);
-  const bodyAdf = atlasDocFormat?.value ? (typeof atlasDocFormat.value === 'string' ? JSON.parse(atlasDocFormat.value as string) : atlasDocFormat.value) : undefined;
+  let bodyAdf: unknown;
+  if (atlasDocFormat?.value) {
+    if (typeof atlasDocFormat.value === 'string') {
+      try { bodyAdf = JSON.parse(atlasDocFormat.value as string); } catch { /* malformed ADF JSON */ }
+    } else {
+      bodyAdf = atlasDocFormat.value;
+    }
+  }
   const storage = obj(body?.storage);
   const bodyHtml = confluenceToHtml(str(storage?.value));
 

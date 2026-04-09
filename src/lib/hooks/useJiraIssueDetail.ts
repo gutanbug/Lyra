@@ -6,8 +6,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
 import { adfToText } from 'lib/utils/adfToText';
-import { confluenceToHtml } from 'lib/utils/confluenceToHtml';
 import { str, obj, isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
+import { normalizePageDetail } from 'lib/utils/confluenceNormalizers';
 import {
   extractIssueKeyFromUrl,
   extractConfluencePageIdFromUrl,
@@ -659,16 +659,13 @@ export function useJiraIssueDetail({
           params: { pageId },
         });
         if (data && typeof data === 'object') {
-          const page = data as Record<string, unknown>;
-          const bodyObj = obj(page.body);
-          const storageObj = obj(bodyObj?.storage);
-          const rawBody = str(storageObj?.value);
-          const bodyHtml = rawBody ? confluenceToHtml(rawBody) : '';
+          const detail = normalizePageDetail(data as Record<string, unknown>);
           setPageContents((prev) => ({
             ...prev,
             [pageId]: {
-              title: str(page.title) || link.title,
-              body: bodyHtml || '<p>(내용 없음)</p>',
+              title: detail.title || link.title,
+              body: detail.bodyHtml || '<p>(내용 없음)</p>',
+              bodyAdf: detail.bodyAdf,
             },
           }));
         }

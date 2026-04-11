@@ -238,7 +238,7 @@ export class ConfluenceClient {
   async getPageAttachments(pageId: string): Promise<unknown[]> {
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}/child/attachment`, {
-        params: { limit: 100, expand: 'extensions,version,metadata' },
+        params: { limit: 100, expand: 'extensions,version,metadata,metadata.properties' },
       })
     );
     const r = data as Record<string, unknown>;

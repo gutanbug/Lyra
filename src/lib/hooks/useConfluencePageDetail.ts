@@ -7,6 +7,7 @@ import type { ConfluencePageDetail as PageDetailType, ConfluenceComment } from '
 import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
 import { str, obj } from 'lib/utils/typeHelpers';
 import { extractAllUrlsFromAdf, extractConfluencePageIdFromUrl, extractConfluenceTinyKey, extractIssueKeyFromUrl, extractMediaInfos, extractViewFileMap } from 'lib/utils/adfUtils';
+import type { MediaInfo } from 'lib/utils/adfUtils';
 import { normalizePageDetail, normalizeComment } from 'lib/utils/confluenceNormalizers';
 import { renderMermaidDiagrams } from 'lib/utils/mermaidLoader';
 
@@ -223,17 +224,31 @@ export function useConfluencePageDetail(pageId: string) {
 
         // 댓글 파싱
         const rawComments = Array.isArray(commentsResult) ? commentsResult : [];
-        setComments(rawComments.map((c) => normalizeComment(c as Record<string, unknown>)));
+        const normalizedComments = rawComments.map((c) => normalizeComment(c as Record<string, unknown>));
+        setComments(normalizedComments);
 
-        // 첨부파일 파싱
+        // 첨부파일 파싱 (페이지 레벨)
         const rawAttachments = Array.isArray(attachmentsResult) ? attachmentsResult : [];
-        const allAtts: AttInfo[] = [];
+        const pageAtts: AttInfo[] = [];
         for (const item of rawAttachments) {
           const info = parseAttachment(item);
-          if (info) allAtts.push(info);
+          if (info) pageAtts.push(info);
         }
 
-        // 2단계: 링크 해석 + 첨부파일 매핑을 동시 진행 (페이지 렌더 전에 완료)
+        // 댓글 ADF에서 media ID 추출 → 댓글 레벨 첨부파일 조회 필요 여부 판단
+        const commentIdsWithMedia: string[] = [];
+        const commentMediaInfos: MediaInfo[] = [];
+        for (const comment of normalizedComments) {
+          if (comment.bodyAdf) {
+            const infos = extractMediaInfos(comment.bodyAdf);
+            if (infos.length > 0) {
+              commentMediaInfos.push(...infos);
+              commentIdsWithMedia.push(comment.id);
+            }
+          }
+        }
+
+        // 2단계: 링크 해석 + Jira 이슈 + 댓글 첨부파일을 동시 진행
         const linkMetaPromise = detail.bodyAdf
           ? resolveLinksFromAdf(detail.bodyAdf, accountId)
           : Promise.resolve({} as Record<string, LinkMeta>);
@@ -268,82 +283,120 @@ export function useConfluencePageDetail(pageId: string) {
             })()
           : Promise.resolve({});
 
+        // 댓글 레벨 첨부파일 조회 (댓글에 media가 있는 경우만)
+        const commentAttsPromise: Promise<{ rawAtts: unknown[]; parsed: AttInfo[] }> =
+          commentIdsWithMedia.length > 0
+            ? (async () => {
+                const results = await Promise.all(
+                  commentIdsWithMedia.map((cid) =>
+                    integrationController.invoke({
+                      accountId,
+                      serviceType: 'confluence',
+                      action: 'getPageAttachments',
+                      params: { pageId: cid },
+                    }).catch(() => [])
+                  )
+                );
+                const rawAtts: unknown[] = [];
+                const parsed: AttInfo[] = [];
+                for (const result of results) {
+                  const items = Array.isArray(result) ? result : [];
+                  for (const item of items) {
+                    rawAtts.push(item);
+                    const info = parseAttachment(item);
+                    if (info) parsed.push(info);
+                  }
+                }
+                return { rawAtts, parsed };
+              })()
+            : Promise.resolve({ rawAtts: [] as unknown[], parsed: [] as AttInfo[] });
+
+        // 댓글 첨부파일 조회 완료 대기 (매칭에 필요)
+        const commentAttsData = await commentAttsPromise;
+
+        if (cancelled) return;
+
+        // 전체 첨부파일 통합 (페이지 + 댓글 레벨)
+        const allRawAttachments = [...rawAttachments, ...commentAttsData.rawAtts];
+        const allAtts = [...pageAtts, ...commentAttsData.parsed];
+
+        // 전체 media 정보 통합 (본문 + 댓글 ADF)
+        const bodyMediaInfos = detail.bodyAdf ? extractMediaInfos(detail.bodyAdf) : [];
+        const allMediaInfos = [...bodyMediaInfos, ...commentMediaInfos];
+
         // media ID → 첨부파일 매칭
         const fileMetas: Record<string, FileMeta> = {};
-        if (detail.bodyAdf && allAtts.length > 0) {
-          const mediaInfos = extractMediaInfos(detail.bodyAdf);
-
+        if (allMediaInfos.length > 0 && allAtts.length > 0) {
           // Storage format에서 view-file 매크로 localId → filename 매핑 추출
           const viewFileMap = detail.storageRaw ? extractViewFileMap(detail.storageRaw) : {};
 
-          if (mediaInfos.length > 0) {
-            const mediaToAtt = new Map<string, AttInfo>();
-            const matchedTitles = new Set<string>();
+          const mediaToAtt = new Map<string, AttInfo>();
+          const matchedTitles = new Set<string>();
 
-            // 1차: mediaApiFileId 직접 매칭
-            for (const { id: mid } of mediaInfos) {
-              const byMediaApi = rawAttachments.find((a) => {
-                const att = a as Record<string, unknown>;
-                const ext = obj(att.extensions);
-                const meta = obj(att.metadata);
-                const props = obj(meta?.properties);
-                const mediaApiId = str(att.mediaApiFileId)
-                  || str(ext?.mediaApiFileId)
-                  || str(meta?.mediaApiFileId)
-                  || str(props?.['media-api-file-id']);
-                return mediaApiId && mediaApiId === mid;
-              });
-              if (byMediaApi) {
-                const title = str((byMediaApi as Record<string, unknown>).title);
-                const info = allAtts.find((a) => a.title === title);
-                if (info) { mediaToAtt.set(mid, info); matchedTitles.add(title); }
-              }
+          // 1차: mediaApiFileId 직접 매칭
+          for (const { id: mid } of allMediaInfos) {
+            const byMediaApi = allRawAttachments.find((a) => {
+              const att = a as Record<string, unknown>;
+              const ext = obj(att.extensions);
+              const meta = obj(att.metadata);
+              const props = obj(meta?.properties);
+              const mediaApiId = str(att.mediaApiFileId)
+                || str(ext?.mediaApiFileId)
+                || str(ext?.fileId)
+                || str(meta?.mediaApiFileId)
+                || str(props?.['media-api-file-id']);
+              return mediaApiId && mediaApiId === mid;
+            });
+            if (byMediaApi) {
+              const title = str((byMediaApi as Record<string, unknown>).title);
+              const info = allAtts.find((a) => a.title === title);
+              if (info) { mediaToAtt.set(mid, info); matchedTitles.add(title); }
             }
+          }
 
-            // 2차: localId → Storage format filename 매칭 (view-file 매크로)
-            for (const { id: mid, localId, fileName } of mediaInfos) {
-              if (mediaToAtt.has(mid)) continue;
-              // localId로 Storage format의 view-file 매크로 파일명 조회
-              const resolvedName = (localId && viewFileMap[localId]) || fileName;
-              if (resolvedName) {
-                const info = allAtts.find((a) => a.title === resolvedName && !matchedTitles.has(a.title));
-                if (info) { mediaToAtt.set(mid, info); matchedTitles.add(info.title); }
-              }
+          // 2차: localId → Storage format filename 매칭 (view-file 매크로)
+          for (const { id: mid, localId, fileName } of allMediaInfos) {
+            if (mediaToAtt.has(mid)) continue;
+            // localId로 Storage format의 view-file 매크로 파일명 조회
+            const resolvedName = (localId && viewFileMap[localId]) || fileName;
+            if (resolvedName) {
+              const info = allAtts.find((a) => a.title === resolvedName && !matchedTitles.has(a.title));
+              if (info) { mediaToAtt.set(mid, info); matchedTitles.add(info.title); }
             }
+          }
 
-            // 3차: 순서 기반 폴백 (위에서 매칭 안 된 것만)
-            const unmatchedMids = mediaInfos.map((m) => m.id).filter((mid) => !mediaToAtt.has(mid));
-            const unmatchedAtts = allAtts.filter((a) => !matchedTitles.has(a.title));
-            for (let i = 0; i < unmatchedMids.length && i < unmatchedAtts.length; i++) {
-              mediaToAtt.set(unmatchedMids[i], unmatchedAtts[i]);
-            }
+          // 3차: 순서 기반 폴백 — 이미지 첨부파일만 대상으로 매칭
+          const unmatchedMids = allMediaInfos.map((m) => m.id).filter((mid) => !mediaToAtt.has(mid));
+          const unmatchedAtts = allAtts.filter((a) => !matchedTitles.has(a.title) && a.isImage);
+          for (let i = 0; i < unmatchedMids.length && i < unmatchedAtts.length; i++) {
+            mediaToAtt.set(unmatchedMids[i], unmatchedAtts[i]);
+          }
 
-            // 이미지 다운로드 (비동기, 로딩 블로킹 안 함) + 파일 메타 구성
-            for (const [mid, info] of mediaToAtt.entries()) {
-              if (info.isImage) {
-                integrationController.invoke({
-                  accountId,
-                  serviceType: 'confluence',
-                  action: 'getAttachmentContent',
-                  params: { downloadUrl: info.downloadUrl },
-                }).then((dataUrl) => {
-                  if (!cancelled && typeof dataUrl === 'string') {
-                    setAttachmentUrlMap((prev) => ({ ...prev, [mid]: dataUrl }));
-                  }
-                }).catch(() => { /* ignore */ });
-              } else {
-                fileMetas[mid] = {
-                  filename: info.title,
-                  mediaType: info.mediaType || 'application/octet-stream',
-                  size: info.fileSize,
-                  downloadUrl: info.downloadUrl,
-                };
-              }
+          // 이미지 다운로드 (비동기, 로딩 블로킹 안 함) + 파일 메타 구성
+          for (const [mid, info] of mediaToAtt.entries()) {
+            if (info.isImage) {
+              integrationController.invoke({
+                accountId,
+                serviceType: 'confluence',
+                action: 'getAttachmentContent',
+                params: { downloadUrl: info.downloadUrl },
+              }).then((dataUrl) => {
+                if (!cancelled && typeof dataUrl === 'string') {
+                  setAttachmentUrlMap((prev) => ({ ...prev, [mid]: dataUrl }));
+                }
+              }).catch(() => { /* ignore */ });
+            } else {
+              fileMetas[mid] = {
+                filename: info.title,
+                mediaType: info.mediaType || 'application/octet-stream',
+                size: info.fileSize,
+                downloadUrl: info.downloadUrl,
+              };
             }
           }
         }
 
-        // HTML 본문용 이미지 첨부파일 다운로드 (파일명 키)
+        // HTML 본문/댓글용 이미지 첨부파일 다운로드 (파일명 키)
         for (const info of allAtts) {
           if (info.isImage) {
             integrationController.invoke({

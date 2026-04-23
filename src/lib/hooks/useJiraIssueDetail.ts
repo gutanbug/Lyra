@@ -5,13 +5,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
-import { adfToText } from 'lib/utils/adfToText';
 import { str, obj, isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
 import { normalizePageDetail } from 'lib/utils/confluenceNormalizers';
+import { resolveLinkMetaMap } from 'lib/utils/linkMetaResolver';
 import {
-  extractIssueKeyFromUrl,
-  extractConfluencePageIdFromUrl,
-  extractConfluenceTinyKey,
   extractCardUrlsFromAdf,
   extractMediaIds,
   extractConfluenceLinks,
@@ -240,124 +237,7 @@ export function useJiraIssueDetail({
   // 인라인 카드 URL에서 메타 정보를 일괄 해석
   const resolveCardTitles = useCallback(async (urls: string[]) => {
     if (!activeAccount) return;
-    const metaMap: Record<string, LinkMeta> = {};
-    const issueKeyMap = new Map<string, string[]>(); // issueKey → urls
-    const pageIdMap = new Map<string, string[]>();    // pageId → urls
-    const tinyKeyMap = new Map<string, string[]>();   // tinyKey → urls
-
-    for (const url of urls) {
-      const ik = extractIssueKeyFromUrl(url);
-      if (ik) {
-        const existing = issueKeyMap.get(ik) || [];
-        existing.push(url);
-        issueKeyMap.set(ik, existing);
-        continue;
-      }
-      const pid = extractConfluencePageIdFromUrl(url);
-      if (pid) {
-        const existing = pageIdMap.get(pid) || [];
-        existing.push(url);
-        pageIdMap.set(pid, existing);
-        continue;
-      }
-      const tk = extractConfluenceTinyKey(url);
-      if (tk) {
-        const existing = tinyKeyMap.get(tk) || [];
-        existing.push(url);
-        tinyKeyMap.set(tk, existing);
-      }
-    }
-
-    // Jira 이슈 메타 일괄 조회
-    const issueKeys = Array.from(issueKeyMap.keys());
-    if (issueKeys.length > 0) {
-      try {
-        const jql = `key IN (${issueKeys.join(',')})`;
-        const result = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'searchIssues',
-          params: { jql, maxResults: issueKeys.length },
-        });
-        const r = result as Record<string, unknown>;
-        const list = (r?.issues ?? r?.values ?? []) as Record<string, unknown>[];
-        if (Array.isArray(list)) {
-          for (const item of list) {
-            const key = str(item.key);
-            const fields = obj(item.fields) || item;
-            const rawSummary = fields.summary;
-            const summary = typeof rawSummary === 'string' ? rawSummary : adfToText(rawSummary);
-            const statusObj = obj(fields.status);
-            const statusCatObj = obj(statusObj?.statusCategory);
-            const statusName = str(statusObj?.name);
-            const statusCategoryKey = str(statusCatObj?.key);
-            const statusCategory = str(statusCatObj?.name) || statusCategoryKey || str(statusCatObj?.colorName);
-            if (key && summary) {
-              const matchUrls = issueKeyMap.get(key) || [];
-              for (const u of matchUrls) {
-                metaMap[u] = {
-                  type: 'jira',
-                  title: summary,
-                  issueKey: key,
-                  statusName,
-                  statusCategory,
-                  statusCategoryKey,
-                };
-              }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    // Confluence 페이지 제목 일괄 조회
-    const pageIds = Array.from(pageIdMap.keys());
-    await Promise.all(pageIds.map(async (pid) => {
-      try {
-        const data = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'getConfluencePageContent',
-          params: { pageId: pid },
-        });
-        if (data && typeof data === 'object') {
-          const page = data as Record<string, unknown>;
-          const title = str(page.title);
-          if (title) {
-            const matchUrls = pageIdMap.get(pid) || [];
-            for (const u of matchUrls) {
-              metaMap[u] = { type: 'confluence', title };
-            }
-          }
-        }
-      } catch { /* ignore */ }
-    }));
-
-    // Confluence tiny link (/wiki/x/{key}) 일괄 해석
-    const tinyKeys = Array.from(tinyKeyMap.keys());
-    if (tinyKeys.length > 0) {
-      try {
-        const data = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'confluence',
-          action: 'resolveTinyLinks',
-          params: { tinyKeys },
-        });
-        if (data && typeof data === 'object') {
-          const results = data as Record<string, Record<string, unknown>>;
-          for (const [tk, info] of Object.entries(results)) {
-            const title = str(info.title);
-            if (title) {
-              const matchUrls = tinyKeyMap.get(tk) || [];
-              for (const u of matchUrls) {
-                metaMap[u] = { type: 'confluence', title };
-              }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
+    const metaMap = await resolveLinkMetaMap(urls, activeAccount.id);
     if (Object.keys(metaMap).length > 0) {
       setLinkMetaMap((prev) => ({ ...prev, ...metaMap }));
     }

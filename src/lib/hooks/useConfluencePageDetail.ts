@@ -6,8 +6,9 @@ import type { JiraIssueInfo } from 'lib/utils/jiraLinkEnricher';
 import type { ConfluencePageDetail as PageDetailType, ConfluenceComment } from 'types/confluence';
 import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
 import { str, obj } from 'lib/utils/typeHelpers';
-import { extractAllUrlsFromAdf, extractConfluencePageIdFromUrl, extractConfluenceTinyKey, extractIssueKeyFromUrl, extractMediaInfos, extractViewFileMap } from 'lib/utils/adfUtils';
+import { extractMediaInfos, extractViewFileMap } from 'lib/utils/adfUtils';
 import type { MediaInfo } from 'lib/utils/adfUtils';
+import { resolveLinkMetaFromAdf } from 'lib/utils/linkMetaResolver';
 import { normalizePageDetail, normalizeComment } from 'lib/utils/confluenceNormalizers';
 import { renderMermaidDiagrams } from 'lib/utils/mermaidLoader';
 
@@ -50,107 +51,6 @@ function parseAttachment(item: unknown): AttInfo | null {
     : typeof att.fileSize === 'number' ? att.fileSize as number
     : parseInt(str(extensions?.fileSize), 10) || 0;
   return { title, mediaType, downloadUrl, fileSize, isImage };
-}
-
-/** ADF에서 URL 추출 → linkMetaMap 구성 (페이지/이슈/tiny 링크 일괄 해석) */
-async function resolveLinksFromAdf(
-  bodyAdf: unknown,
-  accountId: string,
-): Promise<Record<string, LinkMeta>> {
-  const urls = extractAllUrlsFromAdf(bodyAdf);
-  if (urls.length === 0) return {};
-
-  const metaMap: Record<string, LinkMeta> = {};
-  const pageIdMap = new Map<string, string[]>();
-  const issueKeyMap = new Map<string, string[]>();
-  const tinyKeyMap = new Map<string, string[]>();
-
-  for (const url of urls) {
-    const pid = extractConfluencePageIdFromUrl(url);
-    if (pid) { (pageIdMap.get(pid) || (() => { const a: string[] = []; pageIdMap.set(pid, a); return a; })()).push(url); continue; }
-    const ik = extractIssueKeyFromUrl(url);
-    if (ik) { (issueKeyMap.get(ik) || (() => { const a: string[] = []; issueKeyMap.set(ik, a); return a; })()).push(url); continue; }
-    const tk = extractConfluenceTinyKey(url);
-    if (tk) { (tinyKeyMap.get(tk) || (() => { const a: string[] = []; tinyKeyMap.set(tk, a); return a; })()).push(url); }
-  }
-
-  const tasks: Promise<void>[] = [];
-
-  // Confluence 페이지 제목 조회
-  for (const [pid, matchUrls] of pageIdMap.entries()) {
-    tasks.push(
-      integrationController.invoke({
-        accountId,
-        serviceType: 'confluence',
-        action: 'getPageContent',
-        params: { pageId: pid },
-      }).then((result) => {
-        const title = str((result as Record<string, unknown>).title);
-        if (title) {
-          for (const u of matchUrls) metaMap[u] = { type: 'confluence', title };
-        }
-      }).catch(() => { /* ignore */ })
-    );
-  }
-
-  // Confluence tiny link 해석
-  const tinyKeys = Array.from(tinyKeyMap.keys());
-  if (tinyKeys.length > 0) {
-    tasks.push(
-      integrationController.invoke({
-        accountId,
-        serviceType: 'confluence',
-        action: 'resolveTinyLinks',
-        params: { tinyKeys },
-      }).then((result) => {
-        if (result && typeof result === 'object') {
-          for (const [tk, info] of Object.entries(result as Record<string, Record<string, unknown>>)) {
-            const title = str(info.title);
-            if (title) {
-              for (const u of (tinyKeyMap.get(tk) || [])) metaMap[u] = { type: 'confluence', title };
-            }
-          }
-        }
-      }).catch(() => { /* ignore */ })
-    );
-  }
-
-  // Jira 이슈 메타 조회
-  const issueKeys = Array.from(issueKeyMap.keys());
-  if (issueKeys.length > 0) {
-    tasks.push(
-      integrationController.invoke({
-        accountId,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: { jql: `key IN (${issueKeys.join(',')})`, maxResults: issueKeys.length },
-      }).then((result) => {
-        const r = result as Record<string, unknown>;
-        const list = (r?.issues ?? []) as Record<string, unknown>[];
-        if (Array.isArray(list)) {
-          for (const item of list) {
-            const key = str(item.key);
-            const fields = obj(item.fields) || item;
-            const rawSummary = fields.summary;
-            const summary = typeof rawSummary === 'string' ? rawSummary : str(rawSummary);
-            const statusObj = obj(fields.status);
-            const statusCatObj = obj(statusObj?.statusCategory);
-            const statusName = str(statusObj?.name);
-            const statusCategoryKey = str(statusCatObj?.key);
-            const statusCategory = str(statusCatObj?.name) || statusCategoryKey || str(statusCatObj?.colorName);
-            if (key) {
-              for (const u of (issueKeyMap.get(key) || [])) {
-                metaMap[u] = { type: 'jira', title: summary, issueKey: key, statusName, statusCategory, statusCategoryKey };
-              }
-            }
-          }
-        }
-      }).catch(() => { /* ignore */ })
-    );
-  }
-
-  await Promise.all(tasks);
-  return metaMap;
 }
 
 export function useConfluencePageDetail(pageId: string) {
@@ -250,7 +150,7 @@ export function useConfluencePageDetail(pageId: string) {
 
         // 2단계: 링크 해석 + Jira 이슈 + 댓글 첨부파일을 동시 진행
         const linkMetaPromise = detail.bodyAdf
-          ? resolveLinksFromAdf(detail.bodyAdf, accountId)
+          ? resolveLinkMetaFromAdf(detail.bodyAdf, accountId)
           : Promise.resolve({} as Record<string, LinkMeta>);
 
         // Jira 이슈 정보 조회 (HTML 렌더링용)

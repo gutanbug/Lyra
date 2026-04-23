@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import React from 'react';
 import { integrationController } from 'controllers/account';
-import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
-import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
+import { isEpicType, escapeJql } from 'lib/utils/jiraUtils';
+import { parseIssues, buildProjectClause } from 'lib/utils/jiraNormalizers';
 import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
 import { useJiraStatusFilter } from 'lib/hooks/jira/useJiraStatusFilter';
 import { useJiraProjects } from 'lib/hooks/jira/useJiraProjects';
 import { useJiraMyIssues } from 'lib/hooks/jira/useJiraMyIssues';
 import { useJiraDoneIssues } from 'lib/hooks/jira/useJiraDoneIssues';
+import { useJiraIssueSearch } from 'lib/hooks/jira/useJiraIssueSearch';
+import { useJiraSuggest } from 'lib/hooks/jira/useJiraSuggest';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -85,19 +87,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     fetchDoneIssues,
     fetchDoneCounts,
   } = doneIssuesHook;
-
-  // 검색
-  const [searchQuery, setSearchQuery] = useState(cached?.searchQuery ?? '');
-  const [searchResults, setSearchResults] = useState<NormalizedIssue[] | null>(cached?.searchResults ?? null);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // 자동완성
-  const [suggestions, setSuggestions] = useState<NormalizedIssue[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
-  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
-  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   // Epic 토글 상태
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(cached?.expandedEpics ?? new Set());
@@ -276,19 +265,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   });
   const { selectedStatuses, statusCounts, toggleStatus } = statusFilterHook;
 
-  // ── 계정 변경 시 화면 즉시 리셋 (slot은 jiraDashboardCache Map에 보존되어 복귀 시 복원) ──
-  const prevAccountIdRef = useRef(currentAccountId);
-  useEffect(() => {
-    if (prevAccountIdRef.current === currentAccountId) return;
-    prevAccountIdRef.current = currentAccountId;
-
-    setSearchQuery('');
-    setSearchResults(null);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setExpandedEpics(new Set());
-  }, [currentAccountId]);
-
   // 사이드바에서 프로젝트 브라우즈 이벤트 수신
   useEffect(() => {
     const handler = (e: Event) => {
@@ -311,31 +287,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     window.addEventListener('lyra:sidebar-browse-project', handler);
     return () => window.removeEventListener('lyra:sidebar-browse-project', handler);
   }, []);
-
-  // 상태 변경 시 캐시 동기화 (계정별 slot에 스냅샷 저장)
-  useAccountScopedCache(
-    jiraDashboardCache,
-    currentAccountId,
-    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
-    () => ({
-      myIssues,
-      projects,
-      selectedProjects,
-      searchQuery,
-      searchResults,
-      expandedEpics,
-      defaultChildrenMap,
-      defaultExpandedChildren,
-      doneCounts,
-      doneIssues,
-      browseProjectKey,
-      browseEpics,
-      browseChildrenMap,
-      browseExpandedKeys,
-      browseLoadedChildren,
-      selectedStatuses: Array.from(selectedStatuses),
-    }),
-  );
 
   // ── 사이드바 프로젝트 브라우즈: 에픽만 조회 ──
   const browseFetchDone = React.useRef(Boolean(cached && cached.browseProjectKey === browseProjectKey && cached.browseEpics.length > 0));
@@ -452,242 +403,106 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     defaultLoadedChildrenRef.current.add(parentKey);
   }, [fetchChildren, selectedProjects, myIssues]);
 
-  const searchIssues = useCallback(async () => {
-    if (!activeAccount) return;
-    const jqlFilter = buildSearchJql(searchQuery, selectedProjects, projects.map((p) => p.key));
-    if (!jqlFilter) {
-      setSearchResults(null);
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const term = searchQuery.trim();
-      const isKeySearch = KEY_PATTERN.test(term) || NUMBER_ONLY_PATTERN.test(term);
+  // 검색 + 자동완성 (소 훅)
+  const issueSearchHook = useJiraIssueSearch({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedProjects,
+    projects,
+    fetchByKeys,
+    fetchChildren,
+    onResultsLoaded: useCallback(
+      (issues: NormalizedIssue[], pf?: string[]) => {
+        setExpandedEpics(
+          new Set(issues.filter((i) => isEpicType(i.issueTypeName)).map((i) => i.key).concat('__no_epic__')),
+        );
+        loadAllDescendants(issues, pf);
+      },
+      [loadAllDescendants],
+    ),
+    cached: {
+      searchQuery: cached?.searchQuery,
+      searchResults: cached?.searchResults,
+    },
+  });
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    setSearchResults,
+    isSearching,
+    searchIssues,
+  } = issueSearchHook;
 
-      // 기본 검색과 담당자 검색을 병렬 실행
-      const searchPromise = integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: {
-          jql: `${jqlFilter} ORDER BY updated DESC`,
-          maxResults: 100,
-          skipCache: true,
-        },
-      });
+  const suggestHook = useJiraSuggest({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedProjects,
+    projects,
+  });
+  const {
+    suggestions,
+    setSuggestions,
+    showSuggestions,
+    setShowSuggestions,
+    isSuggestLoading,
+    activeSuggestionIdx,
+    setActiveSuggestionIdx,
+    suggestContainerRef: searchWrapperRef,
+    handleSearchChange: triggerSuggest,
+    fetchSuggestions,
+  } = suggestHook;
 
-      // 키 검색이 아닌 경우에만 사용자 검색 수행
-      const userPromise = !isKeySearch
-        ? integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchUsers',
-            params: { query: term },
-          }).catch(() => [] as unknown[])
-        : Promise.resolve([] as unknown[]);
+  // ── 계정 변경 시 화면 즉시 리셋 (slot은 jiraDashboardCache Map에 보존되어 복귀 시 복원) ──
+  const prevAccountIdRef = useRef(currentAccountId);
+  useEffect(() => {
+    if (prevAccountIdRef.current === currentAccountId) return;
+    prevAccountIdRef.current = currentAccountId;
 
-      const [result, matchedUsers] = await Promise.all([searchPromise, userPromise]);
-      const issues = parseIssues(result);
-      const allKeys = new Set(issues.map((i) => i.key));
+    setSearchQuery('');
+    setSearchResults(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setExpandedEpics(new Set());
+  }, [currentAccountId, setSearchQuery, setSearchResults, setSuggestions, setShowSuggestions]);
 
-      // 매칭된 사용자가 있으면 해당 담당자의 이슈를 추가 검색
-      if (Array.isArray(matchedUsers) && matchedUsers.length > 0) {
-        const accountIds = (matchedUsers as { accountId?: string }[])
-          .map((u) => u.accountId)
-          .filter(Boolean) as string[];
-        if (accountIds.length > 0) {
-          const pc = buildProjectClause(selectedProjects);
-          const projectClause = pc ? `${pc} AND ` : '';
-          const assigneeClause = accountIds.length === 1
-            ? `assignee = "${accountIds[0]}"`
-            : `assignee IN (${accountIds.map((id) => `"${id}"`).join(',')})`;
-          try {
-            const assigneeResult = await integrationController.invoke({
-              accountId: activeAccount.id,
-              serviceType: 'jira',
-              action: 'searchIssues',
-              params: {
-                jql: `${projectClause}${assigneeClause} ORDER BY updated DESC`,
-                maxResults: 50,
-                skipCache: true,
-              },
-            });
-            const assigneeIssues = parseIssues(assigneeResult);
-            for (const ai of assigneeIssues) {
-              if (!allKeys.has(ai.key)) {
-                issues.push(ai);
-                allKeys.add(ai.key);
-              }
-            }
-          } catch { /* assignee search failed, continue with base results */ }
-        }
-      }
+  // 상태 변경 시 캐시 동기화 (계정별 slot에 스냅샷 저장)
+  useAccountScopedCache(
+    jiraDashboardCache,
+    currentAccountId,
+    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
+    () => ({
+      myIssues,
+      projects,
+      selectedProjects,
+      searchQuery,
+      searchResults,
+      expandedEpics,
+      defaultChildrenMap,
+      defaultExpandedChildren,
+      doneCounts,
+      doneIssues,
+      browseProjectKey,
+      browseEpics,
+      browseChildrenMap,
+      browseExpandedKeys,
+      browseLoadedChildren,
+      selectedStatuses: Array.from(selectedStatuses),
+    }),
+  );
 
-      // 1단계: 부모 조회
-      const missingParentKeys = new Set<string>();
-      for (const issue of issues) {
-        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
-          missingParentKeys.add(issue.parentKey);
-        }
-      }
-      const parentIssues = await fetchByKeys(missingParentKeys);
-      for (const p of parentIssues) {
-        if (!allKeys.has(p.key)) {
-          issues.push(p);
-          allKeys.add(p.key);
-        }
-      }
-
-      // 2단계: 조부모 조회
-      const missingGrandparentKeys = new Set<string>();
-      for (const p of parentIssues) {
-        if (p.parentKey && !allKeys.has(p.parentKey)) {
-          missingGrandparentKeys.add(p.parentKey);
-        }
-      }
-      const grandparentIssues = await fetchByKeys(missingGrandparentKeys);
-      for (const gp of grandparentIssues) {
-        if (!allKeys.has(gp.key)) {
-          issues.push(gp);
-          allKeys.add(gp.key);
-        }
-      }
-
-      // 3단계: 에픽의 하위 스토리 조회
-      const pf = selectedProjects.length > 0 ? selectedProjects : undefined;
-      const epicKeys = issues
-        .filter((i) => isEpicType(i.issueTypeName))
-        .map((i) => i.key);
-      const storyIssues = await fetchChildren(epicKeys, pf, true);
-      for (const s of storyIssues) {
-        if (!allKeys.has(s.key)) {
-          issues.push(s);
-          allKeys.add(s.key);
-        } else if (s.parentKey) {
-          const idx = issues.findIndex((i) => i.key === s.key);
-          if (idx >= 0 && !issues[idx].parentKey) {
-            issues[idx] = { ...issues[idx], parentKey: s.parentKey, parentSummary: s.parentSummary || issues[idx].parentSummary };
-          }
-        }
-      }
-
-      // 4단계: 스토리의 하위항목 조회
-      const storyKeys = issues
-        .filter((i) => !isEpicType(i.issueTypeName) && !isSubTaskType(i.issueTypeName))
-        .filter((i) => epicKeys.length === 0 || i.parentKey)
-        .map((i) => i.key);
-      const subTaskIssues = await fetchChildren(storyKeys, pf);
-      for (const st of subTaskIssues) {
-        if (!allKeys.has(st.key)) {
-          issues.push(st);
-          allKeys.add(st.key);
-        } else if (st.parentKey) {
-          const idx = issues.findIndex((i) => i.key === st.key);
-          if (idx >= 0 && !issues[idx].parentKey) {
-            issues[idx] = { ...issues[idx], parentKey: st.parentKey, parentSummary: st.parentSummary || issues[idx].parentSummary };
-          }
-        }
-      }
-
-      setSearchResults(issues);
-      setExpandedEpics(new Set(issues.filter((i) => isEpicType(i.issueTypeName)).map((i) => i.key).concat('__no_epic__')));
-      loadAllDescendants(issues, pf);
-    } catch (err) {
-      console.error('[JiraDashboard] searchIssues error:', err);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }, [activeAccount, searchQuery, selectedProjects, projects, fetchByKeys, fetchChildren, loadAllDescendants]);
-
-  // 자동완성: summary 필드만으로 검색
-  const fetchSuggestions = useCallback(async (query: string) => {
-    if (!activeAccount || !query.trim()) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    setIsSuggestLoading(true);
-    try {
-      const clauses: string[] = [];
-      const pc = buildProjectClause(selectedProjects);
-      if (pc) clauses.push(pc);
-
-      const term = query.trim();
-      if (KEY_PATTERN.test(term)) {
-        clauses.push(`key = "${escapeJql(term)}"`);
-      } else if (NUMBER_ONLY_PATTERN.test(term)) {
-        const prefixes = selectedProjects.length > 0 ? selectedProjects : projects.map((p) => p.key);
-        if (prefixes.length > 0) {
-          const keys = prefixes.map((pk) => `"${pk}-${term}"`);
-          clauses.push(keys.length === 1 ? `key = ${keys[0]}` : `key IN (${keys.join(',')})`);
-        }
-      } else {
-        const words = term.split(/\s+/).filter(Boolean);
-        const wordClauses = words.map((w) => `summary ~ "${escapeJql(w)}"`);
-        clauses.push(wordClauses.length === 1 ? wordClauses[0] : wordClauses.join(' AND '));
-      }
-
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: {
-          jql: `${clauses.join(' AND ')} ORDER BY updated DESC`,
-          maxResults: 10,
-          skipCache: true,
-        },
-      });
-      const issues = parseIssues(result);
-      setSuggestions(issues);
-      setShowSuggestions(issues.length > 0);
-      setActiveSuggestionIdx(-1);
-    } catch {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    } finally {
-      setIsSuggestLoading(false);
-    }
-  }, [activeAccount, selectedProjects, projects]);
-
-  // 검색어 변경 시 debounce 자동완성
+  // composer 수준에서 searchQuery와 debounced suggest trigger를 합성
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
-    if (!value.trim()) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    suggestTimerRef.current = setTimeout(() => {
-      fetchSuggestions(value);
-    }, 300);
-  }, [fetchSuggestions]);
-
-  // 외부 클릭 시 드롭다운 닫기
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
-    };
-  }, []);
+    triggerSuggest(value);
+  }, [setSearchQuery, triggerSuggest]);
 
   const clearSearch = useCallback(() => {
     setSearchQuery('');
     setSearchResults(null);
     setSuggestions([]);
     setShowSuggestions(false);
-  }, []);
+  }, [setSearchQuery, setSearchResults, setSuggestions, setShowSuggestions]);
 
   // 최초 마운트: 캐시가 유효하면 API 재호출 생략
   const initialFetchDone = React.useRef(Boolean(cached && cached.myIssues.length > 0));

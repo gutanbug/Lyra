@@ -7,7 +7,7 @@ import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
 import { str, obj, isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
 import { normalizePageDetail } from 'lib/utils/confluenceNormalizers';
-import { resolveLinkMetaMap } from 'lib/utils/linkMetaResolver';
+import useJiraCardMetaMap from 'lib/hooks/useJiraCardMetaMap';
 import {
   extractCardUrlsFromAdf,
   extractMediaIds,
@@ -23,7 +23,8 @@ import {
   extractLinkedIssues,
 } from 'lib/utils/jiraNormalizers';
 import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue, ConfluenceLink, ConfluencePageContent, JiraAttachment } from 'types/jira';
-import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
+import type { FileMeta } from 'components/common/AdfRenderer';
+import type { Account } from 'types/account';
 
 export interface BreadcrumbEntry {
   key: string;
@@ -49,7 +50,7 @@ function scrollToTop(el: HTMLElement | null) {
 
 interface UseJiraIssueDetailParams {
   issueKey: string;
-  activeAccount: { id: string; credentials: unknown; metadata?: Record<string, unknown> } | null;
+  activeAccount: Account | null;
   layoutRef: React.RefObject<HTMLDivElement>;
   setComments: (comments: NormalizedComment[]) => void;
   resolveCardTitlesRef: React.MutableRefObject<((urls: string[]) => Promise<void>) | undefined>;
@@ -83,7 +84,7 @@ export function useJiraIssueDetail({
   const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
 
   // 인라인 카드 링크 → 메타 정보 매핑
-  const [linkMetaMap, setLinkMetaMap] = useState<Record<string, LinkMeta>>({});
+  const { linkMetaMap, ingestUrls } = useJiraCardMetaMap({ activeAccount, resolveCardTitlesRef });
 
   // 첨부 이미지
   const [attachments, setAttachments] = useState<JiraAttachment[]>([]);
@@ -233,18 +234,6 @@ export function useJiraIssueDetail({
       setChildIssuesLoading(false);
     }
   }, [activeAccount]);
-
-  // 인라인 카드 URL에서 메타 정보를 일괄 해석
-  const resolveCardTitles = useCallback(async (urls: string[]) => {
-    if (!activeAccount) return;
-    const metaMap = await resolveLinkMetaMap(urls, activeAccount.id);
-    if (Object.keys(metaMap).length > 0) {
-      setLinkMetaMap((prev) => ({ ...prev, ...metaMap }));
-    }
-  }, [activeAccount]);
-
-  // ref 동기화
-  resolveCardTitlesRef.current = resolveCardTitles;
 
   // 이슈 전환 시 스크롤 최상단으로
   useEffect(() => {
@@ -486,7 +475,7 @@ export function useJiraIssueDetail({
         // 중복 제거
         const uniqueCardUrls = Array.from(new Set(cardUrls));
         if (uniqueCardUrls.length > 0) {
-          resolveCardTitles(uniqueCardUrls);
+          ingestUrls(uniqueCardUrls);
         }
 
         setError(null);

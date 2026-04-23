@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
@@ -21,13 +21,12 @@ import { useJiraComments } from 'lib/hooks/useJiraComments';
 import { useJiraIssueDetail } from 'lib/hooks/useJiraIssueDetail';
 import { useFilePreview } from 'lib/hooks/useFilePreview';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
+import { useAdfBodyEditor } from 'lib/hooks/useAdfBodyEditor';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
-import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
-import { integrationController } from 'controllers/account';
 import { Edit2 } from 'lucide-react';
 import JiraIssueHeader from 'components/jira/JiraIssueHeader';
 import JiraIssueComments from 'components/jira/JiraIssueComments';
@@ -133,30 +132,23 @@ const JiraIssueDetail = () => {
     serviceType: 'jira',
   });
 
-  // 설명 편집 상태
-  const [isEditingDesc, setIsEditingDesc] = useState(false);
-  const [isSavingDesc, setIsSavingDesc] = useState(false);
-  const descEditorRef = useRef<AdfBodyEditorHandle>(null);
-
-  const handleSaveDescription = useCallback(async () => {
-    const adf = await descEditorRef.current?.getValue();
-    if (!adf || !activeAccount || !issueKey) return;
-    setIsSavingDesc(true);
-    try {
-      await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'updateIssueDescription',
-        params: { issueKey, description: adf },
-      });
-      updateDescriptionAdf(adf);
-      setIsEditingDesc(false);
-    } catch (err) {
-      console.error('[JiraIssueDetail] save description error:', err);
-    } finally {
-      setIsSavingDesc(false);
-    }
-  }, [activeAccount, issueKey, updateDescriptionAdf]);
+  // 설명 편집 상태 (공통 훅)
+  const buildDescParams = useCallback((adf: unknown) => ({ issueKey, description: adf }), [issueKey]);
+  const handleDescSaved = useCallback((adf: unknown) => updateDescriptionAdf(adf), [updateDescriptionAdf]);
+  const {
+    isEditing: isEditingDesc,
+    isSaving: isSavingDesc,
+    editorRef: descEditorRef,
+    startEdit: startEditDesc,
+    cancelEdit: cancelEditDesc,
+    save: handleSaveDescription,
+  } = useAdfBodyEditor({
+    accountId: activeAccount?.id,
+    serviceType: 'jira',
+    action: 'updateIssueDescription',
+    buildParams: buildDescParams,
+    onSaved: handleDescSaved,
+  });
 
   // 우선순위 드롭다운 (공통 훅)
   const { priorityTarget, openPriorityDropdown, handlePriorityChange, closePriorityDropdown } = usePriorityDropdown({
@@ -231,7 +223,7 @@ const JiraIssueDetail = () => {
             <SectionHeader>
               <SectionTitle $theme={jiraTheme}>설명</SectionTitle>
               {!isEditingDesc && (
-                <EditIconButton $theme={jiraTheme} onClick={() => setIsEditingDesc(true)} title="설명 편집">
+                <EditIconButton $theme={jiraTheme} onClick={startEditDesc} title="설명 편집">
                   <Edit2 size={14} />
                 </EditIconButton>
               )}
@@ -246,7 +238,7 @@ const JiraIssueDetail = () => {
                   onSave={handleSaveDescription}
                 />
                 <EditorActions>
-                  <CancelButton $theme={jiraTheme} onClick={() => setIsEditingDesc(false)} disabled={isSavingDesc}>취소</CancelButton>
+                  <CancelButton $theme={jiraTheme} onClick={cancelEditDesc} disabled={isSavingDesc}>취소</CancelButton>
                   <SaveButton $theme={jiraTheme} onClick={handleSaveDescription} disabled={isSavingDesc}>
                     {isSavingDesc ? '저장 중...' : '저장'}
                   </SaveButton>

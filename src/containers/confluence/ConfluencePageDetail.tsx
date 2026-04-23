@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback } from 'react';
 import { useParams, useHistory } from 'react-router-dom';
 import styled from 'styled-components';
 import { Edit2 } from 'lucide-react';
@@ -14,11 +14,10 @@ import {
 import { useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
 import useConfluencePageLinkHandler from 'lib/hooks/useConfluencePageLinkHandler';
 import { useFilePreview } from 'lib/hooks/useFilePreview';
+import { useAdfBodyEditor } from 'lib/hooks/useAdfBodyEditor';
 import { isAtlassianAccount } from 'types/account';
-import { integrationController } from 'controllers/account';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
-import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
 import { useConfluencePageDetail } from 'lib/hooks/useConfluencePageDetail';
 import ConfluencePageHeader from 'components/confluence/ConfluencePageHeader';
 import ConfluenceComments from 'components/confluence/ConfluenceComments';
@@ -53,40 +52,34 @@ const ConfluencePageDetailView = () => {
     serviceType: 'confluence',
   });
 
-  // 본문 편집 상태
-  const [isEditingBody, setIsEditingBody] = useState(false);
-  const [isSavingBody, setIsSavingBody] = useState(false);
-  const bodyEditorRef = useRef<AdfBodyEditorHandle>(null);
-
-  const handleSaveBody = useCallback(async () => {
-    const adf = await bodyEditorRef.current?.getValue();
-    if (!adf || !activeAccount || !page) return;
-    setIsSavingBody(true);
-    try {
-      await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'updatePageBody',
-        params: {
-          pageId: page.id,
-          title: page.title,
-          body: adf,
-          version: page.version,
-        },
-      });
-      setPage((prev) => prev ? { ...prev, bodyAdf: adf, version: prev.version + 1 } : prev);
-      setIsEditingBody(false);
-    } catch (err: any) {
-      const msg = err?.message || '';
-      if (msg.includes('409') || msg.includes('conflict')) {
-        alert('다른 사용자가 이 페이지를 수정했습니다. 페이지를 새로고침 후 다시 시도해주세요.');
-      } else {
-        console.error('[ConfluencePageDetail] save body error:', err);
-      }
-    } finally {
-      setIsSavingBody(false);
-    }
-  }, [activeAccount, page, setPage]);
+  // 본문 편집 상태 (공통 훅)
+  const buildBodyParams = useCallback((adf: unknown) => ({
+    pageId: page?.id,
+    title: page?.title,
+    body: adf,
+    version: page?.version,
+  }), [page?.id, page?.title, page?.version]);
+  const handleBodySaved = useCallback((adf: unknown) => {
+    setPage((prev) => prev ? { ...prev, bodyAdf: adf, version: prev.version + 1 } : prev);
+  }, [setPage]);
+  const handleBodyConflict = useCallback(() => {
+    alert('다른 사용자가 이 페이지를 수정했습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+  }, []);
+  const {
+    isEditing: isEditingBody,
+    isSaving: isSavingBody,
+    editorRef: bodyEditorRef,
+    startEdit: startEditBody,
+    cancelEdit: cancelEditBody,
+    save: handleSaveBody,
+  } = useAdfBodyEditor({
+    accountId: activeAccount?.id,
+    serviceType: 'confluence',
+    action: 'updatePageBody',
+    buildParams: buildBodyParams,
+    onSaved: handleBodySaved,
+    onConflict: handleBodyConflict,
+  });
 
   const handleAdfLinkClick = useAdfLinkHandler(linkMetaMap);
   const handleContentClick = useConfluencePageLinkHandler({
@@ -181,7 +174,7 @@ const ConfluencePageDetailView = () => {
                   confluenceMode
                 />
                 <EditorActions>
-                  <CancelButton $theme={confluenceTheme} onClick={() => setIsEditingBody(false)} disabled={isSavingBody}>취소</CancelButton>
+                  <CancelButton $theme={confluenceTheme} onClick={cancelEditBody} disabled={isSavingBody}>취소</CancelButton>
                   <SaveButton $theme={confluenceTheme} onClick={handleSaveBody} disabled={isSavingBody}>
                     {isSavingBody ? '저장 중...' : '저장'}
                   </SaveButton>
@@ -191,7 +184,7 @@ const ConfluencePageDetailView = () => {
               <>
                 {page.bodyAdf && (
                   <BodyEditRow>
-                    <EditButtonWithLabel $theme={confluenceTheme} onClick={() => setIsEditingBody(true)} title="본문 편집">
+                    <EditButtonWithLabel $theme={confluenceTheme} onClick={startEditBody} title="본문 편집">
                       <Edit2 size={14} />
                       <span>편집</span>
                     </EditButtonWithLabel>

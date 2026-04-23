@@ -4,6 +4,7 @@ import { integrationController } from 'controllers/account';
 import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
 import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects, loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
+import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -15,10 +16,8 @@ interface DashboardCache {
   searchQuery: string;
   searchResults: NormalizedIssue[] | null;
   expandedEpics: Set<string>;
-  statusCounts: StatusCount[];
   defaultChildrenMap: Record<string, NormalizedIssue[]>;
   defaultExpandedChildren: Set<string>;
-  accountId: string;
   browseProjectKey: string | null;
   browseEpics: NormalizedIssue[];
   browseChildrenMap: Record<string, NormalizedIssue[]>;
@@ -28,25 +27,7 @@ interface DashboardCache {
   doneIssues: NormalizedIssue[];
 }
 
-const cache: DashboardCache = {
-  myIssues: [],
-  projects: [],
-  selectedProjects: [],
-  searchQuery: '',
-  searchResults: null,
-  expandedEpics: new Set(),
-  statusCounts: [],
-  defaultChildrenMap: {},
-  defaultExpandedChildren: new Set(),
-  accountId: '',
-  browseProjectKey: null,
-  browseEpics: [],
-  browseChildrenMap: {},
-  browseExpandedKeys: new Set(),
-  browseLoadedChildren: new Set(),
-  doneCounts: [],
-  doneIssues: [],
-};
+const jiraDashboardCache = createAccountScopedCache<DashboardCache>();
 
 interface UseJiraSearchOptions {
   activeAccount: { id: string; metadata?: unknown } | null | undefined;
@@ -55,28 +36,29 @@ interface UseJiraSearchOptions {
 
 export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) {
   const currentAccountId = activeAccount?.id || '';
-  const isCacheValid = cache.accountId === currentAccountId && currentAccountId !== '';
+  const cached = currentAccountId ? jiraDashboardCache.get(currentAccountId) : undefined;
+  const isCacheValid = Boolean(cached);
 
   // 전체 이슈 (내 담당)
-  const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.myIssues : []);
+  const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(cached?.myIssues ?? []);
   const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(new Set()); // 본인 담당 이슈 키 (부모/조부모 제외)
   const [isLoading, setIsLoading] = useState(false);
 
   // 완료(Done) 상태별 개수 (별도 조회)
-  const [doneCounts, setDoneCounts] = useState<StatusCount[]>(isCacheValid ? cache.doneCounts : []);
+  const [doneCounts, setDoneCounts] = useState<StatusCount[]>(cached?.doneCounts ?? []);
 
   // 프로젝트 (스페이스) 필터
-  const [projects, setProjects] = useState<JiraProject[]>(isCacheValid ? cache.projects : []);
+  const [projects, setProjects] = useState<JiraProject[]>(cached?.projects ?? []);
   const [selectedProjects, setSelectedProjects] = useState<string[]>(
-    isCacheValid ? cache.selectedProjects : loadSelectedProjects(currentAccountId)
+    cached?.selectedProjects ?? loadSelectedProjects(currentAccountId)
   );
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
   const [spaceFilter, setSpaceFilter] = useState('');
   const [projectsReady, setProjectsReady] = useState(isCacheValid || loadSelectedProjects(currentAccountId).length > 0);
 
   // 검색
-  const [searchQuery, setSearchQuery] = useState(isCacheValid ? cache.searchQuery : '');
-  const [searchResults, setSearchResults] = useState<NormalizedIssue[] | null>(isCacheValid ? cache.searchResults : null);
+  const [searchQuery, setSearchQuery] = useState(cached?.searchQuery ?? '');
+  const [searchResults, setSearchResults] = useState<NormalizedIssue[] | null>(cached?.searchResults ?? null);
   const [isSearching, setIsSearching] = useState(false);
 
   // 자동완성
@@ -88,32 +70,32 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
   // Epic 토글 상태
-  const [expandedEpics, setExpandedEpics] = useState<Set<string>>(isCacheValid ? cache.expandedEpics : new Set());
+  const [expandedEpics, setExpandedEpics] = useState<Set<string>>(cached?.expandedEpics ?? new Set());
 
   // 기본 모드 N-depth 하위 이슈 상태
-  const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>(isCacheValid ? cache.defaultChildrenMap : {});
-  const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(isCacheValid ? cache.defaultExpandedChildren : new Set());
+  const [defaultChildrenMap, setDefaultChildrenMap] = useState<Record<string, NormalizedIssue[]>>(cached?.defaultChildrenMap ?? {});
+  const [defaultExpandedChildren, setDefaultExpandedChildren] = useState<Set<string>>(cached?.defaultExpandedChildren ?? new Set());
   const [defaultLoadingChildren, setDefaultLoadingChildren] = useState<Set<string>>(new Set());
   const defaultLoadedChildrenRef = useRef<Set<string>>(
-    isCacheValid ? new Set(Object.keys(cache.defaultChildrenMap)) : new Set()
+    cached ? new Set(Object.keys(cached.defaultChildrenMap)) : new Set()
   );
 
   // 사이드바 프로젝트 브라우즈 모드
-  const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(isCacheValid ? cache.browseProjectKey : null);
-  const [browseEpics, setBrowseEpics] = useState<NormalizedIssue[]>(isCacheValid ? cache.browseEpics : []);
-  const [browseChildrenMap, setBrowseChildrenMap] = useState<Record<string, NormalizedIssue[]>>(isCacheValid ? cache.browseChildrenMap : {});
+  const [browseProjectKey, setBrowseProjectKey] = useState<string | null>(cached?.browseProjectKey ?? null);
+  const [browseEpics, setBrowseEpics] = useState<NormalizedIssue[]>(cached?.browseEpics ?? []);
+  const [browseChildrenMap, setBrowseChildrenMap] = useState<Record<string, NormalizedIssue[]>>(cached?.browseChildrenMap ?? {});
   const [isBrowseLoading, setIsBrowseLoading] = useState(false);
-  const [browseExpandedKeys, setBrowseExpandedKeys] = useState<Set<string>>(isCacheValid ? cache.browseExpandedKeys : new Set());
+  const [browseExpandedKeys, setBrowseExpandedKeys] = useState<Set<string>>(cached?.browseExpandedKeys ?? new Set());
   const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
-  const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(isCacheValid ? cache.browseLoadedChildren : new Set());
+  const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(cached?.browseLoadedChildren ?? new Set());
 
   // 상태 필터 (localStorage에서 복원)
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(() => {
     const saved = loadSelectedStatuses(currentAccountId);
     return new Set(saved);
   });
-  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(isCacheValid ? cache.doneIssues : []);
-  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(isCacheValid && cache.doneIssues.length > 0);
+  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(cached?.doneIssues ?? []);
+  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(Boolean(cached && cached.doneIssues.length > 0));
 
   // 상태별 개수 (myIssues + doneCounts 합산)
   const statusCounts = useMemo(() => {
@@ -259,7 +241,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     );
   }, [projects, spaceFilter]);
 
-  // ── 계정 변경 시 state 초기화 ──
+  // ── 계정 변경 시 화면 즉시 리셋 (slot은 jiraDashboardCache Map에 보존되어 복귀 시 복원) ──
   const prevAccountIdRef = useRef(currentAccountId);
   useEffect(() => {
     if (prevAccountIdRef.current === currentAccountId) return;
@@ -310,26 +292,29 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     return () => window.removeEventListener('lyra:sidebar-browse-project', handler);
   }, []);
 
-  // 상태 변경 시 캐시 동기화
-  useEffect(() => {
-    cache.accountId = currentAccountId;
-    cache.myIssues = myIssues;
-    cache.projects = projects;
-    cache.selectedProjects = selectedProjects;
-    cache.searchQuery = searchQuery;
-    cache.searchResults = searchResults;
-    cache.expandedEpics = expandedEpics;
-    cache.statusCounts = statusCounts;
-    cache.defaultChildrenMap = defaultChildrenMap;
-    cache.defaultExpandedChildren = defaultExpandedChildren;
-    cache.doneCounts = doneCounts;
-    cache.doneIssues = doneIssues;
-    cache.browseProjectKey = browseProjectKey;
-    cache.browseEpics = browseEpics;
-    cache.browseChildrenMap = browseChildrenMap;
-    cache.browseExpandedKeys = browseExpandedKeys;
-    cache.browseLoadedChildren = browseLoadedChildren;
-  }, [currentAccountId, myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, statusCounts, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren]);
+  // 상태 변경 시 캐시 동기화 (계정별 slot에 스냅샷 저장)
+  useAccountScopedCache(
+    jiraDashboardCache,
+    currentAccountId,
+    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren],
+    () => ({
+      myIssues,
+      projects,
+      selectedProjects,
+      searchQuery,
+      searchResults,
+      expandedEpics,
+      defaultChildrenMap,
+      defaultExpandedChildren,
+      doneCounts,
+      doneIssues,
+      browseProjectKey,
+      browseEpics,
+      browseChildrenMap,
+      browseExpandedKeys,
+      browseLoadedChildren,
+    }),
+  );
 
   // ── fetch 콜백 ──
 
@@ -638,7 +623,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   }, [activeAccount, selectedProjects]);
 
   // ── 사이드바 프로젝트 브라우즈: 에픽만 조회 ──
-  const browseFetchDone = React.useRef(isCacheValid && cache.browseProjectKey === browseProjectKey && cache.browseEpics.length > 0);
+  const browseFetchDone = React.useRef(Boolean(cached && cached.browseProjectKey === browseProjectKey && cached.browseEpics.length > 0));
   useEffect(() => {
     if (!browseProjectKey || !activeAccount) return;
     if (browseFetchDone.current) {
@@ -965,7 +950,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   }, [currentAccountId, projectsReady]);
 
   // 최초 마운트: 캐시가 유효하면 API 재호출 생략
-  const initialFetchDone = React.useRef(isCacheValid && cache.myIssues.length > 0);
+  const initialFetchDone = React.useRef(Boolean(cached && cached.myIssues.length > 0));
 
   useEffect(() => {
     if (!activeAccount || !projectsReady) {

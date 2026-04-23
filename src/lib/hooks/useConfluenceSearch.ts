@@ -4,6 +4,7 @@ import { integrationController } from 'controllers/account';
 import type { ConfluenceSpace, NormalizedConfluencePage, ConfluenceSpaceGroup } from 'types/confluence';
 import { parsePages, parseSpaces, groupBySpace } from 'lib/utils/confluenceNormalizers';
 import { loadSelectedSpaces, loadSelectedSpacesAsync, saveSelectedSpaces } from 'lib/utils/storageHelpers';
+import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
 
 // ── 검색 필드 타입 ──
 
@@ -25,40 +26,32 @@ interface DashboardCache {
   searchQuery: string;
   searchResults: NormalizedConfluencePage[] | null;
   expandedSpaces: Set<string>;
-  accountId: string;
 }
 
-const cache: DashboardCache = {
-  myPages: [],
-  spaces: [],
-  selectedSpaces: [],
-  searchQuery: '',
-  searchResults: null,
-  expandedSpaces: new Set(),
-  accountId: '',
-};
+const confluenceDashboardCache = createAccountScopedCache<DashboardCache>();
 
 // ── Hook ──
 
 export function useConfluenceSearch() {
   const { activeAccount } = useAccount();
   const currentAccountId = activeAccount?.id || '';
-  const isCacheValid = cache.accountId === currentAccountId && currentAccountId !== '';
+  const cached = currentAccountId ? confluenceDashboardCache.get(currentAccountId) : undefined;
+  const isCacheValid = Boolean(cached);
 
   // ── State ──
 
-  const [myPages, setMyPages] = useState<NormalizedConfluencePage[]>(isCacheValid ? cache.myPages : []);
+  const [myPages, setMyPages] = useState<NormalizedConfluencePage[]>(cached?.myPages ?? []);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [spaces, setSpaces] = useState<ConfluenceSpace[]>(isCacheValid ? cache.spaces : []);
+  const [spaces, setSpaces] = useState<ConfluenceSpace[]>(cached?.spaces ?? []);
   const [selectedSpaces, setSelectedSpaces] = useState<string[]>(
-    isCacheValid ? cache.selectedSpaces : loadSelectedSpaces(currentAccountId)
+    cached?.selectedSpaces ?? loadSelectedSpaces(currentAccountId)
   );
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
   const [spaceFilter, setSpaceFilter] = useState('');
 
-  const [searchQuery, setSearchQuery] = useState(isCacheValid ? cache.searchQuery : '');
-  const [searchResults, setSearchResults] = useState<NormalizedConfluencePage[] | null>(isCacheValid ? cache.searchResults : null);
+  const [searchQuery, setSearchQuery] = useState(cached?.searchQuery ?? '');
+  const [searchResults, setSearchResults] = useState<NormalizedConfluencePage[] | null>(cached?.searchResults ?? null);
   const [isSearching, setIsSearching] = useState(false);
 
   const [searchField, setSearchField] = useState<SearchFieldType>('title');
@@ -72,7 +65,7 @@ export function useConfluenceSearch() {
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
-  const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(isCacheValid ? cache.expandedSpaces : new Set());
+  const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(cached?.expandedSpaces ?? new Set());
 
   // 스페이스 설정 로드 완료 여부
   const [spaceSettingsLoaded, setSpaceSettingsLoaded] = useState(isCacheValid);
@@ -89,7 +82,7 @@ export function useConfluenceSearch() {
     });
   }, [currentAccountId, isCacheValid]);
 
-  // ── 계정 변경 시 초기화 ──
+  // ── 계정 변경 시 화면 즉시 리셋 (slot은 confluenceDashboardCache Map에 보존되어 복귀 시 복원) ──
 
   const prevAccountIdRef = useRef(currentAccountId);
   useEffect(() => {
@@ -114,17 +107,14 @@ export function useConfluenceSearch() {
     });
   }, [currentAccountId]);
 
-  // ── 캐시 동기화 ──
+  // ── 캐시 동기화 (계정별 slot에 스냅샷 저장) ──
 
-  useEffect(() => {
-    cache.accountId = currentAccountId;
-    cache.myPages = myPages;
-    cache.spaces = spaces;
-    cache.selectedSpaces = selectedSpaces;
-    cache.searchQuery = searchQuery;
-    cache.searchResults = searchResults;
-    cache.expandedSpaces = expandedSpaces;
-  }, [currentAccountId, myPages, spaces, selectedSpaces, searchQuery, searchResults, expandedSpaces]);
+  useAccountScopedCache(
+    confluenceDashboardCache,
+    currentAccountId,
+    [myPages, spaces, selectedSpaces, searchQuery, searchResults, expandedSpaces],
+    () => ({ myPages, spaces, selectedSpaces, searchQuery, searchResults, expandedSpaces }),
+  );
 
   // ── API Callbacks ──
 
@@ -333,7 +323,7 @@ export function useConfluenceSearch() {
 
   // ── Initial data fetch ──
 
-  const initialFetchDone = useRef(isCacheValid && cache.myPages.length > 0);
+  const initialFetchDone = useRef(Boolean(cached && cached.myPages.length > 0));
 
   useEffect(() => {
     if (!activeAccount) {

@@ -23,7 +23,6 @@ import { useFilePreview } from 'lib/hooks/useFilePreview';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
-import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
 import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
@@ -35,6 +34,8 @@ import JiraIssueComments from 'components/jira/JiraIssueComments';
 import JiraChildIssues from 'components/jira/JiraChildIssues';
 import JiraLinkedIssues from 'components/jira/JiraLinkedIssues';
 import JiraConfluenceLinks from 'components/jira/JiraConfluenceLinks';
+import JiraBreadcrumbs from 'components/jira/JiraBreadcrumbs';
+import JiraAttachmentGrid from 'components/jira/JiraAttachmentGrid';
 
 const JiraIssueDetail = () => {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -205,23 +206,11 @@ const JiraIssueDetail = () => {
         <BackButton onClick={goBack}>
           &larr; 뒤로가기
         </BackButton>
-        <Breadcrumbs>
-          {breadcrumbs.map((b) => (
-            <React.Fragment key={b.key}>
-              <BreadcrumbSep>&gt;</BreadcrumbSep>
-              <BreadcrumbItem onClick={() => goToBreadcrumb(b.key)} title={b.summary}>
-                <JiraTaskIcon type={resolveTaskType(b.issueTypeName)} size={14} />
-                <span>{b.key}</span>
-                {b.summary && <BreadcrumbSummary>{b.summary}</BreadcrumbSummary>}
-              </BreadcrumbItem>
-            </React.Fragment>
-          ))}
-          <BreadcrumbSep>&gt;</BreadcrumbSep>
-          <BreadcrumbCurrent title={issue.summary}>
-            <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={14} />
-            <span>{issue.key}</span>
-          </BreadcrumbCurrent>
-        </Breadcrumbs>
+        <JiraBreadcrumbs
+          breadcrumbs={breadcrumbs}
+          currentIssue={{ key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName }}
+          onNavigate={goToBreadcrumb}
+        />
       </ToolbarArea>
 
       <Content>
@@ -273,25 +262,11 @@ const JiraIssueDetail = () => {
         {attachments.length > 0 && (
           <Section $theme={jiraTheme}>
             <SectionTitle $theme={jiraTheme}>첨부 이미지 ({attachments.length})</SectionTitle>
-            <AttachmentGrid>
-              {attachments.map((att) => {
-                const src = attachmentImages[att.id];
-                return (
-                  <AttachmentItem key={att.id}>
-                    {src ? (
-                      <AttachmentImage
-                        src={src}
-                        alt={att.filename}
-                        onClick={() => setLightboxSrc(src)}
-                      />
-                    ) : (
-                      <AttachmentPlaceholder>로딩 중...</AttachmentPlaceholder>
-                    )}
-                    <AttachmentFilename title={att.filename}>{att.filename}</AttachmentFilename>
-                  </AttachmentItem>
-                );
-              })}
-            </AttachmentGrid>
+            <JiraAttachmentGrid
+              attachments={attachments}
+              attachmentImages={attachmentImages}
+              onImageClick={setLightboxSrc}
+            />
           </Section>
         )}
 
@@ -462,65 +437,6 @@ const BackButton = styled.button`
   }
 `;
 
-const Breadcrumbs = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-  overflow: hidden;
-  flex-wrap: wrap;
-`;
-
-const BreadcrumbSep = styled.span`
-  color: ${jiraTheme.text.muted};
-  font-size: 0.8125rem;
-  flex-shrink: 0;
-`;
-
-const BreadcrumbItem = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background: transparent;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 20px;
-  color: ${jiraTheme.primary};
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ${transition};
-  max-width: 280px;
-
-  &:hover {
-    background: ${jiraTheme.primaryLight};
-    border-color: ${jiraTheme.primary};
-  }
-`;
-
-const BreadcrumbSummary = styled.span`
-  color: ${jiraTheme.text.secondary};
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const BreadcrumbCurrent = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: ${jiraTheme.text.primary};
-  background: ${jiraTheme.bg.subtle};
-  border-radius: 3px;
-  white-space: nowrap;
-  flex-shrink: 0;
-`;
-
 const Content = styled.main<{ children?: React.ReactNode }>`
   max-width: 960px;
   margin: 0 auto;
@@ -550,52 +466,5 @@ const ErrorMessage = styled.div`
   padding: 2rem;
   text-align: center;
   color: #E5493A;
-`;
-
-const AttachmentGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
-`;
-
-const AttachmentItem = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-`;
-
-const AttachmentImage = styled.img`
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid ${jiraTheme.border};
-  cursor: pointer;
-  transition: opacity 0.15s ${transition};
-
-  &:hover {
-    opacity: 0.85;
-  }
-`;
-
-const AttachmentPlaceholder = styled.div`
-  width: 100%;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: ${jiraTheme.bg.subtle};
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 3px;
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.muted};
-`;
-
-const AttachmentFilename = styled.span`
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.secondary};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 `;
 

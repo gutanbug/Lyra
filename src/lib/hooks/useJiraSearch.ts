@@ -3,9 +3,11 @@ import React from 'react';
 import { integrationController } from 'controllers/account';
 import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
-import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects } from 'lib/utils/storageHelpers';
 import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
 import { useJiraStatusFilter } from 'lib/hooks/jira/useJiraStatusFilter';
+import { useJiraProjects } from 'lib/hooks/jira/useJiraProjects';
+import { useJiraMyIssues } from 'lib/hooks/jira/useJiraMyIssues';
+import { useJiraDoneIssues } from 'lib/hooks/jira/useJiraDoneIssues';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -39,24 +41,50 @@ interface UseJiraSearchOptions {
 export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) {
   const currentAccountId = activeAccount?.id || '';
   const cached = currentAccountId ? jiraDashboardCache.get(currentAccountId) : undefined;
-  const isCacheValid = Boolean(cached);
-
-  // 전체 이슈 (내 담당)
-  const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(cached?.myIssues ?? []);
-  const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(new Set()); // 본인 담당 이슈 키 (부모/조부모 제외)
-  const [isLoading, setIsLoading] = useState(false);
-
-  // 완료(Done) 상태별 개수 (별도 조회)
-  const [doneCounts, setDoneCounts] = useState<StatusCount[]>(cached?.doneCounts ?? []);
 
   // 프로젝트 (스페이스) 필터
-  const [projects, setProjects] = useState<JiraProject[]>(cached?.projects ?? []);
-  const [selectedProjects, setSelectedProjects] = useState<string[]>(
-    cached?.selectedProjects ?? loadSelectedProjects(currentAccountId)
-  );
+  const projectsHook = useJiraProjects({
+    accountId: currentAccountId,
+    activeAccount,
+    cached: {
+      projects: cached?.projects,
+      selectedProjects: cached?.selectedProjects,
+    },
+  });
+  const {
+    projects,
+    setProjects,
+    selectedProjects,
+    setSelectedProjects,
+    spaceFilter,
+    setSpaceFilter,
+    filteredProjects,
+    projectsReady,
+    setProjectsReady,
+    fetchProjects,
+    handleSaveSpaceSettings,
+  } = projectsHook;
+
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
-  const [spaceFilter, setSpaceFilter] = useState('');
-  const [projectsReady, setProjectsReady] = useState(isCacheValid || loadSelectedProjects(currentAccountId).length > 0);
+
+  // 완료 이슈/카운트 (먼저 선언: loadAllDescendants 선언부에서 참조되지 않고, my 이슈 fetch가 descendant 로딩과 분리됨)
+  const doneIssuesHook = useJiraDoneIssues({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedProjects,
+    cached: {
+      doneIssues: cached?.doneIssues,
+      doneCounts: cached?.doneCounts,
+    },
+  });
+  const {
+    doneIssues,
+    doneCounts,
+    setDoneIssues,
+    setDoneIssuesLoaded,
+    fetchDoneIssues,
+    fetchDoneCounts,
+  } = doneIssuesHook;
 
   // 검색
   const [searchQuery, setSearchQuery] = useState(cached?.searchQuery ?? '');
@@ -90,233 +118,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const [browseExpandedKeys, setBrowseExpandedKeys] = useState<Set<string>>(cached?.browseExpandedKeys ?? new Set());
   const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
   const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(cached?.browseLoadedChildren ?? new Set());
-
-  const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(cached?.doneIssues ?? []);
-  const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(Boolean(cached && cached.doneIssues.length > 0));
-
-  // 상태 필터 (selectedStatuses + statusCounts + toggleStatus)
-  const statusFilterHook = useJiraStatusFilter({
-    accountId: currentAccountId,
-    myIssues,
-    myIssueKeys,
-    doneCounts,
-    cachedSelectedStatuses: cached?.selectedStatuses,
-  });
-  const { selectedStatuses, statusCounts, toggleStatus } = statusFilterHook;
-
-  // 완료 이슈 조회 — 초기 로드 시 함께 호출, 부모 에픽 정보도 포함
-  const fetchDoneIssues = useCallback(async () => {
-    if (!activeAccount) return;
-    try {
-      const pc = buildProjectClause(selectedProjects);
-      const projectClause = pc ? `${pc} AND ` : '';
-      const allDone: NormalizedIssue[] = [];
-      const allKeys = new Set<string>();
-      const pageSize = 100;
-      let pageToken: string | undefined;
-      const maxPages = 20;
-
-      for (let page = 0; page < maxPages; page++) {
-        const result = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'searchIssues',
-          params: {
-            jql: `${projectClause}assignee = currentUser() AND statusCategory = Done ORDER BY updated DESC`,
-            maxResults: pageSize,
-            skipCache: true,
-            ...(pageToken ? { nextPageToken: pageToken } : {}),
-          },
-        }) as Record<string, unknown>;
-        const issues = parseIssues(result);
-        for (const i of issues) {
-          allDone.push(i);
-          allKeys.add(i.key);
-        }
-        pageToken = result.nextPageToken as string | undefined;
-        if (!pageToken || issues.length < pageSize) break;
-      }
-
-      // 부모/조부모 에픽 조회 (myIssues와 동일 패턴)
-      const missingParentKeys = new Set<string>();
-      for (const issue of allDone) {
-        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
-          missingParentKeys.add(issue.parentKey);
-        }
-      }
-      if (missingParentKeys.size > 0) {
-        try {
-          const parentJql = `key IN (${Array.from(missingParentKeys).join(',')})`;
-          const parentResult = await integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchIssues',
-            params: { jql: parentJql, maxResults: missingParentKeys.size },
-          });
-          for (const p of parseIssues(parentResult)) {
-            if (!allKeys.has(p.key)) {
-              allDone.push(p);
-              allKeys.add(p.key);
-            }
-          }
-        } catch { /* ignore */ }
-      }
-
-      // 2단계: 조부모 (에픽) 조회
-      const missingGrandparentKeys = new Set<string>();
-      for (const issue of allDone) {
-        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
-          missingGrandparentKeys.add(issue.parentKey);
-        }
-      }
-      if (missingGrandparentKeys.size > 0) {
-        try {
-          const gpJql = `key IN (${Array.from(missingGrandparentKeys).join(',')})`;
-          const gpResult = await integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchIssues',
-            params: { jql: gpJql, maxResults: missingGrandparentKeys.size },
-          });
-          for (const gp of parseIssues(gpResult)) {
-            if (!allKeys.has(gp.key)) {
-              allDone.push(gp);
-              allKeys.add(gp.key);
-            }
-          }
-        } catch { /* ignore */ }
-      }
-
-      setDoneIssues(allDone);
-      setDoneIssuesLoaded(true);
-    } catch (err) {
-      console.error('[JiraDashboard] fetchDoneIssues error:', err);
-    }
-  }, [activeAccount, selectedProjects]);
-
-  // 스페이스 설정 모달용 필터링
-  const filteredProjects = useMemo(() => {
-    const q = spaceFilter.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q)
-    );
-  }, [projects, spaceFilter]);
-
-  // ── 계정 변경 시 화면 즉시 리셋 (slot은 jiraDashboardCache Map에 보존되어 복귀 시 복원) ──
-  const prevAccountIdRef = useRef(currentAccountId);
-  useEffect(() => {
-    if (prevAccountIdRef.current === currentAccountId) return;
-    prevAccountIdRef.current = currentAccountId;
-
-    setMyIssues([]);
-    setProjects([]);
-    setSelectedProjects([]);
-    setSearchQuery('');
-    setSearchResults(null);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setExpandedEpics(new Set());
-
-    if (!currentAccountId) return;
-
-    const localKeys = loadSelectedProjects(currentAccountId);
-    if (localKeys.length > 0) {
-      setSelectedProjects(localKeys);
-      setProjectsReady(true);
-    }
-    loadSelectedProjectsAsync(currentAccountId).then((keys) => {
-      if (keys.length > 0) setSelectedProjects(keys);
-      setProjectsReady(true);
-    });
-  }, [currentAccountId]);
-
-  // 사이드바에서 프로젝트 브라우즈 이벤트 수신
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      const key = detail?.projectKey as string | null;
-      if (key) {
-        setBrowseProjectKey(key);
-        setBrowseEpics([]);
-        setBrowseChildrenMap({});
-        setBrowseExpandedKeys(new Set());
-        setBrowseLoadedChildren(new Set());
-      } else {
-        setBrowseProjectKey(null);
-        setBrowseEpics([]);
-        setBrowseChildrenMap({});
-        setBrowseExpandedKeys(new Set());
-        setBrowseLoadedChildren(new Set());
-      }
-    };
-    window.addEventListener('lyra:sidebar-browse-project', handler);
-    return () => window.removeEventListener('lyra:sidebar-browse-project', handler);
-  }, []);
-
-  // 상태 변경 시 캐시 동기화 (계정별 slot에 스냅샷 저장)
-  useAccountScopedCache(
-    jiraDashboardCache,
-    currentAccountId,
-    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
-    () => ({
-      myIssues,
-      projects,
-      selectedProjects,
-      searchQuery,
-      searchResults,
-      expandedEpics,
-      defaultChildrenMap,
-      defaultExpandedChildren,
-      doneCounts,
-      doneIssues,
-      browseProjectKey,
-      browseEpics,
-      browseChildrenMap,
-      browseExpandedKeys,
-      browseLoadedChildren,
-      selectedStatuses: Array.from(selectedStatuses),
-    }),
-  );
-
-  // ── fetch 콜백 ──
-
-  const fetchProjects = useCallback(async () => {
-    if (!activeAccount) return;
-    try {
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'getProjects',
-      });
-      if (Array.isArray(result)) {
-        const list = result
-          .filter((p: any) => p && p.key)
-          .map((p: any) => ({ key: String(p.key), name: String(p.name || p.key) }))
-          .sort((a: JiraProject, b: JiraProject) => a.name.localeCompare(b.name));
-        setProjects(list);
-      }
-    } catch (err) {
-      console.error('[JiraDashboard] fetchProjects failed:', err);
-      setProjects([]);
-    }
-  }, [activeAccount]);
-
-  const fetchByKeys = useCallback(async (keys: Set<string>): Promise<NormalizedIssue[]> => {
-    if (keys.size === 0 || !activeAccount) return [];
-    try {
-      const jql = `key IN (${Array.from(keys).join(',')})`;
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: { jql, maxResults: keys.size, skipCache: true },
-      });
-      return parseIssues(result);
-    } catch {
-      return [];
-    }
-  }, [activeAccount]);
 
   const fetchChildren = useCallback(async (parentKeys: string[], projectFilter?: string[], isEpic = false): Promise<NormalizedIssue[]> => {
     if (parentKeys.length === 0 || !activeAccount) return [];
@@ -385,6 +186,22 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     return allChildren;
   }, [activeAccount]);
 
+  const fetchByKeys = useCallback(async (keys: Set<string>): Promise<NormalizedIssue[]> => {
+    if (keys.size === 0 || !activeAccount) return [];
+    try {
+      const jql = `key IN (${Array.from(keys).join(',')})`;
+      const result = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'searchIssues',
+        params: { jql, maxResults: keys.size, skipCache: true },
+      });
+      return parseIssues(result);
+    } catch {
+      return [];
+    }
+  }, [activeAccount]);
+
   const loadAllDescendants = useCallback(async (issues: NormalizedIssue[], projectFilter?: string[]) => {
     const childrenMap: Record<string, NormalizedIssue[]> = {};
     const loaded = new Set<string>();
@@ -426,164 +243,99 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     }
   }, [fetchChildren]);
 
-  const loadDefaultChildren = useCallback(async (parentKey: string) => {
-    if (defaultLoadedChildrenRef.current.has(parentKey)) {
-      setDefaultExpandedChildren((prev) => {
-        const next = new Set(prev);
-        next.add(parentKey);
-        return next;
-      });
-      return;
-    }
+  // 내 이슈 (myIssues 훅): composer에서 onIssuesLoaded로 descendant 로딩 합성
+  const myIssuesHook = useJiraMyIssues({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedProjects,
+    cached: {
+      myIssues: cached?.myIssues,
+    },
+    onIssuesLoaded: useCallback(
+      (issues: NormalizedIssue[]) => {
+        loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined);
+      },
+      [loadAllDescendants, selectedProjects],
+    ),
+  });
+  const {
+    myIssues,
+    myIssueKeys,
+    isLoading,
+    setMyIssues,
+    fetchMyIssues,
+  } = myIssuesHook;
 
-    // 이슈 타입 확인: myIssues 또는 defaultChildrenMap에서 찾기
-    let epic = false;
-    const parentIssue = myIssues.find((i) => i.key === parentKey);
-    if (parentIssue) {
-      epic = isEpicType(parentIssue.issueTypeName);
-    }
+  // 상태 필터 (selectedStatuses + statusCounts + toggleStatus)
+  const statusFilterHook = useJiraStatusFilter({
+    accountId: currentAccountId,
+    myIssues,
+    myIssueKeys,
+    doneCounts,
+    cachedSelectedStatuses: cached?.selectedStatuses,
+  });
+  const { selectedStatuses, statusCounts, toggleStatus } = statusFilterHook;
 
-    setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
-    try {
-      const children = await fetchChildren([parentKey], selectedProjects, epic);
-      setDefaultChildrenMap((prev) => ({
-        ...prev,
-        [parentKey]: children,
-      }));
-      setDefaultExpandedChildren((prev) => {
-        const next = new Set(prev);
-        next.add(parentKey);
-        return next;
-      });
-    } catch { /* ignore */ }
-    setDefaultLoadingChildren((prev) => {
-      const next = new Set(prev);
-      next.delete(parentKey);
-      return next;
-    });
-    defaultLoadedChildrenRef.current.add(parentKey);
-  }, [fetchChildren, selectedProjects]);
+  // ── 계정 변경 시 화면 즉시 리셋 (slot은 jiraDashboardCache Map에 보존되어 복귀 시 복원) ──
+  const prevAccountIdRef = useRef(currentAccountId);
+  useEffect(() => {
+    if (prevAccountIdRef.current === currentAccountId) return;
+    prevAccountIdRef.current = currentAccountId;
 
-  const fetchMyIssues = useCallback(async () => {
-    if (!activeAccount) return;
-    setIsLoading(true);
-    try {
-      const pc = buildProjectClause(selectedProjects);
-      const projectClause = pc ? `${pc} AND ` : '';
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: {
-          jql: `${projectClause}assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`,
-          maxResults: 100,
-        },
-      });
-      const issues = parseIssues(result);
-      const originalKeys = new Set(issues.map((i) => i.key));
-      const allKeys = new Set(originalKeys);
+    setSearchQuery('');
+    setSearchResults(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setExpandedEpics(new Set());
+  }, [currentAccountId]);
 
-      // 1단계: 직접 부모 조회
-      const missingParentKeys = new Set<string>();
-      for (const issue of issues) {
-        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
-          missingParentKeys.add(issue.parentKey);
-        }
+  // 사이드바에서 프로젝트 브라우즈 이벤트 수신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const key = detail?.projectKey as string | null;
+      if (key) {
+        setBrowseProjectKey(key);
+        setBrowseEpics([]);
+        setBrowseChildrenMap({});
+        setBrowseExpandedKeys(new Set());
+        setBrowseLoadedChildren(new Set());
+      } else {
+        setBrowseProjectKey(null);
+        setBrowseEpics([]);
+        setBrowseChildrenMap({});
+        setBrowseExpandedKeys(new Set());
+        setBrowseLoadedChildren(new Set());
       }
-      if (missingParentKeys.size > 0) {
-        try {
-          const parentJql = `key IN (${Array.from(missingParentKeys).join(',')})`;
-          const parentResult = await integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchIssues',
-            params: { jql: parentJql, maxResults: missingParentKeys.size },
-          });
-          const parentIssues = parseIssues(parentResult);
-          for (const p of parentIssues) {
-            if (!allKeys.has(p.key)) {
-              issues.push(p);
-              allKeys.add(p.key);
-            }
-          }
-        } catch { /* ignore */ }
-      }
+    };
+    window.addEventListener('lyra:sidebar-browse-project', handler);
+    return () => window.removeEventListener('lyra:sidebar-browse-project', handler);
+  }, []);
 
-      // 2단계: 조부모 조회
-      const missingGrandparentKeys = new Set<string>();
-      for (const issue of issues) {
-        if (issue.parentKey && !allKeys.has(issue.parentKey)) {
-          missingGrandparentKeys.add(issue.parentKey);
-        }
-      }
-      if (missingGrandparentKeys.size > 0) {
-        try {
-          const gpJql = `key IN (${Array.from(missingGrandparentKeys).join(',')})`;
-          const gpResult = await integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchIssues',
-            params: { jql: gpJql, maxResults: missingGrandparentKeys.size },
-          });
-          const gpIssues = parseIssues(gpResult);
-          for (const gp of gpIssues) {
-            if (!allKeys.has(gp.key)) {
-              issues.push(gp);
-              allKeys.add(gp.key);
-            }
-          }
-        } catch { /* ignore */ }
-      }
-
-      setMyIssues(issues);
-      setMyIssueKeys(originalKeys);
-      loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined);
-    } catch (err) {
-      console.error('[JiraDashboard] fetchMyIssues error:', err);
-      setMyIssues([]);
-      setMyIssueKeys(new Set());
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeAccount, selectedProjects, loadAllDescendants]);
-
-  const fetchDoneCounts = useCallback(async () => {
-    if (!activeAccount) return;
-    try {
-      const pc = buildProjectClause(selectedProjects);
-      const projectClause = pc ? `${pc} AND ` : '';
-      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done`;
-      const countMap = new Map<string, { category: string; count: number }>();
-      const pageSize = 100;
-      let pageToken: string | undefined;
-      const maxPages = 20;
-
-      for (let page = 0; page < maxPages; page++) {
-        const result = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'searchIssues',
-          params: { jql, maxResults: pageSize, skipCache: true, ...(pageToken ? { nextPageToken: pageToken } : {}) },
-        }) as Record<string, unknown>;
-        const issues = parseIssues(result);
-        for (const issue of issues) {
-          const name = issue.statusName || '완료';
-          const cat = issue.statusCategory || 'done';
-          const entry = countMap.get(name);
-          if (entry) entry.count++;
-          else countMap.set(name, { category: cat, count: 1 });
-        }
-        pageToken = result.nextPageToken as string | undefined;
-        if (!pageToken || issues.length < pageSize) break;
-      }
-
-      const counts: StatusCount[] = [];
-      countMap.forEach((v, name) => counts.push({ name, category: v.category, count: v.count }));
-      setDoneCounts(counts);
-    } catch (err) {
-      console.error('[JiraDashboard] fetchDoneCounts error:', err);
-    }
-  }, [activeAccount, selectedProjects]);
+  // 상태 변경 시 캐시 동기화 (계정별 slot에 스냅샷 저장)
+  useAccountScopedCache(
+    jiraDashboardCache,
+    currentAccountId,
+    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
+    () => ({
+      myIssues,
+      projects,
+      selectedProjects,
+      searchQuery,
+      searchResults,
+      expandedEpics,
+      defaultChildrenMap,
+      defaultExpandedChildren,
+      doneCounts,
+      doneIssues,
+      browseProjectKey,
+      browseEpics,
+      browseChildrenMap,
+      browseExpandedKeys,
+      browseLoadedChildren,
+      selectedStatuses: Array.from(selectedStatuses),
+    }),
+  );
 
   // ── 사이드바 프로젝트 브라우즈: 에픽만 조회 ──
   const browseFetchDone = React.useRef(Boolean(cached && cached.browseProjectKey === browseProjectKey && cached.browseEpics.length > 0));
@@ -661,6 +413,44 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadDefaultChildren = useCallback(async (parentKey: string) => {
+    if (defaultLoadedChildrenRef.current.has(parentKey)) {
+      setDefaultExpandedChildren((prev) => {
+        const next = new Set(prev);
+        next.add(parentKey);
+        return next;
+      });
+      return;
+    }
+
+    // 이슈 타입 확인: myIssues 또는 defaultChildrenMap에서 찾기
+    let epic = false;
+    const parentIssue = myIssues.find((i) => i.key === parentKey);
+    if (parentIssue) {
+      epic = isEpicType(parentIssue.issueTypeName);
+    }
+
+    setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
+    try {
+      const children = await fetchChildren([parentKey], selectedProjects, epic);
+      setDefaultChildrenMap((prev) => ({
+        ...prev,
+        [parentKey]: children,
+      }));
+      setDefaultExpandedChildren((prev) => {
+        const next = new Set(prev);
+        next.add(parentKey);
+        return next;
+      });
+    } catch { /* ignore */ }
+    setDefaultLoadingChildren((prev) => {
+      const next = new Set(prev);
+      next.delete(parentKey);
+      return next;
+    });
+    defaultLoadedChildrenRef.current.add(parentKey);
+  }, [fetchChildren, selectedProjects, myIssues]);
 
   const searchIssues = useCallback(async () => {
     if (!activeAccount) return;
@@ -899,19 +689,6 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     setShowSuggestions(false);
   }, []);
 
-  // 최초 마운트 시 비동기 프로젝트 설정 로드
-  const initialLoadRef = useRef(false);
-  useEffect(() => {
-    if (initialLoadRef.current || !currentAccountId) return;
-    initialLoadRef.current = true;
-    if (!projectsReady) {
-      loadSelectedProjectsAsync(currentAccountId).then((keys) => {
-        if (keys.length > 0) setSelectedProjects(keys);
-        setProjectsReady(true);
-      });
-    }
-  }, [currentAccountId, projectsReady]);
-
   // 최초 마운트: 캐시가 유효하면 API 재호출 생략
   const initialFetchDone = React.useRef(Boolean(cached && cached.myIssues.length > 0));
 
@@ -931,7 +708,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     fetchMyIssues();
     fetchDoneCounts();
     fetchDoneIssues();
-  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
+  }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues, setProjects, setMyIssues]);
 
   const goToIssue = useCallback((key: string) => {
     if (key) history.push(`/jira/issue/${key}`);
@@ -1021,6 +798,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     const updateIssues = (list: NormalizedIssue[]) =>
       list.map((i) => i.key === issueKey ? { ...i, statusName: toName, statusCategory: toCategory } : i);
     setMyIssues((prev) => updateIssues(prev));
+    setDoneIssues((prev) => updateIssues(prev));
     setSearchResults((prev) => prev ? updateIssues(prev) : prev);
     setBrowseEpics((prev) => updateIssues(prev));
     setBrowseChildrenMap((prev) => {
@@ -1030,12 +808,13 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       }
       return next;
     });
-  }, []);
+  }, [setMyIssues, setDoneIssues]);
 
   const handleAssigned = useCallback((issueKey: string, displayName: string) => {
     const updateIssues = (list: NormalizedIssue[]) =>
       list.map((i) => i.key === issueKey ? { ...i, assigneeName: displayName } : i);
     setMyIssues((prev) => updateIssues(prev));
+    setDoneIssues((prev) => updateIssues(prev));
     setSearchResults((prev) => prev ? updateIssues(prev) : prev);
     setBrowseEpics((prev) => updateIssues(prev));
     setBrowseChildrenMap((prev) => {
@@ -1045,18 +824,20 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       }
       return next;
     });
-  }, []);
+  }, [setMyIssues, setDoneIssues]);
 
-  // 스페이스 설정 저장
+  // 스페이스 설정 저장 (훅의 handleSaveSpaceSettings를 래핑하여 후속 fetch 합성)
   const saveSpaceSettings = useCallback(() => {
-    saveSelectedProjects(currentAccountId, selectedProjects);
+    handleSaveSpaceSettings();
     setShowSpaceSettings(false);
-    window.dispatchEvent(new CustomEvent('lyra:space-settings-changed'));
     fetchMyIssues();
     fetchDoneCounts();
     setDoneIssuesLoaded(false);
     fetchDoneIssues();
-  }, [currentAccountId, selectedProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues]);
+  }, [handleSaveSpaceSettings, fetchMyIssues, fetchDoneCounts, fetchDoneIssues, setDoneIssuesLoaded]);
+
+  // projectsReady는 useJiraProjects가 관리하지만, activeAccount 해제 시 composer가 직접 제어할 필요가 있을 때를 위해 노출
+  void setProjectsReady;
 
   return {
     // State

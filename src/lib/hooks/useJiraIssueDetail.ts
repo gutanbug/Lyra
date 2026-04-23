@@ -6,14 +6,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
 import { str, obj, isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
-import { normalizePageDetail } from 'lib/utils/confluenceNormalizers';
 import useJiraCardMetaMap from 'lib/hooks/useJiraCardMetaMap';
+import useJiraConfluenceLinks from 'lib/hooks/useJiraConfluenceLinks';
 import {
   extractCardUrlsFromAdf,
   extractMediaIds,
-  extractConfluenceLinks,
-  extractConfluenceSearchResults,
-  mergeConfluenceLinks,
   extractInlineCardUrls,
 } from 'lib/utils/adfUtils';
 import {
@@ -22,7 +19,7 @@ import {
   parseChildIssues,
   extractLinkedIssues,
 } from 'lib/utils/jiraNormalizers';
-import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue, ConfluenceLink, ConfluencePageContent, JiraAttachment } from 'types/jira';
+import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue, JiraAttachment } from 'types/jira';
 import type { FileMeta } from 'components/common/AdfRenderer';
 import type { Account } from 'types/account';
 
@@ -72,11 +69,21 @@ export function useJiraIssueDetail({
   // 연결된 업무 항목
   const [linkedIssues, setLinkedIssues] = useState<LinkedIssue[]>([]);
 
-  // Confluence 연결 문서
-  const [confluenceLinks, setConfluenceLinks] = useState<ConfluenceLink[]>([]);
-  const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
-  const [pageContents, setPageContents] = useState<Record<string, ConfluencePageContent>>({});
-  const [loadingPages, setLoadingPages] = useState<Set<string>>(new Set());
+  // Confluence 연결 문서 — raw fetch 결과 (useJiraConfluenceLinks로 전달)
+  const [rawRemoteLinksData, setRawRemoteLinksData] = useState<unknown>(undefined);
+  const [rawConfluenceSearchData, setRawConfluenceSearchData] = useState<unknown>(undefined);
+
+  const {
+    confluenceLinks,
+    expandedPages,
+    pageContents,
+    loadingPages,
+    toggleConfluencePage,
+  } = useJiraConfluenceLinks({
+    activeAccount,
+    remoteLinksData: rawRemoteLinksData,
+    confluenceSearchData: rawConfluenceSearchData,
+  });
 
   // 하위 업무 항목 (직접 하위 + 손자 이슈)
   const [childIssues, setChildIssues] = useState<ChildWithGrandchildren[]>([]);
@@ -450,10 +457,9 @@ export function useJiraIssueDetail({
           setComments(normalizedCommentsList);
         }
 
-        // Confluence: remoteLinks + search 결과 병합
-        const fromRemote = Array.isArray(remoteLinksData) ? extractConfluenceLinks(remoteLinksData) : [];
-        const fromSearch = Array.isArray(confluenceSearchData) ? extractConfluenceSearchResults(confluenceSearchData) : [];
-        setConfluenceLinks(mergeConfluenceLinks(fromRemote, fromSearch));
+        // Confluence: raw 결과를 useJiraConfluenceLinks에 전달
+        setRawRemoteLinksData(remoteLinksData);
+        setRawConfluenceSearchData(confluenceSearchData);
 
         // 인라인 카드 링크 제목 해석 (HTML + ADF 모두에서 추출)
         const allHtml = [descHtml, ...normalizedCommentsList.map((c) => c.bodyHtml)].join(' ');
@@ -504,54 +510,6 @@ export function useJiraIssueDetail({
   const goBack = () => {
     history.goBack();
   };
-
-  const toggleConfluencePage = useCallback(async (link: ConfluenceLink) => {
-    const { pageId } = link;
-    setExpandedPages((prev) => {
-      const next = new Set(prev);
-      if (next.has(pageId)) {
-        next.delete(pageId);
-      } else {
-        next.add(pageId);
-      }
-      return next;
-    });
-
-    // 아직 로드하지 않은 페이지만 fetch
-    if (!pageContents[pageId] && activeAccount) {
-      setLoadingPages((prev) => new Set(prev).add(pageId));
-      try {
-        const data = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'getConfluencePageContent',
-          params: { pageId },
-        });
-        if (data && typeof data === 'object') {
-          const detail = normalizePageDetail(data as Record<string, unknown>);
-          setPageContents((prev) => ({
-            ...prev,
-            [pageId]: {
-              title: detail.title || link.title,
-              body: detail.bodyHtml || '<p>(내용 없음)</p>',
-              bodyAdf: detail.bodyAdf,
-            },
-          }));
-        }
-      } catch {
-        setPageContents((prev) => ({
-          ...prev,
-          [pageId]: { title: link.title, body: '문서를 불러올 수 없습니다.' },
-        }));
-      } finally {
-        setLoadingPages((prev) => {
-          const next = new Set(prev);
-          next.delete(pageId);
-          return next;
-        });
-      }
-    }
-  }, [activeAccount, pageContents]);
 
   const updateDescriptionAdf = useCallback((newAdf: unknown) => {
     setIssue((prev) => prev ? { ...prev, descriptionAdf: newAdf } : prev);

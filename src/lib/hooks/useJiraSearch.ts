@@ -3,8 +3,9 @@ import React from 'react';
 import { integrationController } from 'controllers/account';
 import { isEpicType, isSubTaskType, escapeJql, KEY_PATTERN, NUMBER_ONLY_PATTERN } from 'lib/utils/jiraUtils';
 import { parseIssues, groupByEpic, buildProjectClause, buildSearchJql } from 'lib/utils/jiraNormalizers';
-import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects, loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
+import { loadSelectedProjects, loadSelectedProjectsAsync, saveSelectedProjects } from 'lib/utils/storageHelpers';
 import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
+import { useJiraStatusFilter } from 'lib/hooks/jira/useJiraStatusFilter';
 import type { NormalizedIssue, EpicGroup, JiraProject } from 'types/jira';
 
 export interface StatusCount { name: string; category: string; count: number }
@@ -25,6 +26,7 @@ interface DashboardCache {
   browseLoadedChildren: Set<string>;
   doneCounts: StatusCount[];
   doneIssues: NormalizedIssue[];
+  selectedStatuses: string[];
 }
 
 const jiraDashboardCache = createAccountScopedCache<DashboardCache>();
@@ -89,58 +91,18 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   const [, setBrowseLoadingChildren] = useState<Set<string>>(new Set());
   const [browseLoadedChildren, setBrowseLoadedChildren] = useState<Set<string>>(cached?.browseLoadedChildren ?? new Set());
 
-  // 상태 필터 (localStorage에서 복원)
-  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(() => {
-    const saved = loadSelectedStatuses(currentAccountId);
-    return new Set(saved);
-  });
   const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(cached?.doneIssues ?? []);
   const [doneIssuesLoaded, setDoneIssuesLoaded] = useState(Boolean(cached && cached.doneIssues.length > 0));
 
-  // 상태별 개수 (myIssues + doneCounts 합산)
-  const statusCounts = useMemo(() => {
-    const countMap = new Map<string, { category: string; count: number }>();
-    // 본인 담당 이슈만 카운트 (계층 구조용 부모/조부모 이슈 제외)
-    for (const issue of myIssues) {
-      if (myIssueKeys.size > 0 && !myIssueKeys.has(issue.key)) continue;
-      const name = issue.statusName || '기타';
-      const cat = issue.statusCategory || '';
-      const entry = countMap.get(name);
-      if (entry) entry.count++;
-      else countMap.set(name, { category: cat, count: 1 });
-    }
-    for (const dc of doneCounts) {
-      const entry = countMap.get(dc.name);
-      if (entry) entry.count += dc.count;
-      else countMap.set(dc.name, { category: dc.category, count: dc.count });
-    }
-    const counts: StatusCount[] = [];
-    countMap.forEach((v, name) => counts.push({ name, category: v.category, count: v.count }));
-    const catOrder = (c: string) => {
-      const l = c.toLowerCase();
-      if (l.includes('done') || l.includes('완료')) return 2;
-      if (l.includes('progress') || l.includes('진행')) return 1;
-      return 0;
-    };
-    counts.sort((a, b) => catOrder(a.category) - catOrder(b.category));
-    return counts;
-  }, [myIssues, myIssueKeys, doneCounts]);
-
-  // 상태 필터 토글
-  const isDoneCategory = useCallback((category: string) => {
-    const l = category.toLowerCase();
-    return l.includes('done') || l.includes('완료');
-  }, []);
-
-  const toggleStatus = useCallback((statusName: string) => {
-    setSelectedStatuses((prev) => {
-      const next = new Set(prev);
-      if (next.has(statusName)) next.delete(statusName);
-      else next.add(statusName);
-      saveSelectedStatuses(currentAccountId, Array.from(next));
-      return next;
-    });
-  }, [currentAccountId]);
+  // 상태 필터 (selectedStatuses + statusCounts + toggleStatus)
+  const statusFilterHook = useJiraStatusFilter({
+    accountId: currentAccountId,
+    myIssues,
+    myIssueKeys,
+    doneCounts,
+    cachedSelectedStatuses: cached?.selectedStatuses,
+  });
+  const { selectedStatuses, statusCounts, toggleStatus } = statusFilterHook;
 
   // 완료 이슈 조회 — 초기 로드 시 함께 호출, 부모 에픽 정보도 포함
   const fetchDoneIssues = useCallback(async () => {
@@ -296,7 +258,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   useAccountScopedCache(
     jiraDashboardCache,
     currentAccountId,
-    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren],
+    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
     () => ({
       myIssues,
       projects,
@@ -313,6 +275,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       browseChildrenMap,
       browseExpandedKeys,
       browseLoadedChildren,
+      selectedStatuses: Array.from(selectedStatuses),
     }),
   );
 

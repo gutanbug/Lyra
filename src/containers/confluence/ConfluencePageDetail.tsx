@@ -12,12 +12,10 @@ import {
 } from 'lib/styles/commonStyles';
 import { resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
 import { enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
-import { useRichContentLinkHandler, useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
+import { useAdfLinkHandler } from 'lib/hooks/useRichContentLinkHandler';
+import useConfluencePageLinkHandler from 'lib/hooks/useConfluencePageLinkHandler';
 import { useFilePreview } from 'lib/hooks/useFilePreview';
-import { useTabs } from 'modules/contexts/tab';
 import { isAtlassianAccount } from 'types/account';
-import type { JiraCredentials } from 'types/account';
-import { str } from 'lib/utils/typeHelpers';
 import { integrationController } from 'controllers/account';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
@@ -29,7 +27,6 @@ import ConfluenceComments from 'components/confluence/ConfluenceComments';
 const ConfluencePageDetailView = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const history = useHistory();
-  const { addTab } = useTabs();
 
   const {
     activeAccount,
@@ -90,8 +87,12 @@ const ConfluencePageDetailView = () => {
     }
   }, [activeAccount, page, setPage]);
 
-  const baseHandleContentClick = useRichContentLinkHandler();
   const handleAdfLinkClick = useAdfLinkHandler(linkMetaMap);
+  const handleContentClick = useConfluencePageLinkHandler({
+    activeAccount,
+    spaceKey: page?.spaceKey,
+    setLightboxSrc,
+  });
 
   const myDisplayName = (activeAccount?.metadata as Record<string, unknown>)?.userDisplayName as string | undefined;
 
@@ -104,76 +105,6 @@ const ConfluencePageDetailView = () => {
   const goBack = useCallback(() => {
     goToList();
   }, [goToList]);
-
-  const handleContentClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    const target = e.target as HTMLElement;
-
-    // 이미지 클릭 -> 라이트박스
-    if (target.tagName === 'IMG') {
-      const src = (target as HTMLImageElement).src;
-      if (src) {
-        e.preventDefault();
-        e.stopPropagation();
-        setLightboxSrc(src);
-        return;
-      }
-    }
-
-    const anchor = target.closest('a');
-    if (!anchor) return;
-
-    // Confluence 내부 페이지 링크
-    const pageTitle = anchor.getAttribute('data-confluence-page-title');
-    if (pageTitle && activeAccount) {
-      e.preventDefault();
-      e.stopPropagation();
-      const linkText = anchor.textContent?.trim() || pageTitle;
-      const targetSpaceKey = anchor.getAttribute('data-confluence-space-key') || page?.spaceKey || '';
-      const spaceKeys = targetSpaceKey ? [targetSpaceKey] : undefined;
-      integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'searchPages',
-        params: { query: pageTitle, searchField: 'title', limit: 5, spaceKeys },
-      }).then((result) => {
-        const r = result as Record<string, unknown>;
-        const results = (r.results ?? []) as Record<string, unknown>[];
-        if (results.length > 0) {
-          const exactMatch = results.find((item) => str(item.title as unknown) === pageTitle);
-          const best = exactMatch || results[0];
-          const foundId = str(best.id as unknown);
-          if (foundId) {
-            addTab('confluence', `/confluence/page/${foundId}`, linkText);
-            return;
-          }
-        }
-        const creds = activeAccount.credentials as JiraCredentials;
-        const baseUrl = creds.baseUrl?.replace(/\/$/, '') || '';
-        const spaceKey = anchor.getAttribute('data-confluence-space-key') || '';
-        if (baseUrl) {
-          const url = spaceKey
-            ? `${baseUrl}/wiki/spaces/${spaceKey}/pages?title=${encodeURIComponent(pageTitle)}`
-            : `${baseUrl}/wiki/search?text=${encodeURIComponent(pageTitle)}`;
-          const api = (window as any).electronAPI;
-          if (api?.openExternal) api.openExternal(url);
-          else window.open(url, '_blank');
-        }
-      }).catch(() => { /* ignore */ });
-      return;
-    }
-
-    // Jira 매크로 링크
-    const jiraKey = anchor.getAttribute('data-jira-key');
-    if (jiraKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      const label = anchor.textContent?.trim() || jiraKey;
-      addTab('jira', `/jira/issue/${jiraKey}`, label);
-      return;
-    }
-
-    baseHandleContentClick(e);
-  }, [activeAccount, baseHandleContentClick, addTab, page?.spaceKey, setLightboxSrc]);
 
   if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
     return (

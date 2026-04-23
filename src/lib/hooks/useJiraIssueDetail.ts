@@ -5,12 +5,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
-import { str, obj, isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
+import { isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
 import useJiraCardMetaMap from 'lib/hooks/useJiraCardMetaMap';
 import useJiraConfluenceLinks from 'lib/hooks/useJiraConfluenceLinks';
+import useJiraIssueAttachments from 'lib/hooks/useJiraIssueAttachments';
 import {
   extractCardUrlsFromAdf,
-  extractMediaIds,
   extractInlineCardUrls,
 } from 'lib/utils/adfUtils';
 import {
@@ -19,8 +19,7 @@ import {
   parseChildIssues,
   extractLinkedIssues,
 } from 'lib/utils/jiraNormalizers';
-import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue, JiraAttachment } from 'types/jira';
-import type { FileMeta } from 'components/common/AdfRenderer';
+import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue } from 'types/jira';
 import type { Account } from 'types/account';
 
 export interface BreadcrumbEntry {
@@ -69,7 +68,9 @@ export function useJiraIssueDetail({
   // 연결된 업무 항목
   const [linkedIssues, setLinkedIssues] = useState<LinkedIssue[]>([]);
 
-  // Confluence 연결 문서 — raw fetch 결과 (useJiraConfluenceLinks로 전달)
+  // raw fetch 결과 (소 훅들에 전달)
+  const [rawIssueData, setRawIssueData] = useState<unknown>(undefined);
+  const [rawCommentsData, setRawCommentsData] = useState<unknown>(undefined);
   const [rawRemoteLinksData, setRawRemoteLinksData] = useState<unknown>(undefined);
   const [rawConfluenceSearchData, setRawConfluenceSearchData] = useState<unknown>(undefined);
 
@@ -93,12 +94,15 @@ export function useJiraIssueDetail({
   // 인라인 카드 링크 → 메타 정보 매핑
   const { linkMetaMap, ingestUrls } = useJiraCardMetaMap({ activeAccount, resolveCardTitlesRef });
 
-  // 첨부 이미지
-  const [attachments, setAttachments] = useState<JiraAttachment[]>([]);
-  const [attachmentImages, setAttachmentImages] = useState<Record<string, string>>({});
-  const [mediaUrlMap, setMediaUrlMap] = useState<Record<string, string>>({});
-  const [fileMetaMap, setFileMetaMap] = useState<Record<string, FileMeta>>({});
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // 첨부파일 (이미지 프록시 로드, media/file 매핑)
+  const {
+    attachments,
+    attachmentImages,
+    mediaUrlMap,
+    fileMetaMap,
+    lightboxSrc,
+    setLightboxSrc,
+  } = useJiraIssueAttachments({ activeAccount, rawIssueData, rawCommentsData });
 
   // 브레드크럼 상태
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([]);
@@ -332,116 +336,6 @@ export function useJiraIssueDetail({
             setLinkedIssues(extractLinkedIssues(rawLinks));
           }
 
-          // 첨부파일 추출 및 이미지 로드
-          const rawAttachments = raw.attachment as unknown[] | undefined;
-          if (Array.isArray(rawAttachments) && rawAttachments.length > 0) {
-            const allParsed: JiraAttachment[] = rawAttachments
-              .filter((a) => a && typeof a === 'object')
-              .map((a) => {
-                const att = a as Record<string, unknown>;
-                const authorObj = obj(att.author);
-                return {
-                  id: str(att.id),
-                  filename: str(att.filename),
-                  mimeType: str(att.mimeType),
-                  size: typeof att.size === 'number' ? att.size : 0,
-                  contentUrl: str(att.content),
-                  thumbnailUrl: str(att.thumbnail) || undefined,
-                  created: str(att.created),
-                  author: str(authorObj?.displayName) || str(authorObj?.display_name) || str(authorObj?.name) || '',
-                };
-              })
-              .filter((a) => a.id);
-            const imageAtts = allParsed.filter((a) => a.mimeType.startsWith('image/'));
-            const fileAtts = allParsed.filter((a) => !a.mimeType.startsWith('image/'));
-            setAttachments(imageAtts);
-
-            // ADF 설명 + 댓글에서 media ID 추출 → 첨부파일 매핑
-            const rawDesc = (raw.fields && typeof raw.fields === 'object')
-              ? (raw.fields as Record<string, unknown>).description
-              : raw.description;
-            const mediaIds = extractMediaIds(rawDesc);
-            // 댓글 본문의 media ID도 추출
-            if (Array.isArray(commentsData)) {
-              for (const c of commentsData) {
-                if (c && typeof c === 'object') {
-                  const commentMediaIds = extractMediaIds((c as Record<string, unknown>).body);
-                  mediaIds.push(...commentMediaIds);
-                }
-              }
-            }
-
-            // mediaApiFileId로 직접 매핑 시도, 없으면 순서 기반 매핑
-            const mediaToAttachment: Record<string, JiraAttachment> = {};
-            const matchedAttIds = new Set<string>();
-            for (const mid of mediaIds) {
-              const byMediaApi = rawAttachments.find((a) => {
-                const att = a as Record<string, unknown>;
-                return str(att.mediaApiFileId) === mid;
-              });
-              if (byMediaApi) {
-                const attId = str((byMediaApi as Record<string, unknown>).id);
-                const found = allParsed.find((p) => p.id === attId);
-                if (found) {
-                  mediaToAttachment[mid] = found;
-                  matchedAttIds.add(found.id);
-                }
-              }
-            }
-            // 매칭되지 않은 media ID는 순서 기반으로 매칭
-            const unmatchedMedia = mediaIds.filter((mid) => !mediaToAttachment[mid]);
-            const unmatchedAtts = allParsed.filter((a) => !matchedAttIds.has(a.id));
-            for (let i = 0; i < unmatchedMedia.length && i < unmatchedAtts.length; i++) {
-              mediaToAttachment[unmatchedMedia[i]] = unmatchedAtts[i];
-            }
-
-            // 이미지를 인증 프록시를 통해 로드
-            for (const att of imageAtts) {
-              integrationController.invoke({
-                accountId: activeAccount!.id,
-                serviceType: 'jira',
-                action: 'getAttachmentContent',
-                params: { contentUrl: att.contentUrl },
-              }).then((dataUrl) => {
-                if (typeof dataUrl === 'string') {
-                  setAttachmentImages((prev) => ({ ...prev, [att.id]: dataUrl }));
-                  for (const [mid, mappedAtt] of Object.entries(mediaToAttachment)) {
-                    if (mappedAtt.id === att.id) {
-                      setMediaUrlMap((prev) => ({ ...prev, [mid]: dataUrl }));
-                    }
-                  }
-                }
-              }).catch(() => { /* ignore */ });
-            }
-
-            // 비이미지 파일 → fileMetaMap 구성
-            const fileMetas: Record<string, FileMeta> = {};
-            for (const [mid, att] of Object.entries(mediaToAttachment)) {
-              if (!att.mimeType.startsWith('image/')) {
-                fileMetas[mid] = {
-                  filename: att.filename,
-                  mediaType: att.mimeType || 'application/octet-stream',
-                  size: att.size,
-                  downloadUrl: att.contentUrl,
-                };
-              }
-            }
-            // mediaApiFileId 매핑이 안 된 파일 첨부도 fileMetaMap에 추가
-            for (const att of fileAtts) {
-              if (!matchedAttIds.has(att.id)) {
-                fileMetas[att.id] = {
-                  filename: att.filename,
-                  mediaType: att.mimeType || 'application/octet-stream',
-                  size: att.size,
-                  downloadUrl: att.contentUrl,
-                };
-              }
-            }
-            if (Object.keys(fileMetas).length > 0) {
-              setFileMetaMap(fileMetas);
-            }
-          }
-
           // 하위 업무 항목 비동기 조회 (메인 로딩을 블로킹하지 않음)
           if (!isSubTaskType(detail.issueTypeName)) {
             fetchChildIssues(detail.key, detail.issueTypeName);
@@ -457,7 +351,9 @@ export function useJiraIssueDetail({
           setComments(normalizedCommentsList);
         }
 
-        // Confluence: raw 결과를 useJiraConfluenceLinks에 전달
+        // raw 결과를 소 훅들에 전달
+        setRawIssueData(issueData);
+        setRawCommentsData(commentsData);
         setRawRemoteLinksData(remoteLinksData);
         setRawConfluenceSearchData(confluenceSearchData);
 

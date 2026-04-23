@@ -5,10 +5,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHistory } from 'react-router-dom';
 import { integrationController } from 'controllers/account';
-import { isEpicType, isSubTaskType } from 'lib/utils/jiraUtils';
+import { isSubTaskType } from 'lib/utils/jiraUtils';
 import useJiraCardMetaMap from 'lib/hooks/useJiraCardMetaMap';
 import useJiraConfluenceLinks from 'lib/hooks/useJiraConfluenceLinks';
 import useJiraIssueAttachments from 'lib/hooks/useJiraIssueAttachments';
+import useJiraChildIssues from 'lib/hooks/useJiraChildIssues';
 import {
   extractCardUrlsFromAdf,
   extractInlineCardUrls,
@@ -16,20 +17,15 @@ import {
 import {
   normalizeDetail,
   normalizeComments,
-  parseChildIssues,
   extractLinkedIssues,
 } from 'lib/utils/jiraNormalizers';
-import type { NormalizedDetail, NormalizedComment, LinkedIssue, ChildIssue } from 'types/jira';
+import type { NormalizedDetail, NormalizedComment, LinkedIssue } from 'types/jira';
 import type { Account } from 'types/account';
 
 export interface BreadcrumbEntry {
   key: string;
   summary: string;
   issueTypeName: string;
-}
-
-export interface ChildWithGrandchildren extends ChildIssue {
-  grandchildren: ChildIssue[];
 }
 
 /** 자기 자신 포함 모든 스크롤 가능한 부모 요소의 scrollTop을 0으로 설정 */
@@ -86,10 +82,20 @@ export function useJiraIssueDetail({
     confluenceSearchData: rawConfluenceSearchData,
   });
 
-  // 하위 업무 항목 (직접 하위 + 손자 이슈)
-  const [childIssues, setChildIssues] = useState<ChildWithGrandchildren[]>([]);
-  const [childIssuesLoading, setChildIssuesLoading] = useState(false);
-  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
+  // 하위 업무 항목 (직접 하위 + 손자 이슈) — 신규 훅으로 분리
+  const {
+    childIssues,
+    childIssuesLoading,
+    expandedChildren,
+    setExpandedChildren,
+    handleTransitionedForChildren,
+    handleAssignedForChildren,
+  } = useJiraChildIssues({
+    activeAccount,
+    issueKey: issue?.key,
+    issueTypeName: issue?.issueTypeName,
+    enabled: !!issue && !isSubTaskType(issue.issueTypeName),
+  });
 
   // 인라인 카드 링크 → 메타 정보 매핑
   const { linkMetaMap, ingestUrls } = useJiraCardMetaMap({ activeAccount, resolveCardTitlesRef });
@@ -111,140 +117,18 @@ export function useJiraIssueDetail({
     if (issue && targetKey === issue.key) {
       setIssue((prev) => prev ? { ...prev, statusName: toName, statusCategory: toCategory } : prev);
     }
-    setChildIssues((prev) =>
-      prev.map((ci) => {
-        if (ci.key === targetKey) return { ...ci, statusName: toName, statusCategory: toCategory };
-        const updatedGc = ci.grandchildren.map((gc) =>
-          gc.key === targetKey ? { ...gc, statusName: toName, statusCategory: toCategory } : gc
-        );
-        return { ...ci, grandchildren: updatedGc };
-      })
-    );
+    handleTransitionedForChildren(targetKey, toName, toCategory);
     setLinkedIssues((prev) =>
       prev.map((li) => li.key === targetKey ? { ...li, statusName: toName, statusCategory: toCategory } : li)
     );
-  }, [issue]);
+  }, [issue, handleTransitionedForChildren]);
 
   const handleAssigned = useCallback((targetKey: string, displayName: string) => {
     if (issue && targetKey === issue.key) {
       setIssue((prev) => prev ? { ...prev, assigneeName: displayName } : prev);
     }
-    setChildIssues((prev) =>
-      prev.map((ci) => {
-        if (ci.key === targetKey) return { ...ci, assigneeName: displayName };
-        const updatedGc = ci.grandchildren.map((gc) =>
-          gc.key === targetKey ? { ...gc, assigneeName: displayName } : gc
-        );
-        return { ...ci, grandchildren: updatedGc };
-      })
-    );
-  }, [issue]);
-
-  // 하위 업무 항목 비동기 조회 (메인 로딩과 독립적으로 실행)
-  const fetchChildIssues = useCallback(async (detailKey: string, issueTypeName: string) => {
-    if (!activeAccount) return;
-    setChildIssuesLoading(true);
-    setChildIssues([]);
-    try {
-      const directChildren: ChildIssue[] = [];
-      const seenKeys = new Set<string>();
-
-      // 1) parent 필드 기반 — 직접 하위만
-      try {
-        const childResult = await integrationController.invoke({
-          accountId: activeAccount.id,
-          serviceType: 'jira',
-          action: 'searchIssues',
-          params: {
-            jql: `parent = ${detailKey} ORDER BY created ASC`,
-            maxResults: 100,
-            skipCache: true,
-          },
-        });
-        for (const ci of parseChildIssues(childResult)) {
-          if (!seenKeys.has(ci.key)) {
-            directChildren.push(ci);
-            seenKeys.add(ci.key);
-          }
-        }
-      } catch { /* ignore */ }
-
-      // 2) Epic Link 폴백 (classic Jira 프로젝트) — 서브태스크 제외
-      if (isEpicType(issueTypeName)) {
-        try {
-          const epicLinkResult = await integrationController.invoke({
-            accountId: activeAccount.id,
-            serviceType: 'jira',
-            action: 'searchIssues',
-            params: {
-              jql: `"Epic Link" = ${detailKey} AND issuetype not in subTaskIssueTypes() ORDER BY created ASC`,
-              maxResults: 100,
-              skipCache: true,
-            },
-          });
-          for (const ci of parseChildIssues(epicLinkResult)) {
-            if (!seenKeys.has(ci.key)) {
-              directChildren.push(ci);
-              seenKeys.add(ci.key);
-            }
-          }
-        } catch {
-          // subTaskIssueTypes() 미지원 시 parentKey 필터링으로 폴백
-          try {
-            const epicLinkResult = await integrationController.invoke({
-              accountId: activeAccount.id,
-              serviceType: 'jira',
-              action: 'searchIssues',
-              params: {
-                jql: `"Epic Link" = ${detailKey} ORDER BY created ASC`,
-                maxResults: 100,
-                skipCache: true,
-              },
-            });
-            for (const ci of parseChildIssues(epicLinkResult)) {
-              if (!seenKeys.has(ci.key) && (!ci.parentKey || ci.parentKey === detailKey)) {
-                directChildren.push(ci);
-                seenKeys.add(ci.key);
-              }
-            }
-          } catch { /* Epic Link 미지원 인스턴스 무시 */ }
-        }
-      }
-
-      // parent/Epic Link 쿼리 결과에서 실제 parent가 현재 이슈가 아닌 항목 제거
-      // parentKey가 있고 detailKey와 다르면 → 다른 이슈의 서브태스크이므로 제외
-      const trueDirectChildren = directChildren.filter(
-        (c) => !c.parentKey || c.parentKey === detailKey
-      );
-
-      // 직접 하위 이슈를 먼저 표시 (손자 이슈 로딩 전)
-      setChildIssues(trueDirectChildren.map((c) => ({ ...c, grandchildren: [] })));
-
-      // 3) 각 직접 하위 이슈의 손자 이슈 조회
-      const childrenWithGc = await Promise.all(
-        trueDirectChildren.map(async (child) => {
-          let grandchildren: ChildIssue[] = [];
-          try {
-            const gcResult = await integrationController.invoke({
-              accountId: activeAccount.id,
-              serviceType: 'jira',
-              action: 'searchIssues',
-              params: {
-                jql: `parent = ${child.key} ORDER BY created ASC`,
-                maxResults: 50,
-              },
-            });
-            grandchildren = parseChildIssues(gcResult);
-          } catch { /* ignore */ }
-          return { ...child, grandchildren };
-        })
-      );
-
-      setChildIssues(childrenWithGc);
-    } finally {
-      setChildIssuesLoading(false);
-    }
-  }, [activeAccount]);
+    handleAssignedForChildren(targetKey, displayName);
+  }, [issue, handleAssignedForChildren]);
 
   // 이슈 전환 시 스크롤 최상단으로
   useEffect(() => {
@@ -335,13 +219,7 @@ export function useJiraIssueDetail({
           if (Array.isArray(rawLinks)) {
             setLinkedIssues(extractLinkedIssues(rawLinks));
           }
-
-          // 하위 업무 항목 비동기 조회 (메인 로딩을 블로킹하지 않음)
-          if (!isSubTaskType(detail.issueTypeName)) {
-            fetchChildIssues(detail.key, detail.issueTypeName);
-          } else {
-            setChildIssues([]);
-          }
+          // 하위 업무 항목은 useJiraChildIssues 훅이 issue.key/issueTypeName을 감지해 자동 조회
         } else {
           setError('이슈를 불러오는데 실패했습니다.');
         }

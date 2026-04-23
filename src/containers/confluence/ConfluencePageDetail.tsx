@@ -9,6 +9,7 @@ import {
   LightboxOverlay, LightboxClose, LightboxImage,
   PdfOverlay, PdfHeader, PdfTitle, PdfClose, PdfFrame,
   FileLoadingOverlay, FileLoadingSpinner,
+  DetailLayout, Toolbar, Section as CommonSection, EmptyState,
 } from 'lib/styles/commonStyles';
 import { resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
 import { enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
@@ -108,12 +109,12 @@ const ConfluencePageDetailView = () => {
 
   if (!activeAccount || !isAtlassianAccount(activeAccount.serviceType)) {
     return (
-      <Layout ref={layoutRef}>
-        <ToolbarArea>
+      <Layout ref={layoutRef} $theme={confluenceTheme}>
+        <ToolbarArea $theme={confluenceTheme}>
           <BackButton onClick={goToList}>&larr; 목록으로</BackButton>
         </ToolbarArea>
         <ContentArea>
-          <EmptyMsg>연결된 Atlassian 계정이 없습니다.</EmptyMsg>
+          <EmptyMsg $theme={confluenceTheme}>연결된 Atlassian 계정이 없습니다.</EmptyMsg>
         </ContentArea>
       </Layout>
     );
@@ -121,12 +122,12 @@ const ConfluencePageDetailView = () => {
 
   if (isLoading) {
     return (
-      <Layout ref={layoutRef}>
-        <ToolbarArea>
+      <Layout ref={layoutRef} $theme={confluenceTheme}>
+        <ToolbarArea $theme={confluenceTheme}>
           <BackButton onClick={goToList}>&larr; 목록으로</BackButton>
         </ToolbarArea>
         <ContentArea>
-          <EmptyMsg>로딩 중...</EmptyMsg>
+          <EmptyMsg $theme={confluenceTheme}>로딩 중...</EmptyMsg>
         </ContentArea>
       </Layout>
     );
@@ -134,20 +135,20 @@ const ConfluencePageDetailView = () => {
 
   if (error || !page) {
     return (
-      <Layout ref={layoutRef}>
-        <ToolbarArea>
+      <Layout ref={layoutRef} $theme={confluenceTheme}>
+        <ToolbarArea $theme={confluenceTheme}>
           <BackButton onClick={goBack}>&larr; 뒤로</BackButton>
         </ToolbarArea>
         <ContentArea>
-          <EmptyMsg>{error || '페이지를 찾을 수 없습니다.'}</EmptyMsg>
+          <EmptyMsg $theme={confluenceTheme}>{error || '페이지를 찾을 수 없습니다.'}</EmptyMsg>
         </ContentArea>
       </Layout>
     );
   }
 
   return (
-    <Layout ref={layoutRef}>
-      <ToolbarArea>
+    <Layout ref={layoutRef} $theme={confluenceTheme}>
+      <ToolbarArea $theme={confluenceTheme}>
         <BackButton onClick={goBack}>
           &larr; 목록으로
         </BackButton>
@@ -180,7 +181,7 @@ const ConfluencePageDetailView = () => {
 
         {/* 본문 */}
         {(page.bodyAdf || page.bodyHtml || isEditingBody) && (
-          <Section>
+          <Section $theme={confluenceTheme}>
             {isEditingBody ? (
               <>
                 <AdfBodyEditor
@@ -268,24 +269,16 @@ export default ConfluencePageDetailView;
 
 // ── Styled Components ──
 
-const Layout = styled.div`
-  flex: 1;
-  min-height: 0;
-  background: ${confluenceTheme.bg.subtle};
+const Layout = styled(DetailLayout)`
   zoom: 1.2;
-  overflow-y: auto;
 `;
 
-const ToolbarArea = styled.div`
+const ToolbarArea = styled(Toolbar)`
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
-  background: ${confluenceTheme.bg.default};
-  border-bottom: 1px solid ${confluenceTheme.border};
 `;
 
 const BackButton = styled.button`
@@ -372,17 +365,14 @@ const BreadcrumbCurrent = styled.span`
   text-overflow: ellipsis;
 `;
 
+// ContentArea: commonStyles에 매칭 없음 — 로컬 유지
 const ContentArea = styled.main`
   max-width: 960px;
   margin: 0 auto;
   padding: 1.5rem;
 `;
 
-const Section = styled.div`
-  padding: 1.5rem;
-  background: ${confluenceTheme.bg.default};
-  border-radius: 3px;
-  border: 1px solid ${confluenceTheme.border};
+const Section = styled(CommonSection)`
   margin-bottom: 1rem;
 `;
 
@@ -604,10 +594,8 @@ const RichContent = styled.div`
   }
 `;
 
-const EmptyMsg = styled.div`
+const EmptyMsg = styled(EmptyState)`
   padding: 4rem 2rem;
-  text-align: center;
-  color: ${confluenceTheme.text.secondary};
 `;
 
 // ─── Body Editing ─────────────────────────

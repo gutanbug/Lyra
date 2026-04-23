@@ -9,6 +9,7 @@ import {
   LightboxOverlay, LightboxImage,
   PdfOverlay, PdfHeader, PdfTitle, PdfClose, PdfFrame,
   FileLoadingOverlay, FileLoadingSpinner,
+  DetailLayout, Toolbar, Section as CommonSection, SectionTitle as CommonSectionTitle, EmptyState,
 } from 'lib/styles/commonStyles';
 import { buildCommentThreads } from 'lib/utils/jiraNormalizers';
 import { normalizeComments, prependMentionToAdf } from 'lib/utils/jiraNormalizers';
@@ -165,7 +166,7 @@ const JiraIssueDetail = () => {
 
   if (!activeAccount) {
     return (
-      <Layout ref={layoutRef}>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
         <Content>
           <ErrorMessage>계정을 먼저 설정해주세요.</ErrorMessage>
         </Content>
@@ -175,9 +176,9 @@ const JiraIssueDetail = () => {
 
   if (isLoading) {
     return (
-      <Layout ref={layoutRef}>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
         <Content>
-          <Loading>로딩 중...</Loading>
+          <Loading $theme={jiraTheme}>로딩 중...</Loading>
         </Content>
       </Layout>
     );
@@ -185,8 +186,8 @@ const JiraIssueDetail = () => {
 
   if (error || !issue) {
     return (
-      <Layout ref={layoutRef}>
-        <ToolbarArea>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
+        <ToolbarArea $theme={jiraTheme}>
           <BackButton onClick={goBack}>
             &larr; 뒤로가기
           </BackButton>
@@ -199,8 +200,8 @@ const JiraIssueDetail = () => {
   }
 
   return (
-    <Layout ref={layoutRef}>
-      <ToolbarArea>
+    <Layout ref={layoutRef} $theme={jiraTheme}>
+      <ToolbarArea $theme={jiraTheme}>
         <BackButton onClick={goBack}>
           &larr; 뒤로가기
         </BackButton>
@@ -237,9 +238,9 @@ const JiraIssueDetail = () => {
 
         {/* 설명 */}
         {(issue.descriptionAdf || isEditingDesc) && (
-          <Section>
+          <Section $theme={jiraTheme}>
             <SectionHeader>
-              <SectionTitle>설명</SectionTitle>
+              <SectionTitle $theme={jiraTheme}>설명</SectionTitle>
               {!isEditingDesc && (
                 <EditIconButton $theme={jiraTheme} onClick={() => setIsEditingDesc(true)} title="설명 편집">
                   <Edit2 size={14} />
@@ -270,8 +271,8 @@ const JiraIssueDetail = () => {
 
         {/* 첨부 이미지 */}
         {attachments.length > 0 && (
-          <Section>
-            <SectionTitle>첨부 이미지 ({attachments.length})</SectionTitle>
+          <Section $theme={jiraTheme}>
+            <SectionTitle $theme={jiraTheme}>첨부 이미지 ({attachments.length})</SectionTitle>
             <AttachmentGrid>
               {attachments.map((att) => {
                 const src = attachmentImages[att.id];
@@ -430,24 +431,16 @@ const JiraIssueDetail = () => {
 
 export default JiraIssueDetail;
 
-const Layout = styled.div`
-  flex: 1;
-  min-height: 0;
-  background: ${jiraTheme.bg.subtle};
+const Layout = styled(DetailLayout)`
   zoom: 1.2;
-  overflow-y: auto;
 `;
 
-const ToolbarArea = styled.div`
+const ToolbarArea = styled(Toolbar)`
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
-  background: ${jiraTheme.bg.default};
-  border-bottom: 1px solid ${jiraTheme.border};
 `;
 
 const BackButton = styled.button`
@@ -534,19 +527,12 @@ const Content = styled.main<{ children?: React.ReactNode }>`
   padding: 1.5rem;
 `;
 
-const Section = styled.div`
-  padding: 1.5rem;
-  background: ${jiraTheme.bg.default};
-  border-radius: 3px;
-  border: 1px solid ${jiraTheme.border};
+const Section = styled(CommonSection)`
   margin-bottom: 1rem;
 `;
 
-const SectionTitle = styled.h2`
+const SectionTitle = styled(CommonSectionTitle)`
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: ${jiraTheme.text.primary};
 `;
 
 const SectionHeader = styled.div`
@@ -556,10 +542,8 @@ const SectionHeader = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Loading = styled.div`
+const Loading = styled(EmptyState)`
   padding: 4rem 2rem;
-  text-align: center;
-  color: ${jiraTheme.text.secondary};
 `;
 
 const ErrorMessage = styled.div`

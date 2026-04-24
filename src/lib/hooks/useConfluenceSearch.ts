@@ -1,23 +1,18 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAccount } from 'modules/contexts/account';
-import { integrationController } from 'controllers/account';
 import type { ConfluenceSpace, NormalizedConfluencePage, ConfluenceSpaceGroup } from 'types/confluence';
-import { parsePages, parseSpaces, groupBySpace } from 'lib/utils/confluenceNormalizers';
-import { loadSelectedSpaces, loadSelectedSpacesAsync, saveSelectedSpaces } from 'lib/utils/storageHelpers';
+import { groupBySpace } from 'lib/utils/confluenceNormalizers';
 import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
+import { useConfluenceSpaces } from 'lib/hooks/confluence/useConfluenceSpaces';
+import { useConfluenceMyPages } from 'lib/hooks/confluence/useConfluenceMyPages';
+import { useConfluencePageSearch } from 'lib/hooks/confluence/useConfluencePageSearch';
+import { useConfluenceSuggest } from 'lib/hooks/confluence/useConfluenceSuggest';
+import { useConfluenceExpandState } from 'lib/hooks/confluence/useConfluenceExpandState';
 
-// ── 검색 필드 타입 ──
+export type { SearchFieldType } from 'lib/hooks/confluence/useConfluencePageSearch';
+export { SEARCH_FIELD_LABELS } from 'lib/hooks/confluence/useConfluencePageSearch';
 
-export type SearchFieldType = 'title' | 'body' | 'title_body' | 'contributor';
-
-export const SEARCH_FIELD_LABELS: Record<SearchFieldType, string> = {
-  title: '제목',
-  body: '본문',
-  title_body: '제목+본문',
-  contributor: '작성자',
-};
-
-// ── 캐시 ──
+// ── 계정별 캐시 slot ──
 
 interface DashboardCache {
   myPages: NormalizedConfluencePage[];
@@ -30,59 +25,96 @@ interface DashboardCache {
 
 const confluenceDashboardCache = createAccountScopedCache<DashboardCache>();
 
-// ── Hook ──
+// ── Composer Hook ──
 
 export function useConfluenceSearch() {
   const { activeAccount } = useAccount();
   const currentAccountId = activeAccount?.id || '';
   const cached = currentAccountId ? confluenceDashboardCache.get(currentAccountId) : undefined;
-  const isCacheValid = Boolean(cached);
 
-  // ── State ──
+  // spaces (+ 설정 로드/영속)
+  const spacesHook = useConfluenceSpaces({
+    accountId: currentAccountId,
+    activeAccount,
+    cached: cached ? { spaces: cached.spaces, selectedSpaces: cached.selectedSpaces } : undefined,
+  });
+  const {
+    spaces,
+    selectedSpaces,
+    setSelectedSpaces,
+    showSpaceSettings,
+    setShowSpaceSettings,
+    spaceFilter,
+    setSpaceFilter,
+    filteredSpaces,
+    spaceSettingsLoaded,
+    fetchSpaces,
+    handleSaveSpaceSettings: saveSpacesOnly,
+  } = spacesHook;
 
-  const [myPages, setMyPages] = useState<NormalizedConfluencePage[]>(cached?.myPages ?? []);
-  const [isLoading, setIsLoading] = useState(false);
+  // my pages
+  const myPagesHook = useConfluenceMyPages({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedSpaces,
+    cached: cached ? { myPages: cached.myPages } : undefined,
+  });
+  const { myPages, setMyPages, isLoading, fetchMyPages } = myPagesHook;
 
-  const [spaces, setSpaces] = useState<ConfluenceSpace[]>(cached?.spaces ?? []);
-  const [selectedSpaces, setSelectedSpaces] = useState<string[]>(
-    cached?.selectedSpaces ?? loadSelectedSpaces(currentAccountId)
-  );
-  const [showSpaceSettings, setShowSpaceSettings] = useState(false);
-  const [spaceFilter, setSpaceFilter] = useState('');
+  // space group 단축키용 ref (expand-state와 search 양쪽에서 참조)
+  const spaceGroupsRef = useRef<ConfluenceSpaceGroup[]>([]);
 
-  const [searchQuery, setSearchQuery] = useState(cached?.searchQuery ?? '');
-  const [searchResults, setSearchResults] = useState<NormalizedConfluencePage[] | null>(cached?.searchResults ?? null);
-  const [isSearching, setIsSearching] = useState(false);
+  // expand/collapse
+  const expandStateHook = useConfluenceExpandState({
+    spaceGroupsRef,
+    cached: cached ? { expandedSpaces: cached.expandedSpaces } : undefined,
+  });
+  const { expandedSpaces, setExpandedSpaces, toggleSpace, expandAll, collapseAll } = expandStateHook;
 
-  const [searchField, setSearchField] = useState<SearchFieldType>('title');
-  const [showFieldDropdown, setShowFieldDropdown] = useState(false);
-  const fieldDropdownRef = useRef<HTMLDivElement>(null);
+  // page search (결과 로드 시 전체 expand)
+  const pageSearchHook = useConfluencePageSearch({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedSpaces,
+    onResultsLoaded: useCallback((pages: NormalizedConfluencePage[]) => {
+      setExpandedSpaces(new Set(pages.map((p) => p.spaceId || '__no_space__')));
+    }, [setExpandedSpaces]),
+    cached: cached ? { searchQuery: cached.searchQuery, searchResults: cached.searchResults } : undefined,
+  });
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    isSearching,
+    searchField,
+    setSearchField,
+    showFieldDropdown,
+    setShowFieldDropdown,
+    fieldDropdownRef,
+    searchPages,
+    clearSearch: clearSearchOnly,
+  } = pageSearchHook;
 
-  const [suggestions, setSuggestions] = useState<NormalizedConfluencePage[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
-  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
-  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchWrapperRef = useRef<HTMLDivElement>(null);
+  // suggest (debounced + click-outside)
+  const suggestHook = useConfluenceSuggest({
+    accountId: currentAccountId,
+    activeAccount,
+    selectedSpaces,
+    searchField,
+  });
+  const {
+    suggestions,
+    setSuggestions,
+    showSuggestions,
+    setShowSuggestions,
+    isSuggestLoading,
+    activeSuggestionIdx,
+    setActiveSuggestionIdx,
+    suggestContainerRef: searchWrapperRef,
+    handleSearchChange: triggerSuggest,
+  } = suggestHook;
 
-  const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(cached?.expandedSpaces ?? new Set());
-
-  // 스페이스 설정 로드 완료 여부
-  const [spaceSettingsLoaded, setSpaceSettingsLoaded] = useState(isCacheValid);
-
-  // ── 최초 마운트 시 저장된 스페이스 설정 로드 ──
-
-  const initialLoadDone = useRef(false);
-  useEffect(() => {
-    if (initialLoadDone.current || !currentAccountId || isCacheValid) return;
-    initialLoadDone.current = true;
-    loadSelectedSpacesAsync(currentAccountId).then((keys) => {
-      if (keys.length > 0) setSelectedSpaces(keys);
-      setSpaceSettingsLoaded(true);
-    });
-  }, [currentAccountId, isCacheValid]);
-
-  // ── 계정 변경 시 화면 즉시 리셋 (slot은 confluenceDashboardCache Map에 보존되어 복귀 시 복원) ──
+  // ── 계정 변경 시 검색/자동완성/확장 상태 리셋 (spaces/myPages는 각 훅 내부에서 리셋) ──
 
   const prevAccountIdRef = useRef(currentAccountId);
   useEffect(() => {
@@ -90,24 +122,15 @@ export function useConfluenceSearch() {
     prevAccountIdRef.current = currentAccountId;
 
     setMyPages([]);
-    setSpaces([]);
-    setSelectedSpaces([]);
     setSearchQuery('');
-    setSearchResults(null);
+    pageSearchHook.setSearchResults(null);
     setSuggestions([]);
     setShowSuggestions(false);
     setExpandedSpaces(new Set());
-    setSpaceSettingsLoaded(false);
-
-    if (!currentAccountId) return;
-
-    loadSelectedSpacesAsync(currentAccountId).then((keys) => {
-      if (keys.length > 0) setSelectedSpaces(keys);
-      setSpaceSettingsLoaded(true);
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAccountId]);
 
-  // ── 캐시 동기화 (계정별 slot에 스냅샷 저장) ──
+  // ── 캐시 동기화 ──
 
   useAccountScopedCache(
     confluenceDashboardCache,
@@ -116,218 +139,31 @@ export function useConfluenceSearch() {
     () => ({ myPages, spaces, selectedSpaces, searchQuery, searchResults, expandedSpaces }),
   );
 
-  // ── API Callbacks ──
-
-  const fetchSpaces = useCallback(async () => {
-    if (!activeAccount) return;
-    try {
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'getSpaces',
-        params: { limit: 250 },
-      });
-      const list = parseSpaces(result);
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      setSpaces(list);
-    } catch {
-      setSpaces([]);
-    }
-  }, [activeAccount]);
-
-  const fetchMyPages = useCallback(async () => {
-    if (!activeAccount) return;
-    setIsLoading(true);
-    try {
-      const params: Record<string, unknown> = {
-        limit: 100,
-        sort: '-modified-date',
-        status: 'current',
-        contributor: 'currentUser()',
-      };
-      if (selectedSpaces.length > 0) {
-        params.spaceKeys = selectedSpaces;
-      }
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'getMyPages',
-        params,
-      });
-      const pages = parsePages(result);
-      setMyPages(pages);
-    } catch (err) {
-      console.error('[ConfluenceDashboard] fetchMyPages error:', err);
-      setMyPages([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeAccount, selectedSpaces]);
-
-  const searchPages = useCallback(async () => {
-    if (!activeAccount) return;
-    const term = searchQuery.trim();
-    if (!term) {
-      setSearchResults(null);
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const params: Record<string, unknown> = {
-        query: term,
-        limit: 100,
-        searchField,
-      };
-      if (selectedSpaces.length > 0) {
-        params.spaceKeys = selectedSpaces;
-      }
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'searchPages',
-        params,
-      });
-      const pages = parsePages(result);
-      pages.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setSearchResults(pages);
-      setExpandedSpaces(new Set(pages.map((p) => p.spaceId || '__no_space__')));
-    } catch (err) {
-      console.error('[ConfluenceDashboard] searchPages error:', err);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }, [activeAccount, searchQuery, selectedSpaces, searchField]);
-
-  const fetchSuggestions = useCallback(async (query: string) => {
-    if (!activeAccount || !query.trim()) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    setIsSuggestLoading(true);
-    try {
-      const params: Record<string, unknown> = {
-        query: query.trim(),
-        limit: 10,
-        searchField,
-      };
-      if (selectedSpaces.length > 0) {
-        params.spaceKeys = selectedSpaces;
-      }
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'confluence',
-        action: 'searchPages',
-        params,
-      });
-      const pages = parsePages(result);
-      pages.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setSuggestions(pages);
-      setShowSuggestions(pages.length > 0);
-      setActiveSuggestionIdx(-1);
-    } catch {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    } finally {
-      setIsSuggestLoading(false);
-    }
-  }, [activeAccount, selectedSpaces, searchField]);
+  // ── 검색어 변경: state 갱신 + debounced suggest ──
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
-    if (!value.trim()) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    suggestTimerRef.current = setTimeout(() => {
-      fetchSuggestions(value);
-    }, 300);
-  }, [fetchSuggestions]);
-
-  // ── Click-outside listeners ──
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-      if (fieldDropdownRef.current && !fieldDropdownRef.current.contains(e.target as Node)) {
-        setShowFieldDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // cleanup suggest timer
-  useEffect(() => {
-    return () => {
-      if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
-    };
-  }, []);
+    triggerSuggest(value);
+  }, [setSearchQuery, triggerSuggest]);
 
   const clearSearch = useCallback(() => {
-    setSearchQuery('');
-    setSearchResults(null);
+    clearSearchOnly();
     setSuggestions([]);
     setShowSuggestions(false);
-  }, []);
+  }, [clearSearchOnly, setSuggestions, setShowSuggestions]);
 
-  // ── Expand / Collapse ──
+  // ── 스페이스 설정 저장 시 후속 fetch 합성 ──
 
-  const toggleSpace = useCallback((spaceId: string) => {
-    setExpandedSpaces((prev) => {
-      const next = new Set(prev);
-      if (next.has(spaceId)) {
-        next.delete(spaceId);
-      } else {
-        next.add(spaceId);
-      }
-      return next;
-    });
-  }, []);
+  const handleSaveSpaceSettings = useCallback(() => {
+    saveSpacesOnly();
+    fetchMyPages();
+  }, [saveSpacesOnly, fetchMyPages]);
 
-  const expandAll = useCallback((groups: ConfluenceSpaceGroup[]) => {
-    setExpandedSpaces(new Set(groups.map((g) => g.spaceId)));
-  }, []);
-
-  const collapseAll = useCallback(() => {
-    setExpandedSpaces(new Set());
-  }, []);
-
-  // 글로벌 단축키 이벤트 수신
-  const spaceGroupsRef = useRef<ConfluenceSpaceGroup[]>([]);
-  useEffect(() => {
-    const onExpand = () => expandAll(spaceGroupsRef.current);
-    const onCollapse = () => collapseAll();
-    window.addEventListener('lyra:expand-all', onExpand);
-    window.addEventListener('lyra:collapse-all', onCollapse);
-    return () => {
-      window.removeEventListener('lyra:expand-all', onExpand);
-      window.removeEventListener('lyra:collapse-all', onCollapse);
-    };
-  }, [expandAll, collapseAll]);
-
-  // ── Filtered spaces (for space settings modal) ──
-
-  const filteredSpaces = useMemo(() => {
-    const q = spaceFilter.trim().toLowerCase();
-    if (!q) return spaces;
-    return spaces.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.key.toLowerCase().includes(q)
-    );
-  }, [spaces, spaceFilter]);
-
-  // ── Initial data fetch ──
+  // ── 초기 데이터 로드 ──
 
   const initialFetchDone = useRef(Boolean(cached && cached.myPages.length > 0));
-
   useEffect(() => {
     if (!activeAccount) {
-      setSpaces([]);
       setMyPages([]);
       return;
     }
@@ -338,18 +174,9 @@ export function useConfluenceSearch() {
     if (!spaceSettingsLoaded) return;
     fetchSpaces();
     fetchMyPages();
-  }, [activeAccount, fetchSpaces, fetchMyPages, spaceSettingsLoaded]);
+  }, [activeAccount, fetchSpaces, fetchMyPages, spaceSettingsLoaded, setMyPages]);
 
-  // ── Save space settings ──
-
-  const handleSaveSpaceSettings = useCallback(() => {
-    saveSelectedSpaces(currentAccountId, selectedSpaces);
-    setShowSpaceSettings(false);
-    fetchMyPages();
-    window.dispatchEvent(new CustomEvent('lyra:confluence-space-settings-changed'));
-  }, [currentAccountId, selectedSpaces, fetchMyPages]);
-
-  // ── Computed values ──
+  // ── Computed ──
 
   const isSearchMode = searchResults !== null;
   const displayPages = isSearchMode ? searchResults : myPages;

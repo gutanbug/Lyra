@@ -1,4 +1,3 @@
-import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { formatDate } from 'lib/utils/jiraUtils';
@@ -8,12 +7,10 @@ import AdfCommentEditor from 'components/common/AdfCommentEditor';
 import AdfRenderer from 'components/common/AdfRenderer';
 import type { NormalizedComment, CommentThread } from 'types/jira';
 import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
-import type { AdfCommentEditorHandle } from 'components/common/AdfCommentEditor';
+import type { UseJiraCommentsReturn } from 'lib/hooks/useJiraComments';
 
 interface JiraIssueCommentsProps {
-  comments: NormalizedComment[];
-  commentsExpanded: boolean;
-  setCommentsExpanded: (fn: (v: boolean) => boolean) => void;
+  commentState: UseJiraCommentsReturn;
   buildCommentThreads: (comments: NormalizedComment[]) => CommentThread[];
   handleAdfLinkClick: (href: string, text?: string) => void;
   mediaUrlMap: Record<string, string>;
@@ -22,34 +19,10 @@ interface JiraIssueCommentsProps {
   onFileClick?: (fileMeta: FileMeta) => void;
   accountId: string | undefined;
   issueKey: string;
-  // Comment actions from useJiraComments
-  isSubmittingComment: boolean;
-  replyTarget: { id: string; authorId: string; authorName: string } | null;
-  setReplyTarget: (target: { id: string; authorId: string; authorName: string } | null) => void;
-  editTarget: { id: string; rawBody: unknown } | null;
-  setEditTarget: (target: { id: string; rawBody: unknown } | null) => void;
-  editEditorEmpty: boolean;
-  setEditEditorEmpty: (empty: boolean) => void;
-  editorEmpty: boolean;
-  setEditorEmpty: (empty: boolean) => void;
-  isDeletingComment: string | null;
-  emojiPickerTarget: string | null;
-  setEmojiPickerTarget: (fn: (v: string | null) => string | null) => void;
-  commentReactions: Record<string, string[]>;
-  newCommentRef: React.RefObject<AdfCommentEditorHandle>;
-  editCommentRef: React.RefObject<AdfCommentEditorHandle>;
-  handleAddComment: () => void;
-  handleUpdateComment: () => void;
-  handleDeleteComment: (commentId: string) => void;
-  startReply: (comment: NormalizedComment) => void;
-  startEdit: (comment: NormalizedComment) => void;
-  toggleReaction: (commentId: string, emoji: string) => void;
 }
 
 const JiraIssueComments = ({
-  comments,
-  commentsExpanded,
-  setCommentsExpanded,
+  commentState,
   buildCommentThreads,
   handleAdfLinkClick,
   mediaUrlMap,
@@ -58,28 +31,22 @@ const JiraIssueComments = ({
   onFileClick,
   accountId,
   issueKey,
-  isSubmittingComment,
-  replyTarget,
-  setReplyTarget,
-  editTarget,
-  setEditTarget,
-  editEditorEmpty,
-  setEditEditorEmpty,
-  editorEmpty,
-  setEditorEmpty,
-  isDeletingComment,
-  emojiPickerTarget,
-  setEmojiPickerTarget,
-  commentReactions,
-  newCommentRef,
-  editCommentRef,
-  handleAddComment,
-  handleUpdateComment,
-  handleDeleteComment,
-  startReply,
-  startEdit,
-  toggleReaction,
 }: JiraIssueCommentsProps) => {
+  const {
+    comments,
+    commentsExpanded, setCommentsExpanded,
+    isSubmitting: isSubmittingComment,
+    replyTarget, setReplyTarget,
+    editTarget, setEditTarget,
+    editEditorEmpty, setEditEditorEmpty,
+    editorEmpty, setEditorEmpty,
+    isDeletingComment,
+    emojiPickerTarget, setEmojiPickerTarget,
+    commentReactions,
+    newCommentRef, editCommentRef,
+    handleAddComment, handleUpdateComment, handleDeleteComment,
+    startReply, startEdit, toggleReaction,
+  } = commentState;
 
   const renderCommentActions = (comment: NormalizedComment) => (
     <CommentActions>

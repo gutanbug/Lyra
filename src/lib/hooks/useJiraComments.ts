@@ -190,3 +190,5 @@ export function useJiraComments({
     toggleReaction,
   };
 }
+
+export type UseJiraCommentsReturn = ReturnType<typeof useJiraComments>;

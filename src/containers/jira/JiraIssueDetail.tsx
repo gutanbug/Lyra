@@ -49,22 +49,7 @@ const JiraIssueDetail = () => {
   const resolveCardTitlesRef = useRef<(urls: string[]) => Promise<void>>();
 
   // 댓글 CRUD (useJiraComments 훅)
-  const {
-    comments, setComments,
-    isSubmitting: isSubmittingComment,
-    replyTarget, setReplyTarget,
-    editTarget, setEditTarget,
-    editEditorEmpty, setEditEditorEmpty,
-    editorEmpty, setEditorEmpty,
-    isDeletingComment,
-    emojiPickerTarget, setEmojiPickerTarget,
-    commentReactions,
-    commentsExpanded, setCommentsExpanded,
-    newCommentRef, editCommentRef,
-    refreshComments,
-    handleAddComment, handleUpdateComment, handleDeleteComment,
-    startReply, startEdit, toggleReaction,
-  } = useJiraComments({
+  const commentState = useJiraComments({
     accountId: activeAccount?.id,
     issueKey,
     normalizeComments,
@@ -107,7 +92,7 @@ const JiraIssueDetail = () => {
     issueKey,
     activeAccount,
     layoutRef,
-    setComments,
+    setComments: commentState.setComments,
     resolveCardTitlesRef,
   });
 
@@ -283,9 +268,7 @@ const JiraIssueDetail = () => {
 
         {/* 댓글 */}
         <JiraIssueComments
-          comments={comments}
-          commentsExpanded={commentsExpanded}
-          setCommentsExpanded={setCommentsExpanded}
+          commentState={commentState}
           buildCommentThreads={buildCommentThreads}
           handleAdfLinkClick={handleAdfLinkClick}
           mediaUrlMap={mediaUrlMap}
@@ -293,28 +276,7 @@ const JiraIssueDetail = () => {
           fileMetaMap={fileMetaMap}
           onFileClick={handleFileClick}
           accountId={activeAccount?.id}
-          issueKey={issueKey}
-          isSubmittingComment={isSubmittingComment}
-          replyTarget={replyTarget}
-          setReplyTarget={setReplyTarget}
-          editTarget={editTarget}
-          setEditTarget={setEditTarget}
-          editEditorEmpty={editEditorEmpty}
-          setEditEditorEmpty={setEditEditorEmpty}
-          editorEmpty={editorEmpty}
-          setEditorEmpty={setEditorEmpty}
-          isDeletingComment={isDeletingComment}
-          emojiPickerTarget={emojiPickerTarget}
-          setEmojiPickerTarget={setEmojiPickerTarget}
-          commentReactions={commentReactions}
-          newCommentRef={newCommentRef}
-          editCommentRef={editCommentRef}
-          handleAddComment={handleAddComment}
-          handleUpdateComment={handleUpdateComment}
-          handleDeleteComment={handleDeleteComment}
-          startReply={startReply}
-          startEdit={startEdit}
-          toggleReaction={toggleReaction}
+          issueKey={issueKey!}
         />
 
         {/* 연결된 업무 항목 */}

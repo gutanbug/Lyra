@@ -14,23 +14,29 @@ export function isSubTaskType(typeName: string): boolean {
 
 /**
  * 상태 뱃지 색상.
- * category에 Jira statusCategory.key('done'|'indeterminate'|'new') 또는
- * name/colorName이 들어올 수 있으므로, key 정확 매칭을 우선 적용.
+ * category에 Jira statusCategory.key('done'|'indeterminate'|'new'),
+ * name(영/한), colorName이 들어올 수 있으므로 카테고리 신호를 우선 신뢰한다.
+ * 이름 키워드 폴백은 카테고리에서 신호가 없을 때만 사용 (예: "수정완료"가
+ * 카테고리=진행 중인데 이름의 "완료" 때문에 done으로 오분류되는 문제 방지).
  */
 export function getStatusColor(name: string, category: string): string {
-  const c = category.toLowerCase();
-  // statusCategory.key 정확 매칭 (가장 신뢰할 수 있음)
+  const c = category.toLowerCase().trim();
+  // 1) statusCategory.key 정확 매칭
   if (c === 'done') return jiraTheme.status.done;
   if (c === 'indeterminate') return jiraTheme.status.inProgress;
   if (c === 'new') return jiraTheme.status.todo;
-  // colorName 매칭
+  // 2) colorName 매칭
   if (c === 'green') return jiraTheme.status.done;
   if (c === 'yellow' || c === 'blue-gray') return jiraTheme.status.inProgress;
-  // name 키워드 폴백 (category + statusName)
-  const s = (name + ' ' + category).toLowerCase();
-  if (s.includes('done') || s.includes('완료') || s.includes('green')) return jiraTheme.status.done;
-  if (s.includes('progress') || s.includes('진행') || s.includes('indeterminate')) return jiraTheme.status.inProgress;
-  if (s.includes('to do') || s.includes('해야')) return jiraTheme.status.todo;
+  // 3) 카테고리 키워드 매칭 (한국어 name 포함: "진행 중", "완료", "할 일")
+  if (c.includes('progress') || c.includes('진행') || c.includes('indeterminate')) return jiraTheme.status.inProgress;
+  if (c.includes('done') || c.includes('완료')) return jiraTheme.status.done;
+  if (c.includes('to do') || c.includes('todo') || c.includes('해야') || c.includes('할 일')) return jiraTheme.status.todo;
+  // 4) 카테고리에 신호가 없을 때만 이름 키워드 폴백
+  const n = name.toLowerCase();
+  if (n.includes('progress') || n.includes('진행')) return jiraTheme.status.inProgress;
+  if (n.includes('done') || n.includes('완료')) return jiraTheme.status.done;
+  if (n.includes('to do') || n.includes('해야') || n.includes('할 일')) return jiraTheme.status.todo;
   return jiraTheme.status.default;
 }
 
@@ -49,14 +55,14 @@ export function escapeJql(value: string): string {
 }
 
 export function getStatusCategoryColor(category: string): string {
-  const c = category.toLowerCase();
+  const c = category.toLowerCase().trim();
   if (c === 'done' || c === 'green') return '#36B37E';
   if (c === 'indeterminate' || c === 'yellow' || c === 'blue-gray') return '#0052CC';
   if (c === 'new') return '#42526E';
-  // name 키워드 폴백
-  if (c.includes('done') || c.includes('완료') || c.includes('green')) return '#36B37E';
+  // 키워드 폴백 (진행을 완료보다 먼저 검사 — "수정완료" 등 오분류 방지)
   if (c.includes('progress') || c.includes('진행') || c.includes('indeterminate')) return '#0052CC';
-  if (c.includes('to do') || c.includes('해야')) return '#42526E';
+  if (c.includes('done') || c.includes('완료')) return '#36B37E';
+  if (c.includes('to do') || c.includes('todo') || c.includes('해야') || c.includes('할 일')) return '#42526E';
   return '#6B778C';
 }
 

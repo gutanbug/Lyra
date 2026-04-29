@@ -1,20 +1,11 @@
-import React, { useRef, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react';
+import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import styled from 'styled-components';
 import { IntlProvider } from 'react-intl';
 import { Editor, EditorContext, WithEditorActions, EditorActions } from '@atlaskit/editor-core';
-import { JiraMentionProvider } from 'lib/providers/JiraMentionProvider';
-import { createConfluenceQuickInsertProvider } from 'lib/providers/ConfluenceQuickInsertProvider';
-import { preprocessAdfForEditor } from 'lib/utils/adfUtils';
-import { theme } from 'lib/styles/theme';
+import { useAdfEditor, AdfEditorImperativeHandle } from 'lib/hooks/useAdfEditor';
+import { adfEditorBaseStyles } from 'lib/styles/adfEditorBaseStyles';
 
-export interface AdfBodyEditorHandle {
-  /** ADF JSON 반환 */
-  getValue: () => Promise<unknown | undefined>;
-  /** 에디터 초기화 */
-  clear: () => void;
-  /** 에디터 포커스 */
-  focus: () => void;
-}
+export type AdfBodyEditorHandle = AdfEditorImperativeHandle;
 
 interface AdfBodyEditorProps {
   /** 초기 ADF 문서 */
@@ -36,61 +27,19 @@ const noop = () => {};
 
 const AdfBodyEditor = forwardRef<AdfBodyEditorHandle, AdfBodyEditorProps>(
   ({ defaultValue, onChangeEmpty, onSave, disabled, accountId, issueKey, confluenceMode }, ref) => {
-    const actionsRef = useRef<EditorActions | null>(null);
-    const isEmptyRef = useRef(!defaultValue);
+    const {
+      processedDefaultValue,
+      mentionProvider,
+      quickInsertOpts,
+      handleChange,
+      imperativeHandle,
+      setActions,
+    } = useAdfEditor({ defaultValue, onChangeEmpty, accountId, issueKey, confluenceMode });
 
-    // ADF 전처리: emoji, extension, media 등 에디터가 지원하지 않는 노드 변환
-    const processedDefaultValue = useMemo(
-      () => defaultValue ? preprocessAdfForEditor(defaultValue) : undefined,
-      [defaultValue],
-    );
+    useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle]);
 
-    // Confluence 모드: 커스텀 / 커맨드 프로바이더
-    const quickInsertOpts = useMemo(
-      () => confluenceMode ? { provider: createConfluenceQuickInsertProvider() } : true,
-      [confluenceMode],
-    );
-    const onChangeEmptyRef = useRef(onChangeEmpty);
-    onChangeEmptyRef.current = onChangeEmpty;
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
-
-    // 멘션 프로바이더
-    const mentionProviderRef = useRef<JiraMentionProvider | null>(null);
-    const mentionProvider = useMemo(() => {
-      if (mentionProviderRef.current) {
-        mentionProviderRef.current.destroy();
-        mentionProviderRef.current = null;
-      }
-      if (!accountId || !issueKey) return undefined;
-      const provider = new JiraMentionProvider({ accountId, issueKey });
-      mentionProviderRef.current = provider;
-      return Promise.resolve(provider);
-    }, [accountId, issueKey]);
-
-    useEffect(() => {
-      return () => {
-        if (mentionProviderRef.current) {
-          mentionProviderRef.current.destroy();
-          mentionProviderRef.current = null;
-        }
-      };
-    }, []);
-
-    useImperativeHandle(ref, () => ({
-      getValue: async () => {
-        if (!actionsRef.current) return undefined;
-        return actionsRef.current.getValue();
-      },
-      clear: () => {
-        actionsRef.current?.clear();
-        isEmptyRef.current = true;
-        onChangeEmptyRef.current?.(true);
-      },
-      focus: () => {
-        actionsRef.current?.focus();
-      },
-    }), []);
 
     // Cmd/Ctrl+S 단축키 처리
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -100,27 +49,12 @@ const AdfBodyEditor = forwardRef<AdfBodyEditorHandle, AdfBodyEditorProps>(
       }
     }, []);
 
-    // ref 기반 — ProseMirror 트랜잭션 중 React 리렌더 방지
-    const handleChange = useCallback(() => {
-      if (!actionsRef.current) return;
-      const view = actionsRef.current._privateGetEditorView();
-      if (!view) return;
-      const docSize = view.state.doc.content.size;
-      const nowEmpty = docSize <= 4;
-      if (nowEmpty !== isEmptyRef.current) {
-        isEmptyRef.current = nowEmpty;
-        queueMicrotask(() => {
-          onChangeEmptyRef.current?.(nowEmpty);
-        });
-      }
-    }, []);
-
     return (
       <IntlProvider locale="ko" onError={noop}>
         <EditorContext>
           <WithEditorActions
             render={(actions: EditorActions) => {
-              actionsRef.current = actions;
+              setActions(actions);
               return (
                 <BodyEditorWrapper onKeyDown={handleKeyDown}>
                   <Editor
@@ -157,43 +91,18 @@ export default AdfBodyEditor;
 // ── Styled Components ──
 
 const BodyEditorWrapper = styled.div`
-  .akEditor {
-    border: 1px solid ${theme.border};
-    border-radius: 8px;
+  ${adfEditorBaseStyles}
 
-    &:focus-within {
-      border-color: ${theme.blue};
-    }
-  }
-
-  /* 툴바 배경 */
   [data-testid="ak-editor-main-toolbar"] {
-    background: ${theme.bgSecondary};
-    border-bottom: 1px solid ${theme.border};
     position: sticky;
     top: 0;
     z-index: 10;
   }
 
-  /* 내장 Save 버튼 숨김 */
   [data-testid="ak-editor-secondary-toolbar"] {
     display: none !important;
   }
 
-  /* Atlaskit 접근성 announcer 시각적 숨김 */
-  .assistive {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  /* 에디터 입력 영역 — 본문 편집용으로 넓게 */
   .ak-editor-content-area {
     min-height: 300px;
     overflow-y: auto;
@@ -201,12 +110,6 @@ const BodyEditorWrapper = styled.div`
     .ProseMirror {
       padding: 16px 20px;
       min-height: 280px;
-      font-size: 0.875rem;
-      color: ${theme.textPrimary};
-
-      p.is-empty::before {
-        color: ${theme.textMuted};
-      }
     }
   }
 `;

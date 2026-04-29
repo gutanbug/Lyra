@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
@@ -9,6 +9,7 @@ import {
   LightboxOverlay, LightboxImage,
   PdfOverlay, PdfHeader, PdfTitle, PdfClose, PdfFrame,
   FileLoadingOverlay, FileLoadingSpinner,
+  DetailLayout, Toolbar, Section as CommonSection, SectionTitle as CommonSectionTitle, EmptyState,
 } from 'lib/styles/commonStyles';
 import { buildCommentThreads } from 'lib/utils/jiraNormalizers';
 import { normalizeComments, prependMentionToAdf } from 'lib/utils/jiraNormalizers';
@@ -20,20 +21,20 @@ import { useJiraComments } from 'lib/hooks/useJiraComments';
 import { useJiraIssueDetail } from 'lib/hooks/useJiraIssueDetail';
 import { useFilePreview } from 'lib/hooks/useFilePreview';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
+import { useAdfBodyEditor } from 'lib/hooks/useAdfBodyEditor';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
-import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
-import type { AdfBodyEditorHandle } from 'components/common/AdfBodyEditor';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
-import { integrationController } from 'controllers/account';
 import { Edit2 } from 'lucide-react';
 import JiraIssueHeader from 'components/jira/JiraIssueHeader';
 import JiraIssueComments from 'components/jira/JiraIssueComments';
 import JiraChildIssues from 'components/jira/JiraChildIssues';
 import JiraLinkedIssues from 'components/jira/JiraLinkedIssues';
 import JiraConfluenceLinks from 'components/jira/JiraConfluenceLinks';
+import JiraBreadcrumbs from 'components/jira/JiraBreadcrumbs';
+import JiraAttachmentGrid from 'components/jira/JiraAttachmentGrid';
 
 const JiraIssueDetail = () => {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -48,22 +49,7 @@ const JiraIssueDetail = () => {
   const resolveCardTitlesRef = useRef<(urls: string[]) => Promise<void>>();
 
   // 댓글 CRUD (useJiraComments 훅)
-  const {
-    comments, setComments,
-    isSubmitting: isSubmittingComment,
-    replyTarget, setReplyTarget,
-    editTarget, setEditTarget,
-    editEditorEmpty, setEditEditorEmpty,
-    editorEmpty, setEditorEmpty,
-    isDeletingComment,
-    emojiPickerTarget, setEmojiPickerTarget,
-    commentReactions,
-    commentsExpanded, setCommentsExpanded,
-    newCommentRef, editCommentRef,
-    refreshComments,
-    handleAddComment, handleUpdateComment, handleDeleteComment,
-    startReply, startEdit, toggleReaction,
-  } = useJiraComments({
+  const commentState = useJiraComments({
     accountId: activeAccount?.id,
     issueKey,
     normalizeComments,
@@ -106,7 +92,7 @@ const JiraIssueDetail = () => {
     issueKey,
     activeAccount,
     layoutRef,
-    setComments,
+    setComments: commentState.setComments,
     resolveCardTitlesRef,
   });
 
@@ -131,30 +117,23 @@ const JiraIssueDetail = () => {
     serviceType: 'jira',
   });
 
-  // 설명 편집 상태
-  const [isEditingDesc, setIsEditingDesc] = useState(false);
-  const [isSavingDesc, setIsSavingDesc] = useState(false);
-  const descEditorRef = useRef<AdfBodyEditorHandle>(null);
-
-  const handleSaveDescription = useCallback(async () => {
-    const adf = await descEditorRef.current?.getValue();
-    if (!adf || !activeAccount || !issueKey) return;
-    setIsSavingDesc(true);
-    try {
-      await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'updateIssueDescription',
-        params: { issueKey, description: adf },
-      });
-      updateDescriptionAdf(adf);
-      setIsEditingDesc(false);
-    } catch (err) {
-      console.error('[JiraIssueDetail] save description error:', err);
-    } finally {
-      setIsSavingDesc(false);
-    }
-  }, [activeAccount, issueKey, updateDescriptionAdf]);
+  // 설명 편집 상태 (공통 훅)
+  const buildDescParams = useCallback((adf: unknown) => ({ issueKey, description: adf }), [issueKey]);
+  const handleDescSaved = useCallback((adf: unknown) => updateDescriptionAdf(adf), [updateDescriptionAdf]);
+  const {
+    isEditing: isEditingDesc,
+    isSaving: isSavingDesc,
+    editorRef: descEditorRef,
+    startEdit: startEditDesc,
+    cancelEdit: cancelEditDesc,
+    save: handleSaveDescription,
+  } = useAdfBodyEditor({
+    accountId: activeAccount?.id,
+    serviceType: 'jira',
+    action: 'updateIssueDescription',
+    buildParams: buildDescParams,
+    onSaved: handleDescSaved,
+  });
 
   // 우선순위 드롭다운 (공통 훅)
   const { priorityTarget, openPriorityDropdown, handlePriorityChange, closePriorityDropdown } = usePriorityDropdown({
@@ -165,7 +144,7 @@ const JiraIssueDetail = () => {
 
   if (!activeAccount) {
     return (
-      <Layout ref={layoutRef}>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
         <Content>
           <ErrorMessage>계정을 먼저 설정해주세요.</ErrorMessage>
         </Content>
@@ -175,9 +154,9 @@ const JiraIssueDetail = () => {
 
   if (isLoading) {
     return (
-      <Layout ref={layoutRef}>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
         <Content>
-          <Loading>로딩 중...</Loading>
+          <Loading $theme={jiraTheme}>로딩 중...</Loading>
         </Content>
       </Layout>
     );
@@ -185,8 +164,8 @@ const JiraIssueDetail = () => {
 
   if (error || !issue) {
     return (
-      <Layout ref={layoutRef}>
-        <ToolbarArea>
+      <Layout ref={layoutRef} $theme={jiraTheme}>
+        <ToolbarArea $theme={jiraTheme}>
           <BackButton onClick={goBack}>
             &larr; 뒤로가기
           </BackButton>
@@ -199,28 +178,16 @@ const JiraIssueDetail = () => {
   }
 
   return (
-    <Layout ref={layoutRef}>
-      <ToolbarArea>
+    <Layout ref={layoutRef} $theme={jiraTheme}>
+      <ToolbarArea $theme={jiraTheme}>
         <BackButton onClick={goBack}>
           &larr; 뒤로가기
         </BackButton>
-        <Breadcrumbs>
-          {breadcrumbs.map((b) => (
-            <React.Fragment key={b.key}>
-              <BreadcrumbSep>&gt;</BreadcrumbSep>
-              <BreadcrumbItem onClick={() => goToBreadcrumb(b.key)} title={b.summary}>
-                <JiraTaskIcon type={resolveTaskType(b.issueTypeName)} size={14} />
-                <span>{b.key}</span>
-                {b.summary && <BreadcrumbSummary>{b.summary}</BreadcrumbSummary>}
-              </BreadcrumbItem>
-            </React.Fragment>
-          ))}
-          <BreadcrumbSep>&gt;</BreadcrumbSep>
-          <BreadcrumbCurrent title={issue.summary}>
-            <JiraTaskIcon type={resolveTaskType(issue.issueTypeName)} size={14} />
-            <span>{issue.key}</span>
-          </BreadcrumbCurrent>
-        </Breadcrumbs>
+        <JiraBreadcrumbs
+          breadcrumbs={breadcrumbs}
+          currentIssue={{ key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName }}
+          onNavigate={goToBreadcrumb}
+        />
       </ToolbarArea>
 
       <Content>
@@ -237,11 +204,11 @@ const JiraIssueDetail = () => {
 
         {/* 설명 */}
         {(issue.descriptionAdf || isEditingDesc) && (
-          <Section>
+          <Section $theme={jiraTheme}>
             <SectionHeader>
-              <SectionTitle>설명</SectionTitle>
+              <SectionTitle $theme={jiraTheme}>설명</SectionTitle>
               {!isEditingDesc && (
-                <EditIconButton $theme={jiraTheme} onClick={() => setIsEditingDesc(true)} title="설명 편집">
+                <EditIconButton $theme={jiraTheme} onClick={startEditDesc} title="설명 편집">
                   <Edit2 size={14} />
                 </EditIconButton>
               )}
@@ -256,7 +223,7 @@ const JiraIssueDetail = () => {
                   onSave={handleSaveDescription}
                 />
                 <EditorActions>
-                  <CancelButton $theme={jiraTheme} onClick={() => setIsEditingDesc(false)} disabled={isSavingDesc}>취소</CancelButton>
+                  <CancelButton $theme={jiraTheme} onClick={cancelEditDesc} disabled={isSavingDesc}>취소</CancelButton>
                   <SaveButton $theme={jiraTheme} onClick={handleSaveDescription} disabled={isSavingDesc}>
                     {isSavingDesc ? '저장 중...' : '저장'}
                   </SaveButton>
@@ -270,27 +237,13 @@ const JiraIssueDetail = () => {
 
         {/* 첨부 이미지 */}
         {attachments.length > 0 && (
-          <Section>
-            <SectionTitle>첨부 이미지 ({attachments.length})</SectionTitle>
-            <AttachmentGrid>
-              {attachments.map((att) => {
-                const src = attachmentImages[att.id];
-                return (
-                  <AttachmentItem key={att.id}>
-                    {src ? (
-                      <AttachmentImage
-                        src={src}
-                        alt={att.filename}
-                        onClick={() => setLightboxSrc(src)}
-                      />
-                    ) : (
-                      <AttachmentPlaceholder>로딩 중...</AttachmentPlaceholder>
-                    )}
-                    <AttachmentFilename title={att.filename}>{att.filename}</AttachmentFilename>
-                  </AttachmentItem>
-                );
-              })}
-            </AttachmentGrid>
+          <Section $theme={jiraTheme}>
+            <SectionTitle $theme={jiraTheme}>첨부 이미지 ({attachments.length})</SectionTitle>
+            <JiraAttachmentGrid
+              attachments={attachments}
+              attachmentImages={attachmentImages}
+              onImageClick={setLightboxSrc}
+            />
           </Section>
         )}
 
@@ -315,9 +268,7 @@ const JiraIssueDetail = () => {
 
         {/* 댓글 */}
         <JiraIssueComments
-          comments={comments}
-          commentsExpanded={commentsExpanded}
-          setCommentsExpanded={setCommentsExpanded}
+          commentState={commentState}
           buildCommentThreads={buildCommentThreads}
           handleAdfLinkClick={handleAdfLinkClick}
           mediaUrlMap={mediaUrlMap}
@@ -325,28 +276,7 @@ const JiraIssueDetail = () => {
           fileMetaMap={fileMetaMap}
           onFileClick={handleFileClick}
           accountId={activeAccount?.id}
-          issueKey={issueKey}
-          isSubmittingComment={isSubmittingComment}
-          replyTarget={replyTarget}
-          setReplyTarget={setReplyTarget}
-          editTarget={editTarget}
-          setEditTarget={setEditTarget}
-          editEditorEmpty={editEditorEmpty}
-          setEditEditorEmpty={setEditEditorEmpty}
-          editorEmpty={editorEmpty}
-          setEditorEmpty={setEditorEmpty}
-          isDeletingComment={isDeletingComment}
-          emojiPickerTarget={emojiPickerTarget}
-          setEmojiPickerTarget={setEmojiPickerTarget}
-          commentReactions={commentReactions}
-          newCommentRef={newCommentRef}
-          editCommentRef={editCommentRef}
-          handleAddComment={handleAddComment}
-          handleUpdateComment={handleUpdateComment}
-          handleDeleteComment={handleDeleteComment}
-          startReply={startReply}
-          startEdit={startEdit}
-          toggleReaction={toggleReaction}
+          issueKey={issueKey!}
         />
 
         {/* 연결된 업무 항목 */}
@@ -430,24 +360,16 @@ const JiraIssueDetail = () => {
 
 export default JiraIssueDetail;
 
-const Layout = styled.div`
-  flex: 1;
-  min-height: 0;
-  background: ${jiraTheme.bg.subtle};
+const Layout = styled(DetailLayout)`
   zoom: 1.2;
-  overflow-y: auto;
 `;
 
-const ToolbarArea = styled.div`
+const ToolbarArea = styled(Toolbar)`
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
-  background: ${jiraTheme.bg.default};
-  border-bottom: 1px solid ${jiraTheme.border};
 `;
 
 const BackButton = styled.button`
@@ -469,84 +391,18 @@ const BackButton = styled.button`
   }
 `;
 
-const Breadcrumbs = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-  overflow: hidden;
-  flex-wrap: wrap;
-`;
-
-const BreadcrumbSep = styled.span`
-  color: ${jiraTheme.text.muted};
-  font-size: 0.8125rem;
-  flex-shrink: 0;
-`;
-
-const BreadcrumbItem = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background: transparent;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 20px;
-  color: ${jiraTheme.primary};
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ${transition};
-  max-width: 280px;
-
-  &:hover {
-    background: ${jiraTheme.primaryLight};
-    border-color: ${jiraTheme.primary};
-  }
-`;
-
-const BreadcrumbSummary = styled.span`
-  color: ${jiraTheme.text.secondary};
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const BreadcrumbCurrent = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: ${jiraTheme.text.primary};
-  background: ${jiraTheme.bg.subtle};
-  border-radius: 3px;
-  white-space: nowrap;
-  flex-shrink: 0;
-`;
-
 const Content = styled.main<{ children?: React.ReactNode }>`
   max-width: 960px;
   margin: 0 auto;
   padding: 1.5rem;
 `;
 
-const Section = styled.div`
-  padding: 1.5rem;
-  background: ${jiraTheme.bg.default};
-  border-radius: 3px;
-  border: 1px solid ${jiraTheme.border};
+const Section = styled(CommonSection)`
   margin-bottom: 1rem;
 `;
 
-const SectionTitle = styled.h2`
+const SectionTitle = styled(CommonSectionTitle)`
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: ${jiraTheme.text.primary};
 `;
 
 const SectionHeader = styled.div`
@@ -556,62 +412,13 @@ const SectionHeader = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Loading = styled.div`
+const Loading = styled(EmptyState)`
   padding: 4rem 2rem;
-  text-align: center;
-  color: ${jiraTheme.text.secondary};
 `;
 
 const ErrorMessage = styled.div`
   padding: 2rem;
   text-align: center;
   color: #E5493A;
-`;
-
-const AttachmentGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
-`;
-
-const AttachmentItem = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-`;
-
-const AttachmentImage = styled.img`
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid ${jiraTheme.border};
-  cursor: pointer;
-  transition: opacity 0.15s ${transition};
-
-  &:hover {
-    opacity: 0.85;
-  }
-`;
-
-const AttachmentPlaceholder = styled.div`
-  width: 100%;
-  height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: ${jiraTheme.bg.subtle};
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 3px;
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.muted};
-`;
-
-const AttachmentFilename = styled.span`
-  font-size: 0.75rem;
-  color: ${jiraTheme.text.secondary};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 `;
 

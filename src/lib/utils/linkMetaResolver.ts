@@ -95,12 +95,14 @@ async function resolveJiraIssues(
       const matchUrls = issueKeyMap.get(key) || [];
       for (const u of matchUrls) {
         metaMap[u] = {
+          kind: 'jira-issue',
           type: 'jira',
           title: summary,
           issueKey: key,
           statusName,
           statusCategory,
           statusCategoryKey,
+          iconKind: 'jira-issue-type',
         };
       }
     }
@@ -129,7 +131,12 @@ async function resolveConfluencePages(
       if (!page) return;
       const title = str(page.title);
       if (!title) return;
-      for (const u of matchUrls) metaMap[u] = { type: 'confluence', title };
+      for (const u of matchUrls) metaMap[u] = {
+        kind: 'confluence-page',
+        type: 'confluence',
+        title,
+        iconKind: 'confluence-page',
+      };
     } catch { /* ignore */ }
   }));
 
@@ -160,7 +167,12 @@ async function resolveConfluenceTinyLinks(
       const title = str(infoObj.title);
       if (!title) continue;
       for (const u of (tinyKeyMap.get(tk) || [])) {
-        metaMap[u] = { type: 'confluence', title };
+        metaMap[u] = {
+          kind: 'confluence-page',
+          type: 'confluence',
+          title,
+          iconKind: 'confluence-page',
+        };
       }
     }
   } catch { /* ignore */ }

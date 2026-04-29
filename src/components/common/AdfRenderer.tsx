@@ -13,15 +13,53 @@ import { jiraTheme } from 'lib/styles/jiraTheme';
 
 type RendererAppearance = 'comment' | 'full-page' | 'full-width';
 
+/** 링크 종류 */
+export type LinkKind =
+  | 'jira-issue'
+  | 'jira-project'
+  | 'jira-board'
+  | 'jira-sprint'
+  | 'jira-dashboard'
+  | 'jira-filter'
+  | 'jira-queue'
+  | 'confluence-page'
+  | 'confluence-space'
+  | 'confluence-blog'
+  | 'confluence-attachment'
+  | 'confluence-tiny';
+
+/** 링크 좌측 아이콘 종류 (iconUrl 폴백용) */
+export type LinkIconKind =
+  | 'jira-issue-type'
+  | 'jira-project'
+  | 'jira-board'
+  | 'jira-sprint'
+  | 'jira-dashboard'
+  | 'confluence-page'
+  | 'confluence-space'
+  | 'generic';
+
 /** 링크 메타 정보 */
 export interface LinkMeta {
-  type: 'jira' | 'confluence';
+  /** 링크 종류 (NEW). 기존 'jira'/'confluence' 값은 jira-issue/confluence-page로 매핑 */
+  kind: LinkKind;
+  /** 박스 본문 메인 텍스트 */
   title: string;
+  /** 좌측 아이콘 URL (없으면 iconKind로 generic 폴백) */
+  iconUrl?: string;
+  iconKind?: LinkIconKind;
+  /** 보드 view 등 보조 라벨 (예: "타임라인", "백로그") */
+  viewLabel?: string;
+
+  // 이슈 전용
   issueKey?: string;
   statusName?: string;
   statusCategory?: string;
   /** Jira statusCategory.key — 항상 'new' | 'indeterminate' | 'done' 중 하나 */
   statusCategoryKey?: string;
+
+  /** @deprecated 호환용 — kind를 사용하라 */
+  type?: 'jira' | 'confluence';
 }
 
 /** 첨부파일 메타 정보 (비이미지) */

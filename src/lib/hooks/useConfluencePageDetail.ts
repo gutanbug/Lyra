@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
-import { extractJiraKeysFromHtml } from 'lib/utils/jiraLinkEnricher';
-import type { JiraIssueInfo } from 'lib/utils/jiraLinkEnricher';
+import { extractAtlassianUrlsFromHtml } from 'lib/utils/atlassianLinkEnricher';
 import type { ConfluencePageDetail as PageDetailType, ConfluenceComment } from 'types/confluence';
+
+interface JiraIssueInfo {
+  key: string;
+  summary: string;
+  statusName: string;
+  statusCategory: string;
+  issueTypeName: string;
+}
 import type { LinkMeta, FileMeta } from 'components/common/AdfRenderer';
 import { str, obj } from 'lib/utils/typeHelpers';
 import { extractMediaInfos, extractViewFileMap } from 'lib/utils/adfUtils';
@@ -156,7 +163,8 @@ export function useConfluencePageDetail(pageId: string) {
         // Jira 이슈 정보 조회 (HTML 렌더링용)
         const jiraIssuePromise = detail.bodyHtml
           ? (async () => {
-              const keys = extractJiraKeysFromHtml(detail.bodyHtml);
+              const candidates = extractAtlassianUrlsFromHtml(detail.bodyHtml);
+              const keys = candidates.filter((s) => /^[A-Z][A-Z0-9_]+-\d+$/.test(s));
               if (keys.length === 0) return {};
               try {
                 const result = await integrationController.invoke({
@@ -317,8 +325,21 @@ export function useConfluencePageDetail(pageId: string) {
 
         if (cancelled) return;
 
+        // HTML 본문에서 수집된 Jira 이슈 정보를 LinkMeta로 변환 후 ADF 결과와 병합
+        const htmlIssueLinkMetas: Record<string, LinkMeta> = {};
+        for (const [key, info] of Object.entries(resolvedJiraMap)) {
+          htmlIssueLinkMetas[key] = {
+            kind: 'jira-issue',
+            title: info.summary,
+            issueKey: key,
+            statusName: info.statusName,
+            statusCategory: info.statusCategory,
+            iconKind: 'jira-issue-type',
+          };
+        }
+
         // 모든 데이터 한번에 반영 → URL 깜빡임 없이 렌더링
-        setLinkMetaMap(resolvedLinks);
+        setLinkMetaMap({ ...resolvedLinks, ...htmlIssueLinkMetas });
         setJiraIssueMap(resolvedJiraMap);
         if (Object.keys(fileMetas).length > 0) setFileMetaMap(fileMetas);
         setPage(detail);

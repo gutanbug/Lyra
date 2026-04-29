@@ -39,7 +39,6 @@ const ConfluencePageDetailView = () => {
     error,
     attachmentUrlMap,
     fileMetaMap,
-    jiraIssueMap,
     lightboxSrc,
     setLightboxSrc,
     linkMetaMap,
@@ -196,7 +195,7 @@ const ConfluencePageDetailView = () => {
                   <ConfluenceHtmlBody
                     html={page.bodyHtml}
                     attachmentUrlMap={attachmentUrlMap}
-                    jiraIssueMap={jiraIssueMap}
+                    linkMetaMap={linkMetaMap}
                     onClick={handleContentClick}
                   />
                 )}

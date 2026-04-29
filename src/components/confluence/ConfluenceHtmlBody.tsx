@@ -2,19 +2,19 @@ import React from 'react';
 import styled from 'styled-components';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { resolveConfluenceAttachments } from 'lib/utils/confluenceToHtml';
-import { enrichJiraLinksInHtml } from 'lib/utils/jiraLinkEnricher';
-import type { JiraIssueInfo } from 'lib/utils/jiraLinkEnricher';
+import { enrichAtlassianLinksInHtml } from 'lib/utils/atlassianLinkEnricher';
+import type { LinkMeta } from 'components/common/AdfRenderer';
 
 interface Props {
   html: string;
   attachmentUrlMap?: Record<string, string>;
-  jiraIssueMap?: Record<string, JiraIssueInfo>;
+  linkMetaMap?: Record<string, LinkMeta>;
   onClick?: (e: React.MouseEvent<HTMLElement>) => void;
 }
 
-const ConfluenceHtmlBody = ({ html, attachmentUrlMap, jiraIssueMap, onClick }: Props) => {
+const ConfluenceHtmlBody = ({ html, attachmentUrlMap, linkMetaMap, onClick }: Props) => {
   const resolved = resolveConfluenceAttachments(html, attachmentUrlMap ?? {});
-  const enriched = enrichJiraLinksInHtml(resolved, jiraIssueMap ?? {});
+  const enriched = enrichAtlassianLinksInHtml(resolved, linkMetaMap ?? {});
   return (
     <RichContent onClick={onClick} dangerouslySetInnerHTML={{ __html: enriched }} />
   );
@@ -187,8 +187,8 @@ const RichContent = styled.div`
     }
   }
 
-  /* Jira 리치 링크 카드 */
-  a.jira-rich-link {
+  /* Atlassian 리치 링크 카드 (Jira 이슈, Confluence 페이지 등) */
+  a.atlassian-rich-link {
     display: inline-flex;
     align-items: center;
     text-decoration: none !important;
@@ -196,7 +196,7 @@ const RichContent = styled.div`
     vertical-align: middle;
   }
 
-  .jira-rich-link-inner {
+  .atlassian-rich-link-inner {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -213,21 +213,31 @@ const RichContent = styled.div`
     }
   }
 
-  .jira-rich-link-key {
+  .atlassian-rich-link-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .atlassian-rich-link-icon[class*="--generic"] {
+    display: inline-block;
+    background: ${confluenceTheme.bg.subtle};
+    border-radius: 3px;
+  }
+
+  .atlassian-rich-link-key {
     color: ${confluenceTheme.primary};
     font-weight: 600;
     white-space: nowrap;
   }
 
-  .jira-rich-link-summary {
+  .atlassian-rich-link-title {
     color: ${confluenceTheme.text.primary};
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 300px;
+    overflow: visible;
+    white-space: normal;
   }
 
-  .jira-rich-link-status {
+  .atlassian-rich-link-status {
     display: inline-flex;
     align-items: center;
     padding: 0.0625rem 0.375rem;

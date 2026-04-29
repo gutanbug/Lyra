@@ -19,8 +19,8 @@ describe('extractAtlassianUrlsFromHtml', () => {
   });
 
   it('deduplicates URLs', () => {
-    const html = '<a href="https://acme.atlassian.net/browse/X-1">a</a><a href="https://acme.atlassian.net/browse/X-1">b</a>';
-    expect(extractAtlassianUrlsFromHtml(html)).toEqual(['https://acme.atlassian.net/browse/X-1']);
+    const html = '<a href="https://acme.atlassian.net/browse/XY-1">a</a><a href="https://acme.atlassian.net/browse/XY-1">b</a>';
+    expect(extractAtlassianUrlsFromHtml(html)).toEqual(['https://acme.atlassian.net/browse/XY-1']);
   });
 });
 
@@ -78,12 +78,12 @@ describe('enrichAtlassianLinksInHtml', () => {
   });
 
   it('escapes HTML in title', () => {
-    const html = '<a href="https://acme.atlassian.net/browse/X-1">x</a>';
+    const html = '<a href="https://acme.atlassian.net/browse/XY-1">x</a>';
     const meta: Record<string, LinkMeta> = {
-      'https://acme.atlassian.net/browse/X-1': {
+      'https://acme.atlassian.net/browse/XY-1': {
         kind: 'jira-issue',
         title: '<script>alert(1)</script>',
-        issueKey: 'X-1',
+        issueKey: 'XY-1',
       },
     };
     const out = enrichAtlassianLinksInHtml(html, meta);

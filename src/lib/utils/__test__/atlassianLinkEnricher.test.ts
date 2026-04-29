@@ -90,4 +90,21 @@ describe('enrichAtlassianLinksInHtml', () => {
     expect(out).not.toContain('<script>');
     expect(out).toContain('&lt;script&gt;');
   });
+
+  it('renders card for legacy data-jira-key anchor', () => {
+    const html = '<a href="#" data-jira-key="PROJ-9">PROJ-9</a>';
+    const meta: Record<string, LinkMeta> = {
+      'PROJ-9': {
+        kind: 'jira-issue',
+        title: 'Legacy macro issue',
+        issueKey: 'PROJ-9',
+        statusName: 'Done',
+        statusCategory: 'done',
+      },
+    };
+    const out = enrichAtlassianLinksInHtml(html, meta);
+    expect(out).toContain('class="atlassian-rich-link"');
+    expect(out).toContain('Legacy macro issue');
+    expect(out).toContain('Done');
+  });
 });

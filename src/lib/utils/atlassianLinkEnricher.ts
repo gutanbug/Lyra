@@ -63,7 +63,8 @@ export function enrichAtlassianLinksInHtml(
 
 function renderCard(attrs: string, meta: LinkMeta): string {
   const kindAttr = ` data-link-kind="${escapeAttr(meta.kind)}"`;
-  const cleanAttrs = attrs.trim();
+  // 기존 anchor에 class 속성이 있으면 제거 — 우리는 atlassian-rich-link 클래스만 부여한다.
+  const cleanAttrs = attrs.replace(/\sclass="[^"]*"/i, '').trim();
 
   const iconHtml = meta.iconUrl
     ? `<img class="atlassian-rich-link-icon" src="${escapeAttr(meta.iconUrl)}" alt="" />`

@@ -32,6 +32,20 @@ function tryParseUrl(url: string): URL | null {
   catch { return null; }
 }
 
+/**
+ * Atlassian URL을 분류한다.
+ *
+ * **Currently produces:** jira-issue, jira-project, jira-board, jira-dashboard,
+ * jira-filter, confluence-page, confluence-space, confluence-blog, confluence-tiny.
+ *
+ * **Deferred (returns null for now):** jira-sprint, jira-queue, confluence-attachment.
+ *
+ * **Host validation:** 호출자는 Atlassian 도메인(*.atlassian.net 등)으로 입력 URL을
+ * 제한할 책임이 있다. 이 함수는 path 기반 매칭만 수행하므로,
+ * 임의 호스트의 `/browse/X-1` 같은 경로도 매칭될 수 있다.
+ *
+ * @returns AtlassianLinkRef 또는 매칭 실패 시 null.
+ */
 export function classifyAtlassianUrl(url: string): AtlassianLinkRef | null {
   const u = tryParseUrl(url);
   if (!u) return null;
@@ -45,10 +59,13 @@ export function classifyAtlassianUrl(url: string): AtlassianLinkRef | null {
     return { kind: 'jira-issue', baseUrl, url, ids: { issueKey: browseMatch[1] } };
   }
 
+  // 주의: selectedIssue 쿼리는 보드/타임라인 URL 위에 우선 적용됨.
+  //       이슈 오버레이가 활성화된 상태이므로 issue 카드를 표시하는 게 자연스러움.
   // Jira 이슈: ?selectedIssue=KEY-123
   const selectedIssue = search.get('selectedIssue');
-  if (selectedIssue && ISSUE_KEY_RE.test(selectedIssue)) {
-    return { kind: 'jira-issue', baseUrl, url, ids: { issueKey: selectedIssue } };
+  if (selectedIssue) {
+    const m = selectedIssue.match(ISSUE_KEY_RE);
+    if (m) return { kind: 'jira-issue', baseUrl, url, ids: { issueKey: m[1] } };
   }
 
   // Jira 보드: /jira/software/(c/)?projects/{KEY}/boards/{id}(/{view})?

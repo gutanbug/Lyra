@@ -56,6 +56,9 @@ export interface UseJiraIssueResult {
   cardUrlsSnapshot: string[];
   updateDescriptionAdf: (adf: unknown) => void;
   updatePriority: (priorityName: string) => void;
+  updateRawField: (fieldId: string, rawValue: unknown) => void;
+  /** 현재 issueKey의 단일 getIssue를 다시 호출해 raw + normalized 동기화. 편집 후 보정용. */
+  refetchIssue: () => Promise<void>;
   handleTransitionedForIssue: (targetKey: string, toName: string, toCategory: string) => void;
   handleAssignedForIssue: (targetKey: string, displayName: string) => void;
   goBack: () => void;
@@ -254,6 +257,57 @@ function useJiraIssue({
     setIssue((prev) => prev ? { ...prev, priorityName: newPriority } : prev);
   }, []);
 
+  /**
+   * 현재 이슈만 단일 fetch — 편집 후 서버 권위값으로 보정하기 위함.
+   * comments/remoteLinks/confluenceSearch는 다시 부르지 않아 가볍다.
+   */
+  const refetchIssue = useCallback(async () => {
+    if (!activeAccount || !issueKey) return;
+    try {
+      const issueData = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'getIssue',
+        params: { issueKey },
+      });
+      if (issueData && typeof issueData === 'object') {
+        const raw = issueData as Record<string, unknown>;
+        setRawIssueData(raw);
+        setIssue(normalizeDetail(raw));
+      }
+    } catch {
+      // apiErrorBus가 publish하므로 별도 처리 불필요
+    }
+  }, [activeAccount, issueKey]);
+
+  /**
+   * 임의 필드 raw 값을 즉시 갱신 (낙관적 업데이트).
+   * `rawIssueData.rawFields[fieldId]`를 교체하고, 정규화된 일부 필드(duedate, summary, reporter)도 동기화.
+   * 서버 응답 형태와 약간 차이가 있을 수 있으므로 다음 fetch에서 정합화됨.
+   */
+  const updateRawField = useCallback((fieldId: string, rawValue: unknown) => {
+    setRawIssueData((prev) => {
+      if (!prev || typeof prev !== 'object') return prev;
+      const cur = prev as Record<string, unknown>;
+      const prevRawFields = (cur.rawFields as Record<string, unknown> | undefined) ?? {};
+      return {
+        ...cur,
+        rawFields: { ...prevRawFields, [fieldId]: rawValue },
+      };
+    });
+    setIssue((prev) => {
+      if (!prev) return prev;
+      // 알려진 정규화 필드만 즉시 동기화
+      if (fieldId === 'summary' && typeof rawValue === 'string') {
+        return { ...prev, summary: rawValue };
+      }
+      if (fieldId === 'duedate' && (typeof rawValue === 'string' || rawValue === null)) {
+        return { ...prev, duedate: typeof rawValue === 'string' ? rawValue : '' };
+      }
+      return prev;
+    });
+  }, []);
+
   return {
     issue,
     linkedIssues,
@@ -268,6 +322,8 @@ function useJiraIssue({
     cardUrlsSnapshot,
     updateDescriptionAdf,
     updatePriority,
+    updateRawField,
+    refetchIssue,
     handleTransitionedForIssue,
     handleAssignedForIssue,
     goBack,

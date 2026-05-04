@@ -49,6 +49,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:setSelectedSpaces', (_, accountId: string, keys: string[]) =>
     SettingsManager.setSelectedSpaces(accountId, keys)
   );
+  ipcMain.handle(
+    'settings:getProjectFieldConfig',
+    (_, accountId: string, projectKey: string) =>
+      SettingsManager.getProjectFieldConfig(accountId, projectKey)
+  );
+  ipcMain.handle(
+    'settings:setProjectFieldConfig',
+    (_, accountId: string, projectKey: string, config: unknown) =>
+      SettingsManager.setProjectFieldConfig(
+        accountId,
+        projectKey,
+        config as Parameters<typeof SettingsManager.setProjectFieldConfig>[2]
+      )
+  );
 
   // === 사용 가능한 서비스 목록 ===
   ipcMain.handle('integration:getAvailable', () =>

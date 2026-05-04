@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAccount } from 'modules/contexts/account';
@@ -23,6 +23,7 @@ import { useFilePreview } from 'lib/hooks/useFilePreview';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import { useAdfBodyEditor } from 'lib/hooks/useAdfBodyEditor';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
+import JiraTransitionFieldsModal from 'containers/jira/JiraTransitionFieldsModal';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import AdfRenderer from 'components/common/AdfRenderer';
 import AdfBodyEditor from 'components/common/AdfBodyEditor';
@@ -35,6 +36,17 @@ import JiraLinkedIssues from 'components/jira/JiraLinkedIssues';
 import JiraConfluenceLinks from 'components/jira/JiraConfluenceLinks';
 import JiraBreadcrumbs from 'components/jira/JiraBreadcrumbs';
 import JiraAttachmentGrid from 'components/jira/JiraAttachmentGrid';
+import { useProjectFieldConfig } from 'lib/hooks/useProjectFieldConfig';
+import { useProjectFieldSchemas } from 'lib/hooks/useProjectFieldSchemas';
+import { resolveDetailFieldLayout, type SectionFieldId } from 'lib/utils/jiraDetailFieldConfig';
+import JiraFieldEditModal from 'containers/jira/JiraFieldEditModal';
+import type { JiraProjectField } from 'types/jira';
+
+/** duedate 등 메타 필드 ID에 대한 가상 ProjectField. schema가 별도 IPC 응답에 없으므로 합성. */
+const SYNTHETIC_SCHEMAS: Record<string, JiraProjectField> = {
+  duedate: { id: 'duedate', name: '마감일', required: false, schema: { type: 'date' } },
+  summary: { id: 'summary', name: '요약', required: false, schema: { type: 'string' } },
+};
 
 const JiraIssueDetail = () => {
   const { issueKey } = useParams<{ issueKey: string }>();
@@ -88,6 +100,9 @@ const JiraIssueDetail = () => {
     toggleConfluencePage,
     updateDescriptionAdf,
     updatePriority,
+    updateRawField,
+    refetchIssue,
+    rawFields,
   } = useJiraIssueDetail({
     issueKey,
     activeAccount,
@@ -99,7 +114,7 @@ const JiraIssueDetail = () => {
   const handleContentClick = useRichContentLinkHandler();
   const handleAdfLinkClick = useAdfLinkHandler(linkMetaMap);
 
-  const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition } = useTransitionDropdown({
+  const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition, pending: pendingTransition, submitPending: submitPendingTransition, cancelPending: cancelPendingTransition } = useTransitionDropdown({
     accountId: activeAccount?.id,
     serviceType: 'jira',
     onTransitioned: handleTransitioned,
@@ -141,6 +156,126 @@ const JiraIssueDetail = () => {
     serviceType: 'jira',
     onPriorityChanged: (_key, name) => updatePriority(name),
   });
+
+  // 프로젝트 필드 설정 → 상세 페이지 layout (섹션 순서/표시, 헤더 메타 그리드, 헤더 코어 가시성)
+  const projectKey = useMemo(() => (issueKey?.split('-')[0] ?? ''), [issueKey]);
+  const { config: fieldConfig } = useProjectFieldConfig(activeAccount?.id, projectKey);
+  const fieldSchemas = useProjectFieldSchemas(activeAccount?.id, projectKey);
+
+  // 편집 모달 (커스텀 필드 + duedate 등)
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const editingField: JiraProjectField | null = useMemo(() => {
+    if (!editingFieldId) return null;
+    return fieldSchemas[editingFieldId] ?? SYNTHETIC_SCHEMAS[editingFieldId] ?? null;
+  }, [editingFieldId, fieldSchemas]);
+  const editingCurrentValue = useMemo(() => {
+    if (!editingFieldId) return undefined;
+    // duedate는 NormalizedDetail에서, 그 외는 rawFields에서 읽음
+    if (editingFieldId === 'duedate') return issue?.duedate || null;
+    if (editingFieldId === 'summary') return issue?.summary || '';
+    return rawFields[editingFieldId];
+  }, [editingFieldId, issue, rawFields]);
+  const detailLayout = useMemo(() => {
+    if (!issue) return null;
+    return resolveDetailFieldLayout(fieldConfig, {
+      issue,
+      myDisplayName,
+      onOpenAssignee: openAssigneeDropdown,
+      rawFields,
+      schemas: fieldSchemas,
+    });
+  }, [fieldConfig, issue, myDisplayName, openAssigneeDropdown, rawFields, fieldSchemas]);
+
+  // 섹션 ID → 렌더러 매핑. label은 설정 오버라이드(또는 기본값)가 전달됨.
+  const sectionRenderers = useMemo<Record<SectionFieldId, (label: string) => React.ReactNode>>(
+    () => ({
+      description: (label) =>
+        (issue?.descriptionAdf || isEditingDesc) && issue && activeAccount ? (
+          <Section $theme={jiraTheme}>
+            <SectionHeader>
+              <SectionTitle $theme={jiraTheme}>{label}</SectionTitle>
+              {!isEditingDesc && (
+                <EditIconButton $theme={jiraTheme} onClick={startEditDesc} title={`${label} 편집`}>
+                  <Edit2 size={14} />
+                </EditIconButton>
+              )}
+            </SectionHeader>
+            {isEditingDesc ? (
+              <>
+                <AdfBodyEditor
+                  ref={descEditorRef}
+                  defaultValue={issue.descriptionAdf}
+                  accountId={activeAccount.id}
+                  issueKey={issueKey}
+                  onSave={handleSaveDescription}
+                />
+                <EditorActions>
+                  <CancelButton $theme={jiraTheme} onClick={cancelEditDesc} disabled={isSavingDesc}>취소</CancelButton>
+                  <SaveButton $theme={jiraTheme} onClick={handleSaveDescription} disabled={isSavingDesc}>
+                    {isSavingDesc ? '저장 중...' : '저장'}
+                  </SaveButton>
+                </EditorActions>
+              </>
+            ) : (
+              <AdfRenderer document={issue.descriptionAdf} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onFileClick={handleFileClick} />
+            )}
+          </Section>
+        ) : null,
+      attachment: (label) =>
+        attachments.length > 0 ? (
+          <Section $theme={jiraTheme}>
+            <SectionTitle $theme={jiraTheme}>{label} ({attachments.length})</SectionTitle>
+            <JiraAttachmentGrid
+              attachments={attachments}
+              attachmentImages={attachmentImages}
+              onImageClick={setLightboxSrc}
+            />
+          </Section>
+        ) : null,
+      subtasks: () => (
+        <JiraChildIssues
+          childIssues={childIssues}
+          childIssuesLoading={childIssuesLoading}
+          expandedChildren={expandedChildren}
+          setExpandedChildren={setExpandedChildren}
+          goToChildIssue={goToChildIssue}
+          myDisplayName={myDisplayName}
+          onOpenTransition={openTransitionDropdown}
+          onOpenAssignee={openAssigneeDropdown}
+          onOpenPriority={openPriorityDropdown}
+        />
+      ),
+      comment: () => (
+        <JiraIssueComments
+          commentState={commentState}
+          buildCommentThreads={buildCommentThreads}
+          handleAdfLinkClick={handleAdfLinkClick}
+          mediaUrlMap={mediaUrlMap}
+          linkMetaMap={linkMetaMap}
+          fileMetaMap={fileMetaMap}
+          onFileClick={handleFileClick}
+          accountId={activeAccount?.id}
+          issueKey={issueKey!}
+        />
+      ),
+      issuelinks: () => (
+        <JiraLinkedIssues
+          linkedIssues={linkedIssues}
+          goToChildIssue={goToChildIssue}
+          onOpenTransition={openTransitionDropdown}
+        />
+      ),
+    }),
+    [
+      issue, isEditingDesc, descEditorRef, activeAccount, issueKey,
+      handleSaveDescription, cancelEditDesc, isSavingDesc, startEditDesc,
+      handleAdfLinkClick, mediaUrlMap, linkMetaMap, fileMetaMap, handleFileClick,
+      attachments, attachmentImages, setLightboxSrc,
+      childIssues, childIssuesLoading, expandedChildren, setExpandedChildren,
+      goToChildIssue, myDisplayName, openTransitionDropdown, openAssigneeDropdown, openPriorityDropdown,
+      commentState, linkedIssues,
+    ],
+  );
 
   if (!activeAccount) {
     return (
@@ -192,7 +327,7 @@ const JiraIssueDetail = () => {
 
       <Content>
         <>
-        {/* 헤더 */}
+        {/* 헤더 — 코어(요약/타입/상태/우선순위) 가시성 + MetaGrid 순서 모두 설정 반영 */}
         <JiraIssueHeader
           issue={issue}
           myDisplayName={myDisplayName}
@@ -200,52 +335,17 @@ const JiraIssueDetail = () => {
           onOpenTransition={openTransitionDropdown}
           onOpenAssignee={openAssigneeDropdown}
           onOpenPriority={openPriorityDropdown}
+          metaFields={detailLayout?.metaFields}
+          visibility={detailLayout?.visibility}
+          onEditField={setEditingFieldId}
         />
 
-        {/* 설명 */}
-        {(issue.descriptionAdf || isEditingDesc) && (
-          <Section $theme={jiraTheme}>
-            <SectionHeader>
-              <SectionTitle $theme={jiraTheme}>설명</SectionTitle>
-              {!isEditingDesc && (
-                <EditIconButton $theme={jiraTheme} onClick={startEditDesc} title="설명 편집">
-                  <Edit2 size={14} />
-                </EditIconButton>
-              )}
-            </SectionHeader>
-            {isEditingDesc ? (
-              <>
-                <AdfBodyEditor
-                  ref={descEditorRef}
-                  defaultValue={issue.descriptionAdf}
-                  accountId={activeAccount.id}
-                  issueKey={issueKey}
-                  onSave={handleSaveDescription}
-                />
-                <EditorActions>
-                  <CancelButton $theme={jiraTheme} onClick={cancelEditDesc} disabled={isSavingDesc}>취소</CancelButton>
-                  <SaveButton $theme={jiraTheme} onClick={handleSaveDescription} disabled={isSavingDesc}>
-                    {isSavingDesc ? '저장 중...' : '저장'}
-                  </SaveButton>
-                </EditorActions>
-              </>
-            ) : (
-              <AdfRenderer document={issue.descriptionAdf} onLinkClick={handleAdfLinkClick} mediaUrlMap={mediaUrlMap} linkMetaMap={linkMetaMap} fileMetaMap={fileMetaMap} onFileClick={handleFileClick} />
-            )}
-          </Section>
-        )}
-
-        {/* 첨부 이미지 */}
-        {attachments.length > 0 && (
-          <Section $theme={jiraTheme}>
-            <SectionTitle $theme={jiraTheme}>첨부 이미지 ({attachments.length})</SectionTitle>
-            <JiraAttachmentGrid
-              attachments={attachments}
-              attachmentImages={attachmentImages}
-              onImageClick={setLightboxSrc}
-            />
-          </Section>
-        )}
+        {/* 본문 섹션 — 설정에서 활성화된 필드만, 저장된 순서대로 렌더 */}
+        {(detailLayout?.sections ?? []).map((s) => {
+          const renderer = sectionRenderers[s.id];
+          if (!renderer) return null;
+          return <React.Fragment key={s.id}>{renderer(s.label)}</React.Fragment>;
+        })}
 
         {lightboxSrc && (
           <LightboxOverlay onClick={() => setLightboxSrc(null)}>
@@ -253,40 +353,7 @@ const JiraIssueDetail = () => {
           </LightboxOverlay>
         )}
 
-        {/* 하위 업무 항목 */}
-        <JiraChildIssues
-          childIssues={childIssues}
-          childIssuesLoading={childIssuesLoading}
-          expandedChildren={expandedChildren}
-          setExpandedChildren={setExpandedChildren}
-          goToChildIssue={goToChildIssue}
-          myDisplayName={myDisplayName}
-          onOpenTransition={openTransitionDropdown}
-          onOpenAssignee={openAssigneeDropdown}
-          onOpenPriority={openPriorityDropdown}
-        />
-
-        {/* 댓글 */}
-        <JiraIssueComments
-          commentState={commentState}
-          buildCommentThreads={buildCommentThreads}
-          handleAdfLinkClick={handleAdfLinkClick}
-          mediaUrlMap={mediaUrlMap}
-          linkMetaMap={linkMetaMap}
-          fileMetaMap={fileMetaMap}
-          onFileClick={handleFileClick}
-          accountId={activeAccount?.id}
-          issueKey={issueKey!}
-        />
-
-        {/* 연결된 업무 항목 */}
-        <JiraLinkedIssues
-          linkedIssues={linkedIssues}
-          goToChildIssue={goToChildIssue}
-          onOpenTransition={openTransitionDropdown}
-        />
-
-        {/* Confluence 콘텐츠 */}
+        {/* Confluence 콘텐츠 — Jira 필드 아님, 항상 끝에 노출 */}
         <JiraConfluenceLinks
           confluenceLinks={confluenceLinks}
           expandedPages={expandedPages}
@@ -307,6 +374,34 @@ const JiraIssueDetail = () => {
           dropdownRef={transitionRef}
           onSelect={executeTransition}
           onClose={closeTransition}
+        />
+      )}
+      {pendingTransition && (
+        <JiraTransitionFieldsModal
+          accountId={activeAccount?.id}
+          issueKey={pendingTransition.issueKey}
+          transition={pendingTransition.transition}
+          baseUrl={(activeAccount?.credentials as { baseUrl?: string } | undefined)?.baseUrl}
+          onSubmit={submitPendingTransition}
+          onClose={cancelPendingTransition}
+        />
+      )}
+      {editingFieldId && editingField && activeAccount && (
+        <JiraFieldEditModal
+          accountId={activeAccount.id}
+          issueKey={issueKey}
+          projectKey={projectKey}
+          field={editingField}
+          currentValue={editingCurrentValue}
+          baseUrl={(activeAccount.credentials as { baseUrl?: string }).baseUrl}
+          onSaved={(fieldId, rawValue) => {
+            // 1) 즉시 표시 갱신 (optimistic)
+            updateRawField(fieldId, rawValue);
+            // 2) 서버 권위값으로 보정 — version/component/user 등 클라이언트에서
+            //    풍부화하지 못한 타입의 표시 오류를 자동 교정
+            refetchIssue();
+          }}
+          onClose={() => setEditingFieldId(null)}
         />
       )}
       {assigneeTarget && (

@@ -8,16 +8,29 @@ interface TransitionPosition {
   left: number;
 }
 
+interface PendingTransition {
+  issueKey: string;
+  transition: JiraTransition;
+  toName: string;
+  toCategory: string;
+}
+
 interface UseTransitionDropdownOptions {
   accountId: string | undefined;
   serviceType: string;
   onTransitioned?: (issueKey: string, toName: string, toCategory: string) => void;
 }
 
+const hasRequiredFields = (transition: JiraTransition): boolean => {
+  const fields = transition.fields ?? {};
+  return Object.values(fields).some((f) => f?.required);
+};
+
 export function useTransitionDropdown({ accountId, serviceType, onTransitioned }: UseTransitionDropdownOptions) {
   const [target, setTarget] = useState<TransitionPosition | null>(null);
   const [transitions, setTransitions] = useState<JiraTransition[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [pending, setPending] = useState<PendingTransition | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const open = useCallback(async (issueKey: string, currentStatusName: string, e: React.MouseEvent) => {
@@ -51,22 +64,48 @@ export function useTransitionDropdown({ accountId, serviceType, onTransitioned }
     }
   }, [accountId, serviceType, target]);
 
+  const performTransition = useCallback(async (
+    issueKey: string,
+    transitionId: string,
+    toName: string,
+    toCategory: string,
+    fields?: Record<string, unknown>,
+  ) => {
+    if (!accountId) return;
+    await integrationController.invoke({
+      accountId,
+      serviceType,
+      action: 'transitionIssue',
+      params: { issueKey, transitionId, ...(fields ? { fields } : {}) },
+    });
+    onTransitioned?.(issueKey, toName, toCategory);
+  }, [accountId, serviceType, onTransitioned]);
+
   const execute = useCallback(async (issueKey: string, transitionId: string, toName: string, toCategory: string) => {
     if (!accountId) return;
+    const transition = transitions.find((t) => t.id === transitionId);
+    if (transition && hasRequiredFields(transition)) {
+      // 필수 필드가 있는 전환 → 모달로 위임
+      setPending({ issueKey, transition, toName, toCategory });
+      setTarget(null);
+      return;
+    }
     try {
-      await integrationController.invoke({
-        accountId,
-        serviceType,
-        action: 'transitionIssue',
-        params: { issueKey, transitionId },
-      });
-      onTransitioned?.(issueKey, toName, toCategory);
+      await performTransition(issueKey, transitionId, toName, toCategory);
     } catch (err) {
       console.error('[useTransitionDropdown] transitionIssue error:', err);
     } finally {
       setTarget(null);
     }
-  }, [accountId, serviceType, onTransitioned]);
+  }, [accountId, transitions, performTransition]);
+
+  const submitPending = useCallback(async (fields: Record<string, unknown>) => {
+    if (!pending) return;
+    await performTransition(pending.issueKey, pending.transition.id, pending.toName, pending.toCategory, fields);
+    setPending(null);
+  }, [pending, performTransition]);
+
+  const cancelPending = useCallback(() => setPending(null), []);
 
   const close = useCallback(() => setTarget(null), []);
 
@@ -81,5 +120,16 @@ export function useTransitionDropdown({ accountId, serviceType, onTransitioned }
     return () => document.removeEventListener('mousedown', handleClick);
   }, [target]);
 
-  return { target, transitions, isLoading, dropdownRef, open, execute, close };
+  return {
+    target,
+    transitions,
+    isLoading,
+    dropdownRef,
+    open,
+    execute,
+    close,
+    pending,
+    submitPending,
+    cancelPending,
+  };
 }

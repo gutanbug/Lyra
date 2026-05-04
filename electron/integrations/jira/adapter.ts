@@ -20,6 +20,10 @@ interface InvokeParams {
   assigneeAccountId?: string | null;
   description?: unknown;
   priorityName?: string;
+  fields?: Record<string, unknown>;
+  projectKey?: string;
+  fieldId?: string;
+  fieldValue?: unknown;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -73,6 +77,10 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       getIssueTypes: (params: unknown) => this.getIssueTypes(params),
       getTransitions: (params: unknown) => this.getTransitions(params),
       transitionIssue: (params: unknown) => this.transitionIssue(params),
+      getProjectVersions: (params: unknown) => this.getProjectVersions(params),
+      getProjectComponents: (params: unknown) => this.getProjectComponents(params),
+      getProjectFields: (params: unknown) => this.getProjectFields(params),
+      updateIssueField: (params: unknown) => this.updateIssueField(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
       searchUsers: (params: unknown) => this.searchUsers(params),
       searchAssignableUsers: (params: unknown) => this.searchAssignableUsers(params),
@@ -158,11 +166,41 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
   }
 
   private async transitionIssue(params: unknown): Promise<unknown> {
-    const { credentials, issueKey, transitionId } = (params || {}) as InvokeParams;
+    const { credentials, issueKey, transitionId, fields } = (params || {}) as InvokeParams;
     if (!issueKey) throw new Error('issueKey is required');
     if (!transitionId) throw new Error('transitionId is required');
     const client = new JiraClient(credentials);
-    await client.transitionIssue(issueKey, transitionId);
+    await client.transitionIssue(issueKey, transitionId, fields);
+    return { success: true };
+  }
+
+  private async getProjectVersions(params: unknown): Promise<unknown> {
+    const { credentials, projectKey } = (params || {}) as InvokeParams;
+    if (!projectKey) throw new Error('projectKey is required');
+    const client = new JiraClient(credentials);
+    return client.getProjectVersions(projectKey);
+  }
+
+  private async getProjectFields(params: unknown): Promise<unknown> {
+    const { credentials, projectKey } = (params || {}) as InvokeParams;
+    if (!projectKey) throw new Error('projectKey is required');
+    const client = new JiraClient(credentials);
+    return client.getProjectFields(projectKey);
+  }
+
+  private async getProjectComponents(params: unknown): Promise<unknown> {
+    const { credentials, projectKey } = (params || {}) as InvokeParams;
+    if (!projectKey) throw new Error('projectKey is required');
+    const client = new JiraClient(credentials);
+    return client.getProjectComponents(projectKey);
+  }
+
+  private async updateIssueField(params: unknown): Promise<unknown> {
+    const { credentials, issueKey, fieldId, fieldValue } = (params || {}) as InvokeParams;
+    if (!issueKey) throw new Error('issueKey is required');
+    if (!fieldId) throw new Error('fieldId is required');
+    const client = new JiraClient(credentials);
+    await client.updateIssueField(issueKey, fieldId, fieldValue);
     return { success: true };
   }
 

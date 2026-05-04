@@ -11,6 +11,9 @@ import { groupByEpic } from 'lib/utils/jiraNormalizers';
 import { isEpicType } from 'lib/utils/jiraUtils';
 import type { NormalizedIssue } from 'types/jira';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
+import JiraTransitionFieldsModal from 'containers/jira/JiraTransitionFieldsModal';
+import JiraProjectFieldSettingsModal from 'containers/jira/JiraProjectFieldSettingsModal';
+import { Settings as SettingsIcon } from 'lucide-react';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
 import JiraSearchToolbar from 'components/jira/JiraSearchToolbar';
@@ -32,6 +35,9 @@ const JiraDashboard = () => {
 
   // 우클릭 컨텍스트 메뉴
   const [itemContextMenu, setItemContextMenu] = useState<{ x: number; y: number; path: string; label: string } | null>(null);
+
+  // 프로젝트 필드 설정 모달 (스페이스 필터에서 톱니 클릭 시 진입)
+  const [editingFieldsProjectKey, setEditingFieldsProjectKey] = useState<string | null>(null);
 
   const handleItemContextMenu = useCallback((e: React.MouseEvent, path: string, label: string) => {
     e.preventDefault();
@@ -67,7 +73,7 @@ const JiraDashboard = () => {
     handleTransitioned, handleAssigned, saveSpaceSettings,
   } = search;
 
-  const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition } = useTransitionDropdown({
+  const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition, pending: pendingTransition, submitPending: submitPendingTransition, cancelPending: cancelPendingTransition } = useTransitionDropdown({
     accountId: activeAccount?.id,
     serviceType: 'jira',
     onTransitioned: handleTransitioned,
@@ -207,7 +213,7 @@ const JiraDashboard = () => {
         onItemContextMenu={handleItemContextMenu}
       />
 
-      {showSpaceSettings && (
+      {showSpaceSettings && !editingFieldsProjectKey && (
         <SpaceFilterModal
           theme={jiraTheme}
           description={`선택한 스페이스의 이슈만 조회 및 검색됩니다.${
@@ -234,8 +240,30 @@ const JiraDashboard = () => {
               setSelectedProjects([]);
             }
           }}
+          renderItemAction={(key) => (
+            <SpaceSettingsBtn
+              type="button"
+              title="필드 설정"
+              onClick={() => setEditingFieldsProjectKey(key)}
+            >
+              <SettingsIcon size={14} />
+            </SpaceSettingsBtn>
+          )}
           onSave={saveSpaceSettings}
           onClose={() => setShowSpaceSettings(false)}
+        />
+      )}
+
+      {editingFieldsProjectKey && activeAccount?.id && (
+        <JiraProjectFieldSettingsModal
+          accountId={activeAccount.id}
+          projectKey={editingFieldsProjectKey}
+          projectName={projects.find((p) => p.key === editingFieldsProjectKey)?.name}
+          onBack={() => setEditingFieldsProjectKey(null)}
+          onClose={() => {
+            setEditingFieldsProjectKey(null);
+            setShowSpaceSettings(false);
+          }}
         />
       )}
 
@@ -247,6 +275,16 @@ const JiraDashboard = () => {
           dropdownRef={transitionRef}
           onSelect={executeTransition}
           onClose={closeTransition}
+        />
+      )}
+      {pendingTransition && (
+        <JiraTransitionFieldsModal
+          accountId={activeAccount?.id}
+          issueKey={pendingTransition.issueKey}
+          transition={pendingTransition.transition}
+          baseUrl={(activeAccount?.credentials as { baseUrl?: string } | undefined)?.baseUrl}
+          onSubmit={submitPendingTransition}
+          onClose={cancelPendingTransition}
         />
       )}
       {assigneeTarget && (
@@ -310,4 +348,18 @@ const EmptyCenter = styled.div`
   text-align: center;
   color: ${jiraTheme.text.muted};
   font-size: 0.95rem;
+`;
+
+const SpaceSettingsBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: ${jiraTheme.text.muted};
+  cursor: pointer;
+  &:hover { background: ${jiraTheme.bg.hover}; color: ${jiraTheme.text.primary}; }
 `;

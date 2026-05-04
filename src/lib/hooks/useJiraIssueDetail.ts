@@ -3,7 +3,7 @@
  * 5개 소 훅(useJiraIssue/Attachments/ChildIssues/ConfluenceLinks/CardMetaMap)을 합성하고
  * transition/assigned 핸들러를 합성해 외부에 기존 시그니처를 그대로 노출.
  */
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import { isSubTaskType } from 'lib/utils/jiraUtils';
 import useJiraIssue from 'lib/hooks/useJiraIssue';
 import useJiraCardMetaMap from 'lib/hooks/useJiraCardMetaMap';
@@ -91,6 +91,14 @@ export function useJiraIssueDetail({
     }
   }, [cardUrlsSnapshot, ingestUrls]);
 
+  // 이슈 raw fields (customfield_* 등 커스텀 필드 렌더링용)
+  const rawFields = useMemo<Record<string, unknown>>(() => {
+    const data = issueHook.rawIssueData;
+    if (!data || typeof data !== 'object') return {};
+    const r = (data as Record<string, unknown>).rawFields;
+    return r && typeof r === 'object' ? (r as Record<string, unknown>) : {};
+  }, [issueHook.rawIssueData]);
+
   const handleTransitioned = useCallback((targetKey: string, toName: string, toCategory: string) => {
     issueHook.handleTransitionedForIssue(targetKey, toName, toCategory);
     handleTransitionedForChildren(targetKey, toName, toCategory);
@@ -130,5 +138,8 @@ export function useJiraIssueDetail({
     toggleConfluencePage,
     updateDescriptionAdf: issueHook.updateDescriptionAdf,
     updatePriority: issueHook.updatePriority,
+    updateRawField: issueHook.updateRawField,
+    refetchIssue: issueHook.refetchIssue,
+    rawFields,
   };
 }

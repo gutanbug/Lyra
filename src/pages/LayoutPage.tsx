@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import Header from 'components/layout/Header';
 import Modal from 'containers/modal';
 import Snackbar from 'containers/common/Snackbar';
+import ApiErrorSnackbar from 'containers/common/ApiErrorSnackbar';
 
 const JiraPage = lazy(() => import('pages/JiraPage'));
 const ConfluencePage = lazy(() => import('pages/ConfluencePage'));
@@ -254,6 +255,7 @@ const LayoutPage = () => {
 
       <Modal />
       <Snackbar />
+      <ApiErrorSnackbar />
     </Page>
   );
 };

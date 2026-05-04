@@ -1,4 +1,5 @@
 import type { Account, AccountInput } from 'types/account';
+import { publishApiError } from 'lib/utils/apiErrorBus';
 
 declare const window: Window & {
   workspaceAPI?: {
@@ -46,11 +47,22 @@ export const integrationController = {
     api()?.integration.getAvailable() ?? Promise.resolve([]),
   validate: (serviceType: string, credentials: unknown) =>
     api()?.integration.validate({ serviceType, credentials }) ?? Promise.resolve(false),
+  /**
+   * 모든 서비스(Jira/Confluence/...) 액션의 단일 진입점.
+   * 실패 시 `apiErrorBus`로 publish하여 전역 스낵바에 노출되도록 한 뒤 그대로 re-throw —
+   * 호출자의 인라인 에러 처리(catch)는 영향 없이 동작.
+   */
   invoke: (payload: {
     accountId: string;
     serviceType: string;
     action: string;
     params?: Record<string, unknown>;
-  }) =>
-    api()?.integration.invoke(payload) ?? Promise.reject(new Error('workspaceAPI not available')),
+  }) => {
+    const promise = api()?.integration.invoke(payload)
+      ?? Promise.reject(new Error('workspaceAPI not available'));
+    return promise.catch((error: unknown) => {
+      publishApiError({ serviceType: payload.serviceType, action: payload.action, error });
+      throw error;
+    });
+  },
 };

@@ -6,6 +6,7 @@ import { AgentManager } from '../integrations/agents/manager';
 import type { AgentId } from '../integrations/agents/types';
 import { startTurn as startAgentTurn, cancelTurn as cancelAgentTurn } from '../integrations/agents/runner';
 import type { StartTurnPayload, TurnEvent } from '../integrations/agents/runner';
+import { discoverCommands } from '../integrations/agents/discovery';
 
 export interface InvokePayload {
   accountId: string;
@@ -135,4 +136,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('agents:cancelTurn', (_, turnId: string) => cancelAgentTurn(turnId));
+
+  ipcMain.handle('agents:listCommands', (_, id: AgentId) => discoverCommands(id));
 }

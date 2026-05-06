@@ -64,5 +64,6 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
         ipcRenderer.removeListener('agents:turnEvent', listener);
       };
     },
+    listCommands: (id: string) => ipcRenderer.invoke('agents:listCommands', id),
   },
 });

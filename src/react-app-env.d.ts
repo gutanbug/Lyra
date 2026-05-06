@@ -54,6 +54,9 @@ declare global {
             costUsd?: number;
           }) => void,
         ) => () => void;
+        listCommands: (
+          id: import('types/agent').AgentId,
+        ) => Promise<Array<{ name: string; description: string; source: string }>>;
       };
     };
   }

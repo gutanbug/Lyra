@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useHistory } from 'react-router-dom';
 import styled from 'styled-components';
 import { ChevronDown, Send, Square, X } from 'lucide-react';
 import { theme } from 'lib/styles/theme';
@@ -6,7 +7,7 @@ import { transition } from 'lib/styles/styles';
 import { useAgentSidebar } from 'modules/contexts/agentSidebar';
 import { AGENT_IDS, AGENT_META } from 'types/agent';
 import type { AgentId, AgentStatus } from 'types/agent';
-import { BUILTIN_SLASH_COMMANDS, matchSlashQuery } from 'lib/agentCommands';
+import { BUILTIN_SLASH_COMMANDS, matchSlashQuery, mergeCommands } from 'lib/agentCommands';
 import type { SlashCommand } from 'lib/agentCommands';
 
 interface ChatMessage {
@@ -29,6 +30,18 @@ function getConnectionState(s: AgentStatus): ConnectionState {
   if (!s.authenticated) return 'not_authenticated';
   return 'connected';
 }
+
+/** 클라이언트에서 흡수하는 인터랙티브 전용 슬래시 커맨드 집합 */
+const LOCAL_SLASH_COMMANDS = new Set([
+  '/clear',
+  '/exit',
+  '/quit',
+  '/help',
+  '/status',
+  '/config',
+  '/login',
+  '/logout',
+]);
 
 const DEFAULT_AGENT_STATUSES: AgentStatus[] = AGENT_IDS.map((id) => ({
   id,
@@ -61,6 +74,7 @@ function loadWidth(): number {
 }
 
 const AgentChatSidebar = () => {
+  const history = useHistory();
   const { open, closeSidebar } = useAgentSidebar();
   const [width, setWidth] = useState<number>(loadWidth);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -75,6 +89,11 @@ const AgentChatSidebar = () => {
     claude: null,
     codex: null,
     gemini: null,
+  });
+  const [discoveredMap, setDiscoveredMap] = useState<Record<AgentId, SlashCommand[]>>({
+    claude: [],
+    codex: [],
+    gemini: [],
   });
 
   const dragging = useRef(false);
@@ -172,6 +191,27 @@ const AgentChatSidebar = () => {
     return () => { cancelled = true; };
   }, [open]);
 
+  // 선택된 agent의 슬래시 커맨드 디스커버리 (사이드바 열림 + agent 변경 시)
+  useEffect(() => {
+    if (!open || !selectedAgentId) return;
+    const api = (typeof window !== 'undefined' && window.workspaceAPI?.agents) || null;
+    if (!api?.listCommands) return;
+    let cancelled = false;
+    const targetId = selectedAgentId;
+    api.listCommands(targetId)
+      .then((list) => {
+        if (cancelled) return;
+        const mapped: SlashCommand[] = list.map((c) => ({
+          name: c.name,
+          description: c.description,
+          source: c.source,
+        }));
+        setDiscoveredMap((prev) => ({ ...prev, [targetId]: mapped }));
+      })
+      .catch(() => { /* 디스커버리 실패는 조용히 무시 — 빌트인만 표시 */ });
+    return () => { cancelled = true; };
+  }, [open, selectedAgentId]);
+
   // 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
     if (!agentMenuOpen) return;
@@ -219,6 +259,96 @@ const AgentChatSidebar = () => {
     document.body.style.userSelect = 'none';
   }, [width]);
 
+  const addLocalAssistantMessage = (text: string) => {
+    const now = Date.now();
+    setMessages((prev) => [
+      ...prev,
+      { id: `s-${now}-${Math.random().toString(36).slice(2, 6)}`, role: 'assistant', content: text, createdAt: now },
+    ]);
+  };
+
+  const buildHelpText = (): string => {
+    const groups = new Map<string, SlashCommand[]>();
+    for (const cmd of availableCommands) {
+      const key = cmd.source ?? 'builtin';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(cmd);
+    }
+    const sourceOrder = (k: string): number => {
+      if (k === 'builtin') return 0;
+      if (k === 'user') return 1;
+      if (k.startsWith('plugin:')) return 2;
+      if (k.startsWith('extension:')) return 3;
+      return 4;
+    };
+    const orderedKeys = [...groups.keys()].sort((a, b) => {
+      const d = sourceOrder(a) - sourceOrder(b);
+      return d !== 0 ? d : a.localeCompare(b);
+    });
+    const lines: string[] = ['사용 가능한 명령어:'];
+    for (const key of orderedKeys) {
+      lines.push('');
+      lines.push(`[${key}]`);
+      for (const c of groups.get(key)!) {
+        const args = c.args ? ` ${c.args}` : '';
+        lines.push(`  ${c.name}${args} — ${c.description}`);
+      }
+    }
+    return lines.join('\n');
+  };
+
+  const buildStatusText = (): string => {
+    if (!selectedAgentId) return '선택된 AI Agent가 없습니다.';
+    const meta = AGENT_META[selectedAgentId];
+    const s = selectedStatus;
+    const sessionId = sessionMap[selectedAgentId];
+    const lines: string[] = [
+      `Agent: ${meta.displayName}${s?.version ? ` (${s.version})` : ''}`,
+      `연결 상태: ${CONNECTION_LABEL[selectedConnection]}` +
+        (s && s.authMethod !== 'none' ? ` · ${s.authMethod}` : ''),
+      `세션 ID: ${sessionId ?? '(없음)'}`,
+      `바이너리: ${s?.binaryPath ?? '(미발견)'}`,
+    ];
+    return lines.join('\n');
+  };
+
+  /**
+   * 인터랙티브 전용 슬래시 커맨드를 클라이언트에서 흡수.
+   * @returns 처리됐으면 true (CLI에 prompt로 전달하지 않음)
+   */
+  const runLocalSlash = (cmd: string): boolean => {
+    switch (cmd) {
+      case '/clear':
+        if (selectedAgentId) {
+          setSessionMap((prev) => ({ ...prev, [selectedAgentId]: null }));
+        }
+        setMessages([]);
+        return true;
+      case '/exit':
+      case '/quit':
+        addLocalAssistantMessage('사이드바를 닫았습니다.');
+        setTimeout(() => closeSidebar(), 50);
+        return true;
+      case '/help':
+        addLocalAssistantMessage(buildHelpText());
+        return true;
+      case '/status':
+        addLocalAssistantMessage(buildStatusText());
+        return true;
+      case '/config':
+        addLocalAssistantMessage('환경설정으로 이동합니다.');
+        history.push('/settings');
+        return true;
+      case '/login':
+      case '/logout':
+        addLocalAssistantMessage('AI Agent 인증 화면으로 이동합니다.');
+        history.push('/settings?tab=agents');
+        return true;
+      default:
+        return false;
+    }
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
@@ -226,14 +356,16 @@ const AgentChatSidebar = () => {
 
     const now = Date.now();
 
-    // 로컬 라우팅: /clear → 메시지·세션 초기화
-    if (text === '/clear') {
-      if (selectedAgentId) {
-        setSessionMap((prev) => ({ ...prev, [selectedAgentId]: null }));
-      }
-      setMessages([]);
+    // 로컬 슬래시 라우팅 (CLI 호출 없이 클라이언트가 흡수)
+    const userMsgIdLocal = `u-${now}`;
+    if (LOCAL_SLASH_COMMANDS.has(text)) {
+      setMessages((prev) => [
+        ...prev,
+        { id: userMsgIdLocal, role: 'user', content: text, createdAt: now },
+      ]);
       setInput('');
       setSlashDismissed(false);
+      runLocalSlash(text);
       return;
     }
 
@@ -373,9 +505,12 @@ const AgentChatSidebar = () => {
 
   // ── Slash 커맨드 자동완성 ──
   const slashQuery = matchSlashQuery(input);
-  const availableCommands: SlashCommand[] = selectedAgentId
-    ? BUILTIN_SLASH_COMMANDS[selectedAgentId] ?? []
-    : [];
+  const availableCommands: SlashCommand[] = useMemo(() => {
+    if (!selectedAgentId) return [];
+    const builtin = BUILTIN_SLASH_COMMANDS[selectedAgentId] ?? [];
+    const discovered = discoveredMap[selectedAgentId] ?? [];
+    return mergeCommands(builtin, discovered);
+  }, [selectedAgentId, discoveredMap]);
   const filteredSlash = useMemo(() => {
     if (slashQuery === null) return [];
     if (slashQuery === '') return availableCommands;
@@ -468,6 +603,9 @@ const AgentChatSidebar = () => {
                 <SlashItemHeader>
                   <SlashItemName>{cmd.name}</SlashItemName>
                   {cmd.args && <SlashItemArgs>{cmd.args}</SlashItemArgs>}
+                  {cmd.source && cmd.source !== 'builtin' && (
+                    <SlashItemSource>{cmd.source}</SlashItemSource>
+                  )}
                 </SlashItemHeader>
                 <SlashItemDesc>{cmd.description}</SlashItemDesc>
               </SlashItem>
@@ -946,6 +1084,17 @@ const SlashItemArgs = styled.span`
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;
   color: ${theme.textMuted};
+`;
+
+const SlashItemSource = styled.span`
+  margin-left: auto;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: ${theme.textMuted};
+  background: ${theme.bgTertiary};
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
 `;
 
 const SlashItemDesc = styled.span`

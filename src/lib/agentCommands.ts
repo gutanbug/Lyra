@@ -7,6 +7,27 @@ export interface SlashCommand {
   description: string;
   /** 인자가 있을 때 힌트 (예: '<model>', '[pr]') — 없으면 생략 */
   args?: string;
+  /** 출처 라벨 — 'builtin' | 'user' | 'plugin:<name>' | 'extension:<name>' */
+  source?: string;
+}
+
+/**
+ * 빌트인 + 디스커버리 결과를 병합하고 이름 기준으로 중복을 제거한다.
+ * 빌트인이 우선(같은 이름이 있으면 디스커버리 항목은 무시).
+ */
+export function mergeCommands(
+  builtin: SlashCommand[],
+  discovered: SlashCommand[],
+): SlashCommand[] {
+  const seen = new Set(builtin.map((c) => c.name.toLowerCase()));
+  const out: SlashCommand[] = builtin.map((c) => ({ ...c, source: c.source ?? 'builtin' }));
+  for (const d of discovered) {
+    const key = d.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...d, source: d.source ?? 'user' });
+  }
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────

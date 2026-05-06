@@ -2,6 +2,10 @@ import { ipcMain, shell } from 'electron';
 import { AccountManager } from '../account/manager';
 import { SettingsManager } from '../settings/store';
 import { getAdapter, getAvailableServices } from '../integrations/registry';
+import { AgentManager } from '../integrations/agents/manager';
+import type { AgentId } from '../integrations/agents/types';
+import { startTurn as startAgentTurn, cancelTurn as cancelAgentTurn } from '../integrations/agents/runner';
+import type { StartTurnPayload, TurnEvent } from '../integrations/agents/runner';
 
 export interface InvokePayload {
   accountId: string;
@@ -107,4 +111,28 @@ export function registerIpcHandlers(): void {
       return handler(invokeParams);
     }
   );
+
+  // === AI Agent CLI 관리 ===
+  ipcMain.handle('agents:getAllStatus', () => AgentManager.getAllStatus());
+  ipcMain.handle('agents:getStatus', (_, id: AgentId) => AgentManager.getStatus(id));
+  ipcMain.handle('agents:login', (_, id: AgentId) => AgentManager.login(id));
+  ipcMain.handle('agents:logout', (_, id: AgentId) => AgentManager.logout(id));
+  ipcMain.handle('agents:setApiKey', (_, id: AgentId, key: string | null) => {
+    AgentManager.setApiKey(id, key);
+    return AgentManager.getStatus(id);
+  });
+  ipcMain.handle('agents:setBinaryPath', (_, id: AgentId, binaryPath: string | null) => {
+    AgentManager.setBinaryPath(id, binaryPath);
+    return AgentManager.getStatus(id);
+  });
+
+  // === AI Agent Turn 스트리밍 ===
+  ipcMain.handle('agents:startTurn', (event, payload: StartTurnPayload) => {
+    const wc = event.sender;
+    return startAgentTurn(payload, (e: TurnEvent) => {
+      if (!wc.isDestroyed()) wc.send('agents:turnEvent', e);
+    });
+  });
+
+  ipcMain.handle('agents:cancelTurn', (_, turnId: string) => cancelAgentTurn(turnId));
 }

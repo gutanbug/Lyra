@@ -45,4 +45,24 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       params?: Record<string, unknown>;
     }) => ipcRenderer.invoke('integration:invoke', payload),
   },
+  agents: {
+    getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),
+    getStatus: (id: string) => ipcRenderer.invoke('agents:getStatus', id),
+    login: (id: string) => ipcRenderer.invoke('agents:login', id),
+    logout: (id: string) => ipcRenderer.invoke('agents:logout', id),
+    setApiKey: (id: string, key: string | null) =>
+      ipcRenderer.invoke('agents:setApiKey', id, key),
+    setBinaryPath: (id: string, binaryPath: string | null) =>
+      ipcRenderer.invoke('agents:setBinaryPath', id, binaryPath),
+    startTurn: (payload: { turnId: string; agentId: string; prompt: string; sessionId?: string | null }) =>
+      ipcRenderer.invoke('agents:startTurn', payload),
+    cancelTurn: (turnId: string) => ipcRenderer.invoke('agents:cancelTurn', turnId),
+    onTurnEvent: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown) => handler(payload);
+      ipcRenderer.on('agents:turnEvent', listener);
+      return () => {
+        ipcRenderer.removeListener('agents:turnEvent', listener);
+      };
+    },
+  },
 });

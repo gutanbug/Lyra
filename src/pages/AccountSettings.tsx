@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { ArrowLeft } from 'lucide-react';
 import AddAccountForm from 'components/account/AddAccountForm';
 import AccountList from 'components/account/AccountList';
+import AgentSettings from 'components/account/AgentSettings';
 import { useAccount } from 'modules/contexts/account';
 import { isAtlassianAccount } from 'types/account';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import type { Account } from 'types/account';
 
-type SettingsTab = 'account' | 'shortcuts';
+type SettingsTab = 'account' | 'agents' | 'shortcuts';
 
 const SIDEBAR_MENUS: { id: SettingsTab; label: string }[] = [
   { id: 'account', label: '계정 설정' },
+  { id: 'agents', label: 'AI Agent' },
   { id: 'shortcuts', label: '단축키 관리' },
 ];
 
@@ -45,6 +47,7 @@ const SHORTCUT_SECTIONS = [
     items: [
       { label: '환경설정', keys: [CMD, ','] },
       { label: '프로필 변경', keys: [CMD, ';'] },
+      { label: 'AI Agent 사이드바 토글', keys: [CMD, 'G'] },
     ],
   },
   {
@@ -194,7 +197,20 @@ const ShortcutsPanel = () => (
 
 const AccountSettings = () => {
   const history = useHistory();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('account');
+  const location = useLocation();
+  const initialTab = ((): SettingsTab => {
+    const t = new URLSearchParams(location.search).get('tab');
+    return (t === 'agents' || t === 'shortcuts' || t === 'account') ? t : 'account';
+  })();
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    if (t && (t === 'agents' || t === 'shortcuts' || t === 'account') && t !== activeTab) {
+      setActiveTab(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   return (
     <Page>
@@ -223,6 +239,14 @@ const AccountSettings = () => {
         </Sidebar>
         <ContentArea>
           {activeTab === 'account' && <AccountPanel />}
+          {activeTab === 'agents' && (
+            <>
+              <PanelHeader>
+                <PanelTitle>AI Agent</PanelTitle>
+              </PanelHeader>
+              <AgentSettings />
+            </>
+          )}
           {activeTab === 'shortcuts' && <ShortcutsPanel />}
         </ContentArea>
       </SettingsLayout>

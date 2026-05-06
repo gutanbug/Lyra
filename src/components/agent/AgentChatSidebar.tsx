@@ -10,10 +10,28 @@ import type { AgentId, AgentStatus } from 'types/agent';
 import { BUILTIN_SLASH_COMMANDS, matchSlashQuery, mergeCommands } from 'lib/agentCommands';
 import type { SlashCommand } from 'lib/agentCommands';
 
+type BlockKind = 'text' | 'thinking' | 'tool_use';
+
+interface AssistantBlock {
+  index: number;
+  kind: BlockKind;
+  /** text/thinking 누적 본문 */
+  text: string;
+  /** tool_use */
+  toolUseId?: string;
+  toolName?: string;
+  toolInputPartial?: string;
+  toolInput?: unknown;
+  toolResult?: { text: string; isError: boolean };
+  status: 'streaming' | 'done';
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
+  /** user/system 메시지 본문. assistant는 blocks가 있으면 그쪽을 우선 렌더 */
   content: string;
+  blocks?: AssistantBlock[];
   createdAt: number;
 }
 
@@ -130,15 +148,103 @@ const AgentChatSidebar = () => {
         ));
         return;
       }
+      if (e.type === 'block_start' && typeof e.index === 'number') {
+        const idx = e.index;
+        const kind = (e.blockKind ?? 'text') as BlockKind;
+        const toolName = e.toolName;
+        const toolUseId = e.toolUseId;
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== `a-${turnId}`) return m;
+          const blocks = m.blocks ?? [];
+          if (blocks.some((b) => b.index === idx)) return m;
+          const newBlock: AssistantBlock = {
+            index: idx,
+            kind,
+            text: '',
+            toolName,
+            toolUseId,
+            toolInputPartial: kind === 'tool_use' ? '' : undefined,
+            status: 'streaming',
+          };
+          return { ...m, blocks: [...blocks, newBlock] };
+        }));
+        return;
+      }
+      if (e.type === 'block_delta' && typeof e.index === 'number') {
+        const idx = e.index;
+        const textDelta = e.textDelta;
+        const thinkingDelta = e.thinkingDelta;
+        const jsonDelta = e.jsonDelta;
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== `a-${turnId}` || !m.blocks) return m;
+          return {
+            ...m,
+            blocks: m.blocks.map((b) => {
+              if (b.index !== idx) return b;
+              if (textDelta) return { ...b, text: b.text + textDelta };
+              if (thinkingDelta) return { ...b, text: b.text + thinkingDelta };
+              if (jsonDelta) return { ...b, toolInputPartial: (b.toolInputPartial ?? '') + jsonDelta };
+              return b;
+            }),
+          };
+        }));
+        return;
+      }
+      if (e.type === 'block_stop' && typeof e.index === 'number') {
+        const idx = e.index;
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== `a-${turnId}` || !m.blocks) return m;
+          return {
+            ...m,
+            blocks: m.blocks.map((b) => {
+              if (b.index !== idx) return b;
+              let toolInput = b.toolInput;
+              if (b.kind === 'tool_use' && b.toolInputPartial) {
+                try { toolInput = JSON.parse(b.toolInputPartial); } catch { /* leave as raw */ }
+              }
+              return { ...b, status: 'done' as const, toolInput };
+            }),
+          };
+        }));
+        return;
+      }
+      if (e.type === 'tool_result' && e.toolUseId) {
+        const toolUseId = e.toolUseId;
+        const resultText = e.resultText ?? '';
+        const isError = !!e.isError;
+        setMessages((prev) => prev.map((m) => {
+          if (m.role !== 'assistant' || !m.blocks) return m;
+          let updated = false;
+          const newBlocks = m.blocks.map((b) => {
+            if (b.kind === 'tool_use' && b.toolUseId === toolUseId && !b.toolResult) {
+              updated = true;
+              return { ...b, toolResult: { text: resultText, isError } };
+            }
+            return b;
+          });
+          return updated ? { ...m, blocks: newBlocks } : m;
+        }));
+        return;
+      }
       if (e.type === 'end') {
         if (e.sessionId && turnAgent) {
           setSessionMap((prev) => ({ ...prev, [turnAgent]: e.sessionId! }));
         }
-        setMessages((prev) => prev.map((m) =>
-          m.id === `a-${turnId}` && !m.content
-            ? { ...m, content: '_(빈 응답)_' }
-            : m
-        ));
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== `a-${turnId}`) return m;
+          // 블록도 없고 본문도 없으면 빈 응답 표시
+          if (!m.content && (!m.blocks || m.blocks.length === 0)) {
+            return { ...m, content: '_(빈 응답)_' };
+          }
+          // 진행 중인 블록은 done으로 마감
+          if (m.blocks && m.blocks.length > 0) {
+            return {
+              ...m,
+              blocks: m.blocks.map((b) => (b.status === 'streaming' ? { ...b, status: 'done' as const } : b)),
+            };
+          }
+          return m;
+        }));
         setStreamingTurnId(null);
         currentTurnAgentRef.current = null;
         return;
@@ -410,7 +516,7 @@ const AgentChatSidebar = () => {
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, role: 'user', content: text, createdAt: now },
-      { id: assistantMsgId, role: 'assistant', content: '', createdAt: now + 1 },
+      { id: assistantMsgId, role: 'assistant', content: '', blocks: [], createdAt: now + 1 },
     ]);
     setInput('');
     setSlashDismissed(false);
@@ -572,11 +678,25 @@ const AgentChatSidebar = () => {
             </SuggestList>
           </EmptyState>
         ) : (
-          messages.map((msg) => (
-            <BubbleRow key={msg.id} $role={msg.role}>
-              <Bubble $role={msg.role}>{msg.content}</Bubble>
-            </BubbleRow>
-          ))
+          messages.map((msg) => {
+            if (msg.role === 'assistant' && msg.blocks && msg.blocks.length > 0) {
+              return (
+                <BubbleRow key={msg.id} $role="assistant">
+                  <BlockGroup>
+                    {msg.blocks.map((b) => (
+                      <BlockView key={b.index} block={b} />
+                    ))}
+                    {msg.content && <Bubble $role="assistant">{msg.content}</Bubble>}
+                  </BlockGroup>
+                </BubbleRow>
+              );
+            }
+            return (
+              <BubbleRow key={msg.id} $role={msg.role}>
+                <Bubble $role={msg.role}>{msg.content}</Bubble>
+              </BubbleRow>
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </MessagesArea>
@@ -703,6 +823,76 @@ const AgentChatSidebar = () => {
         </InputFooter>
       </InputArea>
     </Panel>
+  );
+};
+
+// ─── Block 렌더 ──────────────────────────────
+
+const BlockView = ({ block }: { block: AssistantBlock }) => {
+  if (block.kind === 'text') {
+    return (
+      <Bubble $role="assistant">
+        {block.text || (block.status === 'streaming' ? '…' : '')}
+      </Bubble>
+    );
+  }
+  if (block.kind === 'thinking') {
+    return <ThinkingPanel block={block} />;
+  }
+  if (block.kind === 'tool_use') {
+    return <ToolUseCard block={block} />;
+  }
+  return null;
+};
+
+const ThinkingPanel = ({ block }: { block: AssistantBlock }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <ThinkingWrap>
+      <ThinkingHeader onClick={() => setOpen((v) => !v)}>
+        <FoldArrow>{open ? '▾' : '▸'}</FoldArrow>
+        <span>사고</span>
+        {block.status === 'streaming' && <Spinner>…</Spinner>}
+      </ThinkingHeader>
+      {open && <ThinkingBody>{block.text}</ThinkingBody>}
+    </ThinkingWrap>
+  );
+};
+
+const ToolUseCard = ({ block }: { block: AssistantBlock }) => {
+  const [open, setOpen] = useState(false);
+  const inputDisplay = block.toolInput !== undefined
+    ? JSON.stringify(block.toolInput, null, 2)
+    : (block.toolInputPartial ?? '');
+  const result = block.toolResult;
+  const statusLabel = result
+    ? (result.isError ? '실패' : '완료')
+    : (block.status === 'streaming' ? '실행 중…' : '대기');
+
+  return (
+    <ToolWrap>
+      <ToolHeader onClick={() => setOpen((v) => !v)} $error={!!result?.isError}>
+        <FoldArrow>{open ? '▾' : '▸'}</FoldArrow>
+        <ToolName>{block.toolName ?? 'tool'}</ToolName>
+        <ToolStatus $error={!!result?.isError}>{statusLabel}</ToolStatus>
+      </ToolHeader>
+      {open && (
+        <>
+          {inputDisplay && (
+            <ToolSection>
+              <ToolLabel>입력</ToolLabel>
+              <ToolPre>{inputDisplay}</ToolPre>
+            </ToolSection>
+          )}
+          {result && (
+            <ToolSection>
+              <ToolLabel>{result.isError ? '오류' : '결과'}</ToolLabel>
+              <ToolPre $error={result.isError}>{result.text || '(빈 결과)'}</ToolPre>
+            </ToolSection>
+          )}
+        </>
+      )}
+    </ToolWrap>
   );
 };
 
@@ -991,6 +1181,127 @@ const SuggestItem = styled.div`
 const BubbleRow = styled.div<{ $role: 'user' | 'assistant' }>`
   display: flex;
   justify-content: ${({ $role }) => ($role === 'user' ? 'flex-end' : 'flex-start')};
+`;
+
+const BlockGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-width: 92%;
+`;
+
+const FoldArrow = styled.span`
+  display: inline-flex;
+  width: 0.75rem;
+  font-size: 0.7rem;
+  color: ${theme.textMuted};
+`;
+
+const Spinner = styled.span`
+  margin-left: 0.25rem;
+  color: ${theme.textMuted};
+  animation: pulse 1.2s ease-in-out infinite;
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+`;
+
+const ThinkingWrap = styled.div`
+  border: 1px dashed ${theme.border};
+  border-radius: 8px;
+  background: ${theme.bgSecondary};
+  font-size: 0.75rem;
+  color: ${theme.textSecondary};
+`;
+
+const ThinkingHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.625rem;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+`;
+
+const ThinkingBody = styled.div`
+  border-top: 1px dashed ${theme.border};
+  padding: 0.5rem 0.625rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: ${theme.textMuted};
+  font-style: italic;
+`;
+
+const ToolWrap = styled.div`
+  border: 1px solid ${theme.border};
+  border-radius: 8px;
+  background: ${theme.bgPrimary};
+  font-size: 0.75rem;
+  overflow: hidden;
+`;
+
+const ToolHeader = styled.div<{ $error: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.625rem;
+  cursor: pointer;
+  user-select: none;
+  background: ${({ $error }) => ($error ? '#fef2f2' : theme.bgSecondary)};
+`;
+
+const ToolName = styled.span`
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: ${theme.textPrimary};
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const ToolStatus = styled.span<{ $error: boolean }>`
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  ${({ $error }) =>
+    $error
+      ? 'background: #fee2e2; color: #b91c1c;'
+      : 'background: #e6f4ea; color: #137333;'}
+`;
+
+const ToolSection = styled.div`
+  border-top: 1px solid ${theme.border};
+  padding: 0.5rem 0.625rem;
+`;
+
+const ToolLabel = styled.div`
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: ${theme.textMuted};
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+`;
+
+const ToolPre = styled.pre<{ $error?: boolean }>`
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: ${({ $error }) => ($error ? '#b91c1c' : theme.textPrimary)};
+  background: ${theme.bgSecondary};
+  border-radius: 6px;
+  padding: 0.5rem 0.625rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
 `;
 
 const Bubble = styled.div<{ $role: 'user' | 'assistant' }>`

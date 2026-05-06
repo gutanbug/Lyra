@@ -23,10 +23,22 @@ export interface StartTurnPayload {
   sessionId?: string | null;
 }
 
+export type TurnEventType =
+  | 'chunk'
+  | 'meta'
+  | 'end'
+  | 'error'
+  | 'block_start'
+  | 'block_delta'
+  | 'block_stop'
+  | 'tool_result';
+
+export type BlockKind = 'text' | 'thinking' | 'tool_use';
+
 export interface TurnEvent {
   turnId: string;
-  type: 'chunk' | 'meta' | 'end' | 'error';
-  /** chunk 시 텍스트 조각 */
+  type: TurnEventType;
+  /** chunk 시 텍스트 조각 (호환 — text_delta는 block_delta로도 함께 emit됨) */
   text?: string;
   /** meta/end 시 sessionId */
   sessionId?: string;
@@ -36,6 +48,24 @@ export interface TurnEvent {
   message?: string;
   /** end 시 누적 비용 (USD) */
   costUsd?: number;
+  /** block 이벤트 — 0부터 시작하는 content block index */
+  index?: number;
+  /** block_start 시 블록 종류 */
+  blockKind?: BlockKind;
+  /** tool_use 블록의 도구 이름 */
+  toolName?: string;
+  /** tool_use 블록의 ID (tool_result 매칭용) */
+  toolUseId?: string;
+  /** block_delta — 텍스트 누적 조각 */
+  textDelta?: string;
+  /** block_delta — thinking 누적 조각 */
+  thinkingDelta?: string;
+  /** block_delta — tool_use 입력 partial JSON 조각 */
+  jsonDelta?: string;
+  /** tool_result — 결과 텍스트 */
+  resultText?: string;
+  /** tool_result — is_error 플래그 */
+  isError?: boolean;
 }
 
 type Emitter = (event: TurnEvent) => void;
@@ -246,13 +276,84 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
     return false;
   }
 
-  // 부분 텍스트 델타: { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } }
+  // stream_event 분기 — content_block_start / delta / stop 모두 처리
   if (rec.type === 'stream_event' && rec.event && typeof rec.event === 'object') {
     const ev = rec.event as Record<string, unknown>;
-    if (ev.type === 'content_block_delta' && ev.delta && typeof ev.delta === 'object') {
-      const delta = ev.delta as Record<string, unknown>;
-      if (delta.type === 'text_delta' && typeof delta.text === 'string') {
-        emit({ turnId, type: 'chunk', text: delta.text });
+    const evType = ev.type;
+
+    if (evType === 'content_block_start') {
+      const idx = typeof ev.index === 'number' ? ev.index : -1;
+      const cb = (ev.content_block as Record<string, unknown> | undefined) ?? undefined;
+      const cbType = typeof cb?.type === 'string' ? cb.type : undefined;
+      let blockKind: BlockKind | undefined;
+      let toolName: string | undefined;
+      let toolUseId: string | undefined;
+      if (cbType === 'text') blockKind = 'text';
+      else if (cbType === 'thinking') blockKind = 'thinking';
+      else if (cbType === 'tool_use') {
+        blockKind = 'tool_use';
+        toolName = typeof cb?.name === 'string' ? cb.name : undefined;
+        toolUseId = typeof cb?.id === 'string' ? cb.id : undefined;
+      }
+      if (blockKind && idx >= 0) {
+        emit({ turnId, type: 'block_start', index: idx, blockKind, toolName, toolUseId });
+      }
+      return false;
+    }
+
+    if (evType === 'content_block_delta') {
+      const idx = typeof ev.index === 'number' ? ev.index : -1;
+      const delta = ev.delta as Record<string, unknown> | undefined;
+      const deltaType = typeof delta?.type === 'string' ? delta.type : undefined;
+      if (idx >= 0 && delta) {
+        if (deltaType === 'text_delta' && typeof delta.text === 'string') {
+          emit({ turnId, type: 'block_delta', index: idx, textDelta: delta.text });
+          // 호환 chunk(전체 누적 fallback 판정용)
+          emit({ turnId, type: 'chunk', text: delta.text });
+        } else if (deltaType === 'thinking_delta' && typeof delta.thinking === 'string') {
+          emit({ turnId, type: 'block_delta', index: idx, thinkingDelta: delta.thinking });
+        } else if (deltaType === 'input_json_delta' && typeof delta.partial_json === 'string') {
+          emit({ turnId, type: 'block_delta', index: idx, jsonDelta: delta.partial_json });
+        }
+      }
+      return false;
+    }
+
+    if (evType === 'content_block_stop') {
+      const idx = typeof ev.index === 'number' ? ev.index : -1;
+      if (idx >= 0) {
+        emit({ turnId, type: 'block_stop', index: idx });
+      }
+      return false;
+    }
+
+    return false;
+  }
+
+  // tool_result는 별도 user 메시지로 도착: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id, content, is_error }] } }
+  if (rec.type === 'user' && rec.message && typeof rec.message === 'object') {
+    const msg = rec.message as Record<string, unknown>;
+    if (Array.isArray(msg.content)) {
+      for (const item of msg.content) {
+        if (!item || typeof item !== 'object') continue;
+        const block = item as Record<string, unknown>;
+        if (block.type !== 'tool_result') continue;
+        const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined;
+        const isError = !!block.is_error;
+        let resultText = '';
+        if (typeof block.content === 'string') {
+          resultText = block.content;
+        } else if (Array.isArray(block.content)) {
+          for (const piece of block.content) {
+            if (piece && typeof piece === 'object') {
+              const p = piece as Record<string, unknown>;
+              if (p.type === 'text' && typeof p.text === 'string') resultText += p.text;
+            }
+          }
+        }
+        if (toolUseId) {
+          emit({ turnId, type: 'tool_result', toolUseId, resultText, isError });
+        }
       }
     }
     return false;

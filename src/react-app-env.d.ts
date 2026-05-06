@@ -46,12 +46,29 @@ declare global {
         onTurnEvent: (
           handler: (event: {
             turnId: string;
-            type: 'chunk' | 'meta' | 'end' | 'error';
+            type:
+              | 'chunk'
+              | 'meta'
+              | 'end'
+              | 'error'
+              | 'block_start'
+              | 'block_delta'
+              | 'block_stop'
+              | 'tool_result';
             text?: string;
             sessionId?: string;
             model?: string;
             message?: string;
             costUsd?: number;
+            index?: number;
+            blockKind?: 'text' | 'thinking' | 'tool_use';
+            toolName?: string;
+            toolUseId?: string;
+            textDelta?: string;
+            thinkingDelta?: string;
+            jsonDelta?: string;
+            resultText?: string;
+            isError?: boolean;
           }) => void,
         ) => () => void;
         listCommands: (

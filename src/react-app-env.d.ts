@@ -29,6 +29,32 @@ declare global {
         validate: (payload: { serviceType: string; credentials: unknown }) => Promise<boolean>;
         invoke: (payload: unknown) => Promise<unknown>;
       };
+      agents: {
+        getAllStatus: () => Promise<import('types/agent').AgentStatus[]>;
+        getStatus: (id: import('types/agent').AgentId) => Promise<import('types/agent').AgentStatus>;
+        login: (id: import('types/agent').AgentId) => Promise<{ ok: boolean; pid: number | null; message: string }>;
+        logout: (id: import('types/agent').AgentId) => Promise<{ ok: boolean; message: string }>;
+        setApiKey: (id: import('types/agent').AgentId, key: string | null) => Promise<import('types/agent').AgentStatus>;
+        setBinaryPath: (id: import('types/agent').AgentId, binaryPath: string | null) => Promise<import('types/agent').AgentStatus>;
+        startTurn: (payload: {
+          turnId: string;
+          agentId: import('types/agent').AgentId;
+          prompt: string;
+          sessionId?: string | null;
+        }) => Promise<{ ok: boolean; message?: string }>;
+        cancelTurn: (turnId: string) => Promise<boolean>;
+        onTurnEvent: (
+          handler: (event: {
+            turnId: string;
+            type: 'chunk' | 'meta' | 'end' | 'error';
+            text?: string;
+            sessionId?: string;
+            model?: string;
+            message?: string;
+            costUsd?: number;
+          }) => void,
+        ) => () => void;
+      };
     };
   }
 }

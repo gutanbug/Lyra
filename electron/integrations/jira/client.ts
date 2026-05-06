@@ -31,6 +31,12 @@ async function withRetry429<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T>
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
         continue;
       }
+      if (axiosErr.isAxiosError && axiosErr.response) {
+        const { status, config, data } = axiosErr.response;
+        const method = (config?.method || '').toUpperCase();
+        const url = config?.url || '';
+        throw new Error(`Jira API ${status} ${method} ${url} :: ${JSON.stringify(data)}`);
+      }
       throw err;
     }
   }
@@ -154,6 +160,9 @@ function normalizeIssue(raw: Record<string, unknown>): Record<string, unknown> {
       }
     }
   }
+
+  // 커스텀 필드 표시 등 fields 원본을 필요로 하는 렌더링을 위해 raw map 동봉
+  result.rawFields = fields;
 
   return result;
 }
@@ -289,7 +298,9 @@ export class JiraClient {
    */
   async getTransitions(issueIdOrKey: string): Promise<unknown> {
     const { data } = await withRetry429(() =>
-      this.client.get(`/issue/${issueIdOrKey}/transitions`)
+      this.client.get(`/issue/${issueIdOrKey}/transitions`, {
+        params: { expand: 'transitions.fields' },
+      })
     );
     return data;
   }
@@ -298,14 +309,95 @@ export class JiraClient {
    * 이슈 상태 전환 실행
    * POST /rest/api/3/issue/:issueIdOrKey/transitions
    */
-  async transitionIssue(issueIdOrKey: string, transitionId: string): Promise<void> {
-    await withRetry429(() =>
-      this.client.post(`/issue/${issueIdOrKey}/transitions`, {
-        transition: { id: transitionId },
-      })
-    );
+  async transitionIssue(
+    issueIdOrKey: string,
+    transitionId: string,
+    fields?: Record<string, unknown>
+  ): Promise<void> {
+    const body: Record<string, unknown> = { transition: { id: transitionId } };
+    if (fields && Object.keys(fields).length > 0) body.fields = fields;
+    await withRetry429(() => this.client.post(`/issue/${issueIdOrKey}/transitions`, body));
     // 전환 후 관련 검색 캐시 무효화
     this.searchCache.clear();
+  }
+
+  /**
+   * 프로젝트 버전 목록 조회
+   * GET /rest/api/3/project/:projectIdOrKey/versions
+   */
+  async getProjectVersions(projectIdOrKey: string): Promise<unknown[]> {
+    const { data } = await withRetry429(() =>
+      this.client.get(`/project/${projectIdOrKey}/versions`)
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * 프로젝트 컴포넌트 목록 조회
+   * GET /rest/api/3/project/:projectIdOrKey/components
+   */
+  async getProjectComponents(projectIdOrKey: string): Promise<unknown[]> {
+    const { data } = await withRetry429(() =>
+      this.client.get(`/project/${projectIdOrKey}/components`)
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * 임의 필드 단일 업데이트.
+   * PUT /rest/api/3/issue/:issueIdOrKey  body: { fields: { [fieldId]: value } }
+   * value는 호출자가 Jira 스키마에 맞는 형태로 직렬화해서 전달해야 함.
+   */
+  async updateIssueField(
+    issueIdOrKey: string,
+    fieldId: string,
+    value: unknown,
+  ): Promise<void> {
+    await withRetry429(() =>
+      this.client.put(`/issue/${issueIdOrKey}`, {
+        fields: { [fieldId]: value },
+      })
+    );
+  }
+
+  /**
+   * 프로젝트가 관리하는 필드(시스템 + 커스텀) 머지 조회.
+   * createmeta는 이슈타입별 필드를 반환하므로 이슈타입을 가로질러 unique 머지.
+   * GET /rest/api/3/issue/createmeta?projectKeys=:key&expand=projects.issuetypes.fields
+   */
+  async getProjectFields(projectKey: string): Promise<Array<Record<string, unknown>>> {
+    const { data } = await withRetry429(() =>
+      this.client.get('/issue/createmeta', {
+        params: { projectKeys: projectKey, expand: 'projects.issuetypes.fields' },
+      })
+    );
+    const projects = (data as Record<string, unknown>)?.projects as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!Array.isArray(projects) || projects.length === 0) return [];
+    const issuetypes = (projects[0]?.issuetypes ?? []) as Array<Record<string, unknown>>;
+    const seen = new Map<string, Record<string, unknown>>();
+    issuetypes.forEach((it) => {
+      const fields = (it?.fields ?? {}) as Record<string, Record<string, unknown>>;
+      Object.entries(fields).forEach(([id, meta]) => {
+        if (seen.has(id)) return;
+        const schema = (meta?.schema ?? {}) as Record<string, unknown>;
+        seen.set(id, {
+          id,
+          name: meta?.name ?? id,
+          required: Boolean(meta?.required),
+          schema: {
+            type: schema?.type ?? '',
+            items: schema?.items,
+            custom: schema?.custom,
+            customId: schema?.customId,
+            system: schema?.system,
+          },
+          allowedValues: meta?.allowedValues,
+        });
+      });
+    });
+    return Array.from(seen.values());
   }
 
   async getPriorities(): Promise<unknown> {

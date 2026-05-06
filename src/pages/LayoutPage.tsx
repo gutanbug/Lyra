@@ -4,6 +4,8 @@ import styled from 'styled-components';
 import Header from 'components/layout/Header';
 import Modal from 'containers/modal';
 import Snackbar from 'containers/common/Snackbar';
+import ApiErrorSnackbar from 'containers/common/ApiErrorSnackbar';
+import AgentChatSidebar from 'components/agent/AgentChatSidebar';
 
 const JiraPage = lazy(() => import('pages/JiraPage'));
 const ConfluencePage = lazy(() => import('pages/ConfluencePage'));
@@ -14,6 +16,7 @@ import { theme } from 'lib/styles/theme';
 import { useTabs } from 'modules/contexts/tab';
 import type { Tab } from 'modules/contexts/tab';
 import { useSplitView } from 'modules/contexts/splitView';
+import { useAgentSidebar } from 'modules/contexts/agentSidebar';
 
 /** 마우스 뒤로가기/앞으로가기 이벤트를 라우터 히스토리에 연결 */
 const useMouseNavigation = (active: boolean) => {
@@ -111,6 +114,7 @@ const TabPanel = ({ tab, navActive = false }: { tab: Tab; navActive?: boolean })
 const LayoutPage = () => {
   const { tabs, activeTabId, closeTab, activateTab, deactivateTab } = useTabs();
   const { isSplit, leftPanel, rightPanel } = useSplitView();
+  const { toggle: toggleAgentSidebar } = useAgentSidebar();
   const history = useHistory();
   const location = useLocation();
 
@@ -178,6 +182,13 @@ const LayoutPage = () => {
         return;
       }
 
+      // CmdOrCtrl+G → AI Agent 사이드바 열기/닫기
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        toggleAgentSidebar();
+        return;
+      }
+
       // CmdOrCtrl+W → 활성 탭 닫기
       if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
         if (activeTabId) {
@@ -221,39 +232,45 @@ const LayoutPage = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [history, location.pathname, hasTabs, activeTabId, isSplit, closeTab, tabs, activateTab, deactivateTab]);
+  }, [history, location.pathname, hasTabs, activeTabId, isSplit, closeTab, tabs, activateTab, deactivateTab, toggleAgentSidebar]);
 
   return (
     <Page>
       <Header />
 
-      {/* Split View (display 토글로 상태 유지) */}
-      {hasSplit && (
-        <SplitContainer $visible={showSplit as boolean}>
-          <SplitPanel>
-            <IsolatedPanel menuId={leftPanel!} />
-          </SplitPanel>
-          <SplitDivider />
-          <SplitPanel>
-            <IsolatedPanel menuId={rightPanel!} />
-          </SplitPanel>
-        </SplitContainer>
-      )}
+      <Body>
+        {/* Split View (display 토글로 상태 유지) */}
+        {hasSplit && (
+          <SplitContainer $visible={showSplit as boolean}>
+            <SplitPanel>
+              <IsolatedPanel menuId={leftPanel!} />
+            </SplitPanel>
+            <SplitDivider />
+            <SplitPanel>
+              <IsolatedPanel menuId={rightPanel!} />
+            </SplitPanel>
+          </SplitContainer>
+        )}
 
-      {/* 메인 뷰 */}
-      <MainContent $visible={showMain}>
-        <SingleView navActive={showMain} />
-      </MainContent>
+        {/* 메인 뷰 */}
+        <MainContent $visible={showMain}>
+          <SingleView navActive={showMain} />
+        </MainContent>
 
-      {/* 탭 패널 (숨김/표시로 상태 유지) */}
-      {tabs.map((tab) => (
-        <TabContent key={tab.id} $visible={activeTabId === tab.id}>
-          <TabPanel tab={tab} navActive={activeTabId === tab.id} />
-        </TabContent>
-      ))}
+        {/* 탭 패널 (숨김/표시로 상태 유지) */}
+        {tabs.map((tab) => (
+          <TabContent key={tab.id} $visible={activeTabId === tab.id}>
+            <TabPanel tab={tab} navActive={activeTabId === tab.id} />
+          </TabContent>
+        ))}
+
+        {/* AI Agent 우측 슬라이드 사이드바 */}
+        <AgentChatSidebar />
+      </Body>
 
       <Modal />
       <Snackbar />
+      <ApiErrorSnackbar />
     </Page>
   );
 };
@@ -265,6 +282,15 @@ export default LayoutPage;
 const Page = styled.div`
   height: 100vh;
   background: ${theme.bgPrimary};
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const Body = styled.div`
+  position: relative;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

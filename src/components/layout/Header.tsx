@@ -8,6 +8,7 @@ import { useTabs } from 'modules/contexts/tab';
 import type { Tab } from 'modules/contexts/tab';
 import { useSplitView } from 'modules/contexts/splitView';
 import { useAccount } from 'modules/contexts/account';
+import { useAgentSidebar } from 'modules/contexts/agentSidebar';
 import { isAtlassianAccount } from 'types/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
@@ -27,6 +28,7 @@ const Header = () => {
   const { isSplit, leftPanel, rightPanel, openSplit, closeSplit } = useSplitView();
   const { accounts, activeAccount, setActive } = useAccount();
   const { dispatch: snackbarDispatch } = useContext(snackbarContext);
+  const { open: agentSidebarOpen, toggle: toggleAgentSidebar } = useAgentSidebar();
 
   // 프로필 드롭다운 상태
   const [profileOpen, setProfileOpen] = useState(false);
@@ -84,6 +86,10 @@ const Header = () => {
     deactivateTab();
     if (isSplit) closeSplit();
     history.push('/stats');
+  };
+
+  const handleToggleAgent = () => {
+    toggleAgentSidebar();
   };
 
   // 탭 더블클릭 → 이름 편집 시작
@@ -216,6 +222,8 @@ const Header = () => {
             <IconButton
               onClick={() => setProfileOpen((v) => !v)}
               $active={profileOpen}
+              data-tooltip="계정"
+              aria-label="계정"
             >
               <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -279,11 +287,31 @@ const Header = () => {
             )}
           </NavIconButton>
 
+          {/* AI Agent 버튼 — 우측 슬라이드 사이드바 토글 */}
+          <IconButton
+            onClick={handleToggleAgent}
+            $active={agentSidebarOpen}
+            data-tooltip="AI Agent"
+            aria-label="AI Agent"
+          >
+            <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="7" width="16" height="12" rx="2" />
+              <path d="M12 7V3" />
+              <circle cx="12" cy="3" r="1" />
+              <circle cx="9" cy="12" r="1.2" />
+              <circle cx="15" cy="12" r="1.2" />
+              <path d="M9 16h6" />
+              <path d="M2 13v3" />
+              <path d="M22 13v3" />
+            </IconSvg>
+          </IconButton>
+
           {/* 통계 버튼 */}
           <IconButton
             onClick={handleGoStats}
             $active={location.pathname.startsWith('/stats')}
-            title="통계"
+            data-tooltip="통계"
+            aria-label="통계"
           >
             <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10" />
@@ -295,7 +323,9 @@ const Header = () => {
           {/* 설정 버튼 */}
           <IconButton
             onClick={handleGoSettings}
-            $active={location.pathname.startsWith('/settings')}
+            $active={location.pathname.startsWith('/settings') && !location.search.includes('tab=agents')}
+            data-tooltip="환경설정"
+            aria-label="환경설정"
           >
             <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
@@ -458,6 +488,7 @@ const NavIconWrap = styled.span`
 `;
 
 const IconButton = styled.button<{ $active?: boolean }>`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -474,6 +505,31 @@ const IconButton = styled.button<{ $active?: boolean }>`
     border-color: ${theme.blue};
     color: ${theme.blue};
     background: ${theme.blueLight};
+  }
+
+  &[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(33, 33, 33, 0.92);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ${transition};
+    z-index: 500;
+  }
+
+  &[data-tooltip]:hover::after {
+    opacity: 1;
+    transition-delay: 0.35s;
   }
 `;
 

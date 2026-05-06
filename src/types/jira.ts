@@ -5,6 +5,40 @@ export interface JiraTransition {
     name: string;
     statusCategory?: { name?: string; colorName?: string };
   };
+  /** expand=transitions.fields 응답에 포함되는 필드 메타 (필드ID → 메타) */
+  fields?: Record<string, JiraTransitionField>;
+}
+
+export interface JiraTransitionFieldSchema {
+  type: string; // option, array, string, number ...
+  items?: string; // type=array 일 때 항목 타입 (option, version, user ...)
+  custom?: string;
+  customId?: number;
+  system?: string;
+}
+
+export interface JiraTransitionFieldAllowedValue {
+  id?: string;
+  value?: string;
+  name?: string;
+  description?: string;
+}
+
+export interface JiraTransitionField {
+  required: boolean;
+  name: string;
+  hasDefaultValue?: boolean;
+  schema: JiraTransitionFieldSchema;
+  allowedValues?: JiraTransitionFieldAllowedValue[];
+  defaultValue?: unknown;
+  operations?: string[];
+}
+
+export interface JiraVersion {
+  id: string;
+  name: string;
+  released?: boolean;
+  archived?: boolean;
 }
 
 export interface JiraAssignableUser {
@@ -128,4 +162,26 @@ export interface JiraAttachment {
 export interface JiraProject {
   key: string;
   name: string;
+}
+
+export interface JiraProjectFieldSchema {
+  type: string;
+  items?: string;
+  custom?: string;
+  customId?: number;
+  system?: string;
+}
+
+export interface JiraProjectField {
+  id: string;
+  name: string;
+  required: boolean;
+  schema: JiraProjectFieldSchema;
+  /**
+   * createmeta가 반환하는 옵션 후보 목록.
+   * option/array<option> 입력 UI에서 사용. 일부 필드(특히 system 필드)는
+   * 비어있을 수 있으며, 그 경우 호출자는 array<version>/array<component>처럼
+   * 별도 IPC로 옵션을 가져와야 한다.
+   */
+  allowedValues?: Array<Record<string, unknown>>;
 }

@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import styled from 'styled-components';
 
 import { transition } from 'lib/styles/styles';
@@ -24,6 +25,8 @@ export interface SpaceFilterModalProps {
   onSave: () => void;
   onClose: () => void;
   emptyMessage?: string;
+  /** 선택된 항목에 추가 액션(설정 아이콘 등)을 렌더링할 때 사용. 비워두면 미노출. */
+  renderItemAction?: (key: string) => ReactNode;
 }
 
 const SpaceFilterModal = ({
@@ -40,6 +43,7 @@ const SpaceFilterModal = ({
   onSave,
   onClose,
   emptyMessage = '일치하는 스페이스가 없습니다.',
+  renderItemAction,
 }: SpaceFilterModalProps) => {
   const selectedSet = new Set(selectedKeys);
   const pinned = items.filter((item) => selectedSet.has(item.key));
@@ -82,6 +86,11 @@ const SpaceFilterModal = ({
                   <Check $theme={theme} $checked>{'✓'}</Check>
                   <Name $theme={theme}>{item.name}</Name>
                   {!item.hideKey && <ItemKey $theme={theme}>{item.key}</ItemKey>}
+                  {renderItemAction && (
+                    <ActionSlot onClick={(e) => e.stopPropagation()}>
+                      {renderItemAction(item.key)}
+                    </ActionSlot>
+                  )}
                 </Item>
               ))}
             </>
@@ -287,6 +296,13 @@ const Name = styled.span<{ $theme: ServiceTheme }>`
 const ItemKey = styled.span<{ $theme: ServiceTheme }>`
   font-size: 0.75rem;
   color: ${({ $theme }) => $theme.text.muted};
+  flex-shrink: 0;
+`;
+
+const ActionSlot = styled.span`
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.375rem;
   flex-shrink: 0;
 `;
 

@@ -91,3 +91,80 @@ export function saveSelectedSpaces(accountId: string, keys: string[]): void {
     localStorage.setItem(`lyra:confluence:selectedSpaces:${accountId}`, JSON.stringify(keys));
   } catch { /* ignore */ }
 }
+
+// ── Jira 프로젝트 필드 설정 ──
+
+export interface ProjectFieldEntry {
+  id: string;
+  enabled: boolean;
+  label?: string;
+}
+
+export interface ProjectFieldConfig {
+  fields: ProjectFieldEntry[];
+}
+
+/**
+ * localStorage에 사용되는 필드 설정 키 형식.
+ * `storage` 이벤트로 cross-window 동기화 시 키 매칭에 사용되므로 export.
+ */
+export const projectFieldConfigStorageKey = (accountId: string, projectKey: string) =>
+  `lyra:jira:projectFieldConfig:${accountId}:${projectKey}`;
+
+const fieldConfigKey = projectFieldConfigStorageKey;
+
+export async function loadProjectFieldConfigAsync(
+  accountId: string,
+  projectKey: string,
+): Promise<ProjectFieldConfig | null> {
+  try {
+    if ((window as any).workspaceAPI?.settings?.getProjectFieldConfig) {
+      const cfg = await (window as any).workspaceAPI.settings.getProjectFieldConfig(
+        accountId,
+        projectKey,
+      );
+      if (cfg && Array.isArray(cfg.fields)) return cfg as ProjectFieldConfig;
+    }
+    const raw = localStorage.getItem(fieldConfigKey(accountId, projectKey));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.fields)) return parsed as ProjectFieldConfig;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
+ * 필드 설정 저장.
+ *
+ * 저장 순서가 cross-window 동기화 정확성을 좌우하므로 변경 시 주의:
+ *  1) electron-store(IPC)에 먼저 write 완료까지 await — IPC가 신뢰 저장소
+ *  2) localStorage.setItem — 이 호출이 다른 윈도우에서 `storage` 이벤트를 발화
+ *  3) 같은 윈도우용 CustomEvent dispatch
+ *
+ * 에러 처리 원칙:
+ *  - IPC 환경(Electron)에서 IPC가 실패하면 throw — localStorage만 쓴 채 성공으로
+ *    위장하면 다른 윈도우가 storage 이벤트로 깨어나 IPC로 재조회할 때 stale을
+ *    읽어 inconsistency가 생긴다.
+ *  - IPC 미가용 환경(브라우저 전용)에서는 localStorage가 신뢰 저장소.
+ *  - localStorage write가 실패해도 throw — 호출자가 사용자에게 알릴 수 있도록.
+ */
+export async function saveProjectFieldConfig(
+  accountId: string,
+  projectKey: string,
+  config: ProjectFieldConfig,
+): Promise<void> {
+  const setRemote = (window as any).workspaceAPI?.settings?.setProjectFieldConfig as
+    | ((aid: string, pk: string, c: unknown) => Promise<void>)
+    | undefined;
+  if (setRemote) {
+    // IPC 실패는 그대로 throw — 부분 성공으로 인한 cross-window 비일관성 방지
+    await setRemote(accountId, projectKey, config);
+  }
+  localStorage.setItem(fieldConfigKey(accountId, projectKey), JSON.stringify(config));
+  window.dispatchEvent(
+    new CustomEvent('lyra:project-field-config-changed', {
+      detail: { accountId, projectKey },
+    }),
+  );
+}

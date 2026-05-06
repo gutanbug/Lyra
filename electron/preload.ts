@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       ipcRenderer.invoke('settings:getSelectedSpaces', accountId),
     setSelectedSpaces: (accountId: string, keys: string[]) =>
       ipcRenderer.invoke('settings:setSelectedSpaces', accountId, keys),
+    getProjectFieldConfig: (accountId: string, projectKey: string) =>
+      ipcRenderer.invoke('settings:getProjectFieldConfig', accountId, projectKey),
+    setProjectFieldConfig: (accountId: string, projectKey: string, config: unknown) =>
+      ipcRenderer.invoke('settings:setProjectFieldConfig', accountId, projectKey, config),
   },
   account: {
     getAll: () => ipcRenderer.invoke('account:getAll'),
@@ -40,5 +44,25 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       action: string;
       params?: Record<string, unknown>;
     }) => ipcRenderer.invoke('integration:invoke', payload),
+  },
+  agents: {
+    getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),
+    getStatus: (id: string) => ipcRenderer.invoke('agents:getStatus', id),
+    login: (id: string) => ipcRenderer.invoke('agents:login', id),
+    logout: (id: string) => ipcRenderer.invoke('agents:logout', id),
+    setApiKey: (id: string, key: string | null) =>
+      ipcRenderer.invoke('agents:setApiKey', id, key),
+    setBinaryPath: (id: string, binaryPath: string | null) =>
+      ipcRenderer.invoke('agents:setBinaryPath', id, binaryPath),
+    startTurn: (payload: { turnId: string; agentId: string; prompt: string; sessionId?: string | null }) =>
+      ipcRenderer.invoke('agents:startTurn', payload),
+    cancelTurn: (turnId: string) => ipcRenderer.invoke('agents:cancelTurn', turnId),
+    onTurnEvent: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown) => handler(payload);
+      ipcRenderer.on('agents:turnEvent', listener);
+      return () => {
+        ipcRenderer.removeListener('agents:turnEvent', listener);
+      };
+    },
   },
 });

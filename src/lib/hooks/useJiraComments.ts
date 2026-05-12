@@ -16,6 +16,7 @@ interface NormalizedComment {
   updated: string;
   replyToId: string;
   replyToName: string;
+  parentCommentId: string;
 }
 
 interface UseJiraCommentsParams {

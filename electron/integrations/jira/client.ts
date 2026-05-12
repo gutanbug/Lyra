@@ -173,6 +173,7 @@ export class JiraClient {
   private searchCache = new Map<string, CacheEntry<unknown>>();
   private metadataCache = new Map<string, CacheEntry<unknown>>();
   private wikiV1Client: AxiosInstance;
+  private agileClient: AxiosInstance;
   private credentials: JiraCredentials;
 
   constructor(credentials: JiraCredentials) {
@@ -185,6 +186,7 @@ export class JiraClient {
     this.client = axios.create({ baseURL: `${baseUrl}/rest/api/3`, ...authConfig });
     this.wikiClient = axios.create({ baseURL: `${baseUrl}/wiki/api/v2`, ...authConfig });
     this.wikiV1Client = axios.create({ baseURL: `${baseUrl}/wiki/rest/api`, ...authConfig });
+    this.agileClient = axios.create({ baseURL: `${baseUrl}/rest/agile/1.0`, ...authConfig });
   }
 
   async getCurrentUser(): Promise<unknown> {
@@ -207,9 +209,12 @@ export class JiraClient {
    * GET /rest/api/3/issue/:issueIdOrKey/comment
    */
   async getComments(issueIdOrKey: string): Promise<unknown[]> {
+    // expand에 가능한 후보를 모두 포함시켜 threading 메타를 최대한 노출.
+    // Jira Cloud 환경별로 native parent / properties / renderedBody 위치가 다르므로
+    // renderer 측 normalizer가 패턴 매칭으로 부모 ID를 추출한다.
     const { data } = await withRetry429(() =>
       this.client.get(`/issue/${issueIdOrKey}/comment`, {
-        params: { orderBy: '+created' },
+        params: { orderBy: '+created', expand: 'properties,renderedBody' },
       })
     );
     const r = data as Record<string, unknown>;
@@ -330,6 +335,38 @@ export class JiraClient {
       this.client.get(`/project/${projectIdOrKey}/versions`)
     );
     return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * 보드의 JQL 필터 문자열 조회.
+   * `/board/{id}/configuration` → filter.id → `/filter/{id}` 두 단계 호출.
+   * 사이드바에서 보드를 선택했을 때 대시보드의 epic 페치를 board JQL로 scoping하는 데 사용.
+   */
+  async getBoardFilterJql(boardId: number): Promise<string> {
+    const { data: cfg } = await withRetry429(() =>
+      this.agileClient.get(`/board/${boardId}/configuration`)
+    );
+    const filter = (cfg as Record<string, unknown>)?.filter as Record<string, unknown> | undefined;
+    const filterId = filter?.id;
+    if (!filterId) return '';
+    const { data: f } = await withRetry429(() =>
+      this.client.get(`/filter/${filterId}`)
+    );
+    const jql = (f as Record<string, unknown>)?.jql;
+    return typeof jql === 'string' ? jql : '';
+  }
+
+  /**
+   * 프로젝트가 가진 Agile 보드 목록 조회 (Scrum/Kanban).
+   * GET /rest/agile/1.0/board?projectKeyOrId=:key
+   */
+  async getProjectBoards(projectKeyOrId: string): Promise<Array<Record<string, unknown>>> {
+    const { data } = await withRetry429(() =>
+      this.agileClient.get('/board', { params: { projectKeyOrId } })
+    );
+    const r = data as Record<string, unknown>;
+    const values = (r?.values ?? []) as Array<Record<string, unknown>>;
+    return Array.isArray(values) ? values : [];
   }
 
   /**

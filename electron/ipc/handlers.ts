@@ -7,6 +7,9 @@ import type { AgentId } from '../integrations/agents/types';
 import { startTurn as startAgentTurn, cancelTurn as cancelAgentTurn } from '../integrations/agents/runner';
 import type { StartTurnPayload, TurnEvent } from '../integrations/agents/runner';
 import { discoverCommands } from '../integrations/agents/discovery';
+import { permissionBridge } from '../integrations/agents/permission-bridge';
+import type { PermissionRequest, PermissionResponse } from '../integrations/agents/permission-bridge';
+import { BrowserWindow } from 'electron';
 
 export interface InvokePayload {
   accountId: string;
@@ -138,4 +141,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('agents:cancelTurn', (_, turnId: string) => cancelAgentTurn(turnId));
 
   ipcMain.handle('agents:listCommands', (_, id: AgentId) => discoverCommands(id));
+
+  // permission bridge → 모든 BrowserWindow에 broadcast
+  permissionBridge.on('permission_request', (req: PermissionRequest) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('agents:permissionRequest', req);
+    }
+  });
+
+  ipcMain.handle('agents:permissionResponse', (_e, response: PermissionResponse) => {
+    return permissionBridge.respond(response);
+  });
 }

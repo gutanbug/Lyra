@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
+import { isEpicType } from 'lib/utils/jiraUtils';
 import type { NormalizedIssue } from 'types/jira';
 import type { StatusCount } from 'lib/hooks/useJiraSearch';
 
@@ -41,6 +42,8 @@ export function useJiraStatusFilter({
     const countMap = new Map<string, { category: string; count: number }>();
     for (const issue of myIssues) {
       if (myIssueKeys.size > 0 && !myIssueKeys.has(issue.key)) continue;
+      // Epic은 상위 묶음 단위라 진척률 계산에서 제외
+      if (isEpicType(issue.issueTypeName)) continue;
       const name = issue.statusName || '기타';
       const cat = issue.statusCategory || '';
       const entry = countMap.get(name);

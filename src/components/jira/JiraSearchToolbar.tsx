@@ -5,6 +5,7 @@ import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { getStatusColor } from 'lib/utils/jiraUtils';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
+import { useSidebarToggle } from 'components/sidebar/SidebarLayout';
 import type { NormalizedIssue } from 'types/jira';
 
 interface JiraSearchToolbarProps {
@@ -48,12 +49,13 @@ const JiraSearchToolbar = ({
   onSetShowSuggestions,
   onSetActiveSuggestionIdx,
 }: JiraSearchToolbarProps) => {
+  const { toggle: toggleSidebar } = useSidebarToggle();
   return (
     <Toolbar>
       <Logo>
         {hasServiceIcon('jira') && (
           <LogoIconBtn
-            onClick={() => window.dispatchEvent(new Event('lyra:toggle-sidebar'))}
+            onClick={toggleSidebar}
             title="사이드바 열기/닫기 (⌘\)"
           >
             {getServiceIcon('jira', 24)}

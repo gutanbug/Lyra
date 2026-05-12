@@ -1,4 +1,4 @@
-export type AgentId = 'claude' | 'codex' | 'gemini';
+export type AgentId = 'claude';
 
 export interface AgentDescriptor {
   id: AgentId;

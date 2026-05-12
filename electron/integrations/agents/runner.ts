@@ -1,26 +1,45 @@
-import { spawn, ChildProcess } from 'child_process';
+/// <reference lib="dom" />
 import { existsSync } from 'fs';
+import { join } from 'path';
 import { AGENT_DESCRIPTORS } from './config';
 import { AgentSettingsStore } from './store';
+import { permissionBridge } from './permission-bridge';
+import { atlassianBridge } from './atlassian-bridge';
+import { AccountManager } from '../../account/manager';
 import type { AgentDescriptor, AgentId } from './types';
 
 // ────────────────────────────────────────────────────────────
-// 헤드리스(stream) 모드로 각 AI Agent CLI를 spawn하고,
-// stdout을 chunk/meta/end/error 이벤트로 변환해 emitter에 전달한다.
+// Claude Code 공식 SDK(@anthropic-ai/claude-agent-sdk)의 query()를
+// 사용해 헤드리스 턴을 실행한다. SDK는 내부적으로 `claude` 바이너리를
+// stream-json 모드로 spawn하고 메시지를 typed async iterator로 노출한다.
 //
-// claude   : `--output-format stream-json --include-partial-messages` (NDJSON 파싱)
-// codex    : `codex exec <prompt>` (1차: stdout 텍스트 그대로 전달)
-// gemini   : `gemini -p <prompt>`  (1차: stdout 텍스트 그대로 전달)
-//
-// codex/gemini는 공식 stream-json 포맷이 claude만큼 안정화되어 있지 않아
-// 1차 구현에서는 텍스트 모드로 처리한다. 이후 단계에서 어댑터별로 확장.
+// SDK가 ESM 전용이므로 CJS Electron 빌드에서는 native dynamic import로 로드한다.
+// (TS의 module: commonjs는 import()를 require()로 변환하므로 Function 우회 필요.)
 // ────────────────────────────────────────────────────────────
+
+// SDK는 ESM 전용이고 zod v4 .d.ts가 최신 TS 문법을 사용하므로 정적 type-import는 회피한다.
+// 런타임 모듈은 native dynamic import로 로드하고, 사용 면(query, AbortController option)만
+// 로컬 인터페이스로 좁혀 선언한다.
+interface SdkQueryParams {
+  prompt: string;
+  options?: Record<string, unknown>;
+}
+interface SdkModuleShape {
+  query: (params: SdkQueryParams) => AsyncIterable<unknown>;
+}
+const importSdk: () => Promise<SdkModuleShape> = new Function(
+  'return import("@anthropic-ai/claude-agent-sdk")',
+) as () => Promise<SdkModuleShape>;
+
+export type ClaudePermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 
 export interface StartTurnPayload {
   turnId: string;
   agentId: AgentId;
   prompt: string;
   sessionId?: string | null;
+  /** claude `--permission-mode` 값. 'default'는 인자 미전달과 동치. */
+  permissionMode?: ClaudePermissionMode;
 }
 
 export type TurnEventType =
@@ -71,93 +90,168 @@ export interface TurnEvent {
 type Emitter = (event: TurnEvent) => void;
 
 interface ActiveTurn {
-  child: ChildProcess;
+  abort: AbortController;
   agentId: AgentId;
+  /** 사용자 취소 후 후속 이벤트를 drop 하기 위한 플래그 */
+  cancelled: boolean;
+  /** wrappedEmit 우회용 원본 emitter — 취소 알림을 즉시 전송할 때 사용 */
+  rawEmit: Emitter;
 }
 
 interface TurnState {
   /** 지금까지 emit한 chunk 개수 — 0이면 partial stream이 도착하지 않았다는 뜻 */
   chunkCount: number;
-  /** claude `assistant` 라인의 text 합본 (partial이 비활성일 때 fallback으로 사용) */
+  /** assistant 라인의 text 합본 (partial이 비활성일 때 fallback) */
   assistantSnapshot: string;
 }
 
 const activeTurns = new Map<string, ActiveTurn>();
 const turnStates = new Map<string, TurnState>();
 
-function resolveBinary(descriptor: AgentDescriptor): string {
+function resolveBinary(descriptor: AgentDescriptor): string | undefined {
   const override = AgentSettingsStore.getBinaryPath(descriptor.id);
   if (override && existsSync(override)) return override;
-  // PATH lookup은 spawn에 위임 (이름만 반환)
-  return descriptor.defaultBinary;
+  return undefined; // SDK 내장 경로 또는 PATH lookup에 위임
 }
 
-function buildEnv(descriptor: AgentDescriptor): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+/**
+ * Lyra의 활성 Atlassian 계정에서 자격을 가져온다.
+ * MCP-atlassian / Anthropic Atlassian connector 등이 사용하는 표준 환경변수에 매핑하기 위함.
+ */
+function getAtlassianCredentials(): { baseUrl: string; email: string; apiToken: string } | null {
+  const isAtlassian = (t: string) => t === 'atlassian' || t === 'jira' || t === 'confluence';
+  const pick = (acc: { credentials: unknown } | null) => {
+    if (!acc) return null;
+    const c = acc.credentials as { baseUrl?: string; email?: string; apiToken?: string };
+    if (c?.baseUrl && c?.email && c?.apiToken) {
+      return { baseUrl: c.baseUrl, email: c.email, apiToken: c.apiToken };
+    }
+    return null;
+  };
+
+  const active = AccountManager.getActive();
+  if (active && isAtlassian(active.serviceType)) {
+    const c = pick(active);
+    if (c) return c;
+  }
+  for (const t of ['atlassian', 'jira', 'confluence']) {
+    const accounts = AccountManager.getByService(t);
+    for (const acc of accounts) {
+      const c = pick(acc);
+      if (c) return c;
+    }
+  }
+  return null;
+}
+
+function buildEnv(descriptor: AgentDescriptor): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === 'string') env[k] = v;
+  }
   const apiKey = AgentSettingsStore.getApiKey(descriptor.id);
   if (apiKey && descriptor.apiKeyEnv) {
     env[descriptor.apiKeyEnv] = apiKey;
   }
-  // ANSI 색상/TTY 이스케이프 억제 (텍스트 파싱 안정화)
+
+  const atlas = getAtlassianCredentials();
+  if (atlas) {
+    env.JIRA_URL = atlas.baseUrl;
+    env.JIRA_USERNAME = atlas.email;
+    env.JIRA_API_TOKEN = atlas.apiToken;
+    env.CONFLUENCE_URL = atlas.baseUrl;
+    env.CONFLUENCE_USERNAME = atlas.email;
+    env.CONFLUENCE_API_TOKEN = atlas.apiToken;
+    env.ATLASSIAN_INSTANCE_URL = atlas.baseUrl;
+    env.ATLASSIAN_USER_EMAIL = atlas.email;
+    env.ATLASSIAN_API_TOKEN = atlas.apiToken;
+  }
+
+  // Lyra가 SDK 사용처임을 알릴 User-Agent identifier
+  env.CLAUDE_AGENT_SDK_CLIENT_APP = 'lyra/1.0';
+
+  // ANSI 색상/TTY 이스케이프 억제
   env.NO_COLOR = '1';
   env.FORCE_COLOR = '0';
   env.CLICOLOR = '0';
   return env;
 }
 
-function buildArgs(agentId: AgentId, prompt: string, sessionId?: string | null): string[] {
-  if (agentId === 'claude') {
-    const args = [
-      '-p', prompt,
-      '--output-format', 'stream-json',
-      '--include-partial-messages',
-      '--verbose',
-    ];
-    if (sessionId) args.push('--resume', sessionId);
-    return args;
+interface StdioMcpConfig {
+  type: 'stdio';
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+/**
+ * Lyra가 호스팅하는 MCP 서버 설정을 빌드한다.
+ *  - lyra-permission: 도구 호출 권한 프롬프트 라우팅
+ *  - lyra-atlassian: controllers/jira·confluence 도구 노출
+ */
+function buildLyraMcpServers(turnId: string, env: Record<string, string>): {
+  servers: Record<string, StdioMcpConfig>;
+  permissionPromptToolName: string | undefined;
+} {
+  const servers: Record<string, StdioMcpConfig> = {};
+  let permissionPromptToolName: string | undefined;
+
+  const permissionSocket = permissionBridge.getSocketPath();
+  const permissionServer = join(__dirname, 'permission-mcp-server.js');
+  if (permissionSocket && existsSync(permissionServer)) {
+    servers['lyra-permission'] = {
+      type: 'stdio',
+      command: process.execPath,
+      args: [permissionServer],
+      env: {
+        ELECTRON_RUN_AS_NODE: '1',
+        LYRA_PERMISSION_SOCKET: permissionSocket,
+        LYRA_TURN_ID: turnId,
+        PATH: env.PATH ?? '',
+      },
+    };
+    permissionPromptToolName = 'mcp__lyra-permission__prompt_user';
   }
-  if (agentId === 'codex') {
-    return ['exec', prompt];
+
+  const atlassianSocket = atlassianBridge.getSocketPath();
+  const atlassianServer = join(__dirname, 'atlassian-mcp-server.js');
+  if (atlassianSocket && existsSync(atlassianServer)) {
+    servers['lyra-atlassian'] = {
+      type: 'stdio',
+      command: process.execPath,
+      args: [atlassianServer],
+      env: {
+        ELECTRON_RUN_AS_NODE: '1',
+        LYRA_ATLASSIAN_SOCKET: atlassianSocket,
+        PATH: env.PATH ?? '',
+      },
+    };
   }
-  if (agentId === 'gemini') {
-    return ['-p', prompt];
-  }
-  return [prompt];
+
+  return { servers, permissionPromptToolName };
 }
 
 export function startTurn(
   payload: StartTurnPayload,
   emit: Emitter,
 ): { ok: boolean; message?: string } {
-  const { turnId, agentId, prompt, sessionId } = payload;
+  const { turnId, agentId, prompt, sessionId, permissionMode } = payload;
 
   if (activeTurns.has(turnId)) {
     return { ok: false, message: '동일 turnId가 이미 실행 중입니다.' };
   }
+  if (agentId !== 'claude') {
+    return { ok: false, message: `지원하지 않는 agent: ${agentId}` };
+  }
 
   const descriptor = AGENT_DESCRIPTORS[agentId];
-  if (!descriptor) {
-    return { ok: false, message: `알 수 없는 agent: ${agentId}` };
-  }
-
-  const binary = resolveBinary(descriptor);
-  const args = buildArgs(agentId, prompt, sessionId);
   const env = buildEnv(descriptor);
+  const binaryOverride = resolveBinary(descriptor);
+  const abort = new AbortController();
 
-  let child: ChildProcess;
-  try {
-    child = spawn(binary, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    emit({ turnId, type: 'error', message: `실행 실패: ${msg}` });
-    return { ok: false, message: msg };
-  }
-
-  activeTurns.set(turnId, { child, agentId });
-  turnStates.set(turnId, { chunkCount: 0, assistantSnapshot: '' });
-
-  // chunk emit 시 카운트 증가 (claude의 partial fallback 판정용)
   const wrappedEmit: Emitter = (e) => {
+    const turn = activeTurns.get(turnId);
+    if (turn?.cancelled) return; // 취소 이후 SDK가 남은 메시지를 흘려도 무시
     if (e.type === 'chunk') {
       const s = turnStates.get(turnId);
       if (s) s.chunkCount += 1;
@@ -165,60 +259,132 @@ export function startTurn(
     emit(e);
   };
 
-  if (agentId === 'claude') {
-    attachClaudeNdjsonParser(child, turnId, wrappedEmit);
-  } else {
-    attachTextStreamer(child, turnId, wrappedEmit);
-  }
+  activeTurns.set(turnId, { abort, agentId, cancelled: false, rawEmit: emit });
+  turnStates.set(turnId, { chunkCount: 0, assistantSnapshot: '' });
 
-  let stderrBuf = '';
-  child.stderr?.setEncoding('utf8');
-  child.stderr?.on('data', (data: string) => {
-    stderrBuf += data;
-  });
-
-  child.on('error', (err) => {
-    activeTurns.delete(turnId);
-    emit({ turnId, type: 'error', message: err.message });
-  });
-
-  child.on('close', (code, signal) => {
+  void runQuery(
+    {
+      turnId,
+      prompt,
+      sessionId: sessionId ?? null,
+      permissionMode,
+      env,
+      binaryOverride,
+      abort,
+    },
+    wrappedEmit,
+  ).catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (abort.signal.aborted) {
+      wrappedEmit({ turnId, type: 'error', message: '사용자 취소' });
+    } else {
+      wrappedEmit({ turnId, type: 'error', message: msg });
+    }
+  }).finally(() => {
     activeTurns.delete(turnId);
     turnStates.delete(turnId);
-
-    if (signal === 'SIGTERM' || signal === 'SIGKILL') {
-      emit({ turnId, type: 'error', message: '사용자 취소' });
-      return;
-    }
-
-    // claude는 result NDJSON 라인에서 end/error를 이미 emit 했음.
-    // 그래도 비정상 종료(파싱 실패 / 인증 실패 등)에 대비해 stderr가 있으면 error로 보강.
-    if (agentId === 'claude') {
-      if (code !== 0 && stderrBuf.trim()) {
-        emit({ turnId, type: 'error', message: stderrBuf.trim() });
-      }
-      return;
-    }
-
-    if (code === 0) {
-      emit({ turnId, type: 'end' });
-    } else {
-      emit({
-        turnId,
-        type: 'error',
-        message: stderrBuf.trim() || `프로세스가 종료 코드 ${code}로 종료되었습니다.`,
-      });
-    }
   });
 
   return { ok: true };
 }
 
+interface RunQueryArgs {
+  turnId: string;
+  prompt: string;
+  sessionId: string | null;
+  permissionMode: ClaudePermissionMode | undefined;
+  env: Record<string, string>;
+  binaryOverride: string | undefined;
+  abort: AbortController;
+}
+
+async function runQuery(args: RunQueryArgs, emit: Emitter): Promise<void> {
+  const { turnId, prompt, sessionId, permissionMode, env, binaryOverride, abort } = args;
+
+  const sdk = await importSdk();
+  const { servers, permissionPromptToolName } = buildLyraMcpServers(turnId, env);
+
+  const options: Record<string, unknown> = {
+    abortController: abort,
+    env,
+    includePartialMessages: true,
+    mcpServers: servers,
+  };
+  if (sessionId) options.resume = sessionId;
+  if (permissionMode && permissionMode !== 'default') options.permissionMode = permissionMode;
+  // Bypass 모드에서는 prompt tool을 거치지 않고 SDK가 자체적으로 모든 도구를 허용하도록 한다.
+  // SDK 사양상 bypassPermissions는 allowDangerouslySkipPermissions=true가 필수.
+  if (permissionMode === 'bypassPermissions') {
+    options.allowDangerouslySkipPermissions = true;
+  } else if (permissionPromptToolName) {
+    options.permissionPromptToolName = permissionPromptToolName;
+  }
+  if (binaryOverride) options.pathToClaudeCodeExecutable = binaryOverride;
+
+  // Lyra의 read-only Atlassian MCP 도구를 모델이 "Lyra가 직접 데이터 줄게" 라고 인식하도록
+  // 명시적으로 안내한다. 별도 prompt 없이는 WebFetch/Bash 등 기본 도구로 우회하려는 경향이 있다.
+  if (servers['lyra-atlassian']) {
+    const lyraToolGuide = [
+      '당신은 Lyra 데스크톱 앱에 내장된 한국어 AI 어시스턴트입니다.',
+      '사용자는 Atlassian(Jira / Confluence) 계정을 Lyra에 이미 연결해 두었으며, 별도 URL이나 본문을 붙여넣지 않습니다.',
+      '',
+      'Jira·Confluence 데이터를 조회해야 할 때는 반드시 아래의 Lyra MCP 도구를 우선 사용하세요. WebFetch·Bash·HTTP 직접 호출은 사용하지 마세요.',
+      '  • mcp__lyra-atlassian__lyra_jira_get_issue(issue_key)  — Jira 이슈 단건 조회',
+      '  • mcp__lyra-atlassian__lyra_jira_search_issues(jql, max_results?) — JQL 검색',
+      '  • mcp__lyra-atlassian__lyra_confluence_get_page(page_id) — Confluence 페이지 조회',
+      '',
+      '도구 호출은 Lyra의 활성 계정 자격증명으로 인증되므로, 사용자에게 토큰/이메일/도메인을 다시 묻지 마세요. 인증 오류가 반환되면 사용자에게 환경설정에서 계정을 확인하라고 안내하세요.',
+      '답변은 한국어로 작성하고, Markdown 형식으로 핵심을 간결하게 정리하세요.',
+    ].join('\n');
+    options.systemPrompt = {
+      type: 'preset',
+      preset: 'claude_code',
+      append: lyraToolGuide,
+    };
+    // read-only 조회 도구는 매번 권한 prompt를 띄울 필요가 없도록 자동 허용 목록에 추가한다.
+    // (bypass 모드에서는 어차피 모두 허용이고, default 모드에서도 Lyra 자신의 도구라 안전.)
+    options.allowedTools = [
+      'mcp__lyra-atlassian__lyra_jira_get_issue',
+      'mcp__lyra-atlassian__lyra_jira_search_issues',
+      'mcp__lyra-atlassian__lyra_confluence_get_page',
+    ];
+  }
+
+  const iter = sdk.query({ prompt, options });
+
+  let endEmitted = false;
+  try {
+    for await (const message of iter) {
+      const handled = handleSdkMessage(message, turnId, emit);
+      if (handled) endEmitted = true;
+    }
+  } catch (err) {
+    if (abort.signal.aborted) {
+      emit({ turnId, type: 'error', message: '사용자 취소' });
+      endEmitted = true;
+      return;
+    }
+    throw err;
+  }
+
+  if (!endEmitted) {
+    emit({ turnId, type: 'end' });
+  }
+}
+
 export function cancelTurn(turnId: string): boolean {
   const t = activeTurns.get(turnId);
-  if (!t) return false;
+  if (!t || t.cancelled) return false;
+  t.cancelled = true;
+  // SDK iterator/MCP 서버가 abort를 인식하기 전이라도 사용자에게 즉시 종료 신호를 보낸다.
+  // wrappedEmit은 cancelled 플래그를 보면 drop 하므로 rawEmit으로 직접 전달.
   try {
-    t.child.kill('SIGTERM');
+    t.rawEmit({ turnId, type: 'error', message: '사용자 취소' });
+  } catch {
+    /* ignore */
+  }
+  try {
+    t.abort.abort();
   } catch {
     /* ignore */
   }
@@ -226,44 +392,16 @@ export function cancelTurn(turnId: string): boolean {
 }
 
 // ────────────────────────────────────────────────────────────
-// claude stream-json (NDJSON) 파서
+// SDK 메시지 → TurnEvent 매핑
+// SDK가 내보내는 메시지 shape는 CLI stream-json과 동일한 키를 사용한다
+// (system/init, stream_event, user, assistant, result).
 // ────────────────────────────────────────────────────────────
-function attachClaudeNdjsonParser(child: ChildProcess, turnId: string, emit: Emitter) {
-  let buf = '';
-  let endEmitted = false;
-
-  child.stdout?.setEncoding('utf8');
-  child.stdout?.on('data', (data: string) => {
-    buf += data;
-    let idx;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        const obj = JSON.parse(line);
-        if (handleClaudeRecord(obj, turnId, emit)) {
-          endEmitted = true;
-        }
-      } catch {
-        // 파싱 실패 라인은 무시 (CLI 버전 차이 또는 디버그 로그)
-      }
-    }
-  });
-
-  child.stdout?.on('end', () => {
-    if (!endEmitted) {
-      emit({ turnId, type: 'end' });
-    }
-  });
-}
-
 /**
  * @returns end/error를 emit했으면 true
  */
-function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolean {
-  if (!obj || typeof obj !== 'object') return false;
-  const rec = obj as Record<string, unknown>;
+function handleSdkMessage(message: unknown, turnId: string, emit: Emitter): boolean {
+  if (!message || typeof message !== 'object') return false;
+  const rec = message as Record<string, unknown>;
 
   // 세션 init: { type: 'system', subtype: 'init', session_id, model, ... }
   if (rec.type === 'system' && rec.subtype === 'init') {
@@ -276,7 +414,7 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
     return false;
   }
 
-  // stream_event 분기 — content_block_start / delta / stop 모두 처리
+  // partial stream — content block start/delta/stop
   if (rec.type === 'stream_event' && rec.event && typeof rec.event === 'object') {
     const ev = rec.event as Record<string, unknown>;
     const evType = ev.type;
@@ -330,7 +468,7 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
     return false;
   }
 
-  // tool_result는 별도 user 메시지로 도착: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id, content, is_error }] } }
+  // tool_result: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id, content, is_error }] } }
   if (rec.type === 'user' && rec.message && typeof rec.message === 'object') {
     const msg = rec.message as Record<string, unknown>;
     if (Array.isArray(msg.content)) {
@@ -359,8 +497,7 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
     return false;
   }
 
-  // 단발 assistant 라인: partial이 비활성/무시된 환경에서 전체 텍스트가 한 번에 도착함.
-  // text content를 합쳐 snapshot에 보관 → result 시점에 chunk가 0이면 fallback으로 emit.
+  // 단발 assistant 라인 — partial이 비활성/누락된 환경의 fallback
   if (rec.type === 'assistant' && rec.message && typeof rec.message === 'object') {
     const message = rec.message as Record<string, unknown>;
     if (Array.isArray(message.content)) {
@@ -384,12 +521,10 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
   // 완료: { type: 'result', subtype: 'success' | 'error_*', session_id, total_cost_usd, ... }
   if (rec.type === 'result') {
     if (rec.subtype === 'success') {
-      // partial chunk가 한 번도 오지 않았다면 assistant snapshot을 fallback으로 emit
       const s = turnStates.get(turnId);
       if (s && s.chunkCount === 0 && s.assistantSnapshot) {
         emit({ turnId, type: 'chunk', text: s.assistantSnapshot });
       }
-      // 그래도 비어있고 result.result 텍스트가 있으면 그것을 fallback
       const fallback = typeof rec.result === 'string' ? rec.result : '';
       if (s && s.chunkCount === 0 && !s.assistantSnapshot && fallback) {
         emit({ turnId, type: 'chunk', text: fallback });
@@ -401,8 +536,9 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
         costUsd: typeof rec.total_cost_usd === 'number' ? rec.total_cost_usd : undefined,
       });
     } else {
-      const msg = typeof rec.error === 'string'
-        ? rec.error
+      const errors = Array.isArray(rec.errors) ? rec.errors.filter((x): x is string => typeof x === 'string') : [];
+      const msg = errors.length > 0
+        ? errors.join('\n')
         : (typeof rec.subtype === 'string' ? rec.subtype : '알 수 없는 오류');
       emit({ turnId, type: 'error', message: msg });
     }
@@ -410,14 +546,4 @@ function handleClaudeRecord(obj: unknown, turnId: string, emit: Emitter): boolea
   }
 
   return false;
-}
-
-// ────────────────────────────────────────────────────────────
-// codex/gemini: stdout 텍스트를 그대로 청크로 흘려보낸다.
-// ────────────────────────────────────────────────────────────
-function attachTextStreamer(child: ChildProcess, turnId: string, emit: Emitter) {
-  child.stdout?.setEncoding('utf8');
-  child.stdout?.on('data', (data: string) => {
-    if (data) emit({ turnId, type: 'chunk', text: data });
-  });
 }

@@ -1,4 +1,4 @@
-export type AgentId = 'claude' | 'codex' | 'gemini';
+export type AgentId = 'claude';
 
 export interface AgentStatus {
   id: AgentId;
@@ -21,16 +21,6 @@ export const AGENT_META: Record<AgentId, { displayName: string; installUrl: stri
     installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
   },
-  codex: {
-    displayName: 'Codex CLI',
-    installUrl: 'https://github.com/openai/codex',
-    apiKeyEnv: 'OPENAI_API_KEY',
-  },
-  gemini: {
-    displayName: 'Gemini CLI',
-    installUrl: 'https://github.com/google-gemini/gemini-cli',
-    apiKeyEnv: 'GEMINI_API_KEY',
-  },
 };
 
-export const AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini'];
+export const AGENT_IDS: AgentId[] = ['claude'];

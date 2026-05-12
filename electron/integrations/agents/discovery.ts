@@ -84,60 +84,86 @@ async function readDirCommands(
   return out;
 }
 
+/**
+ * 주어진 root 아래에서 'commands' 디렉터리들을 재귀적으로 찾는다.
+ * 깊이 제한으로 무한 루프/심볼릭 폭주를 방지.
+ */
+async function findCommandDirs(root: string, depth: number, found: string[]): Promise<void> {
+  if (depth < 0) return;
+  if (!(await pathExists(root))) return;
+  let entries: import('fs').Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    if (ent.name.startsWith('.')) continue; // 숨김 디렉터리 스킵
+    const sub = path.join(root, ent.name);
+    if (ent.name === 'commands') {
+      found.push(sub);
+      // commands 내부는 readDirCommands가 처리 — 더 재귀하지 않음
+      continue;
+    }
+    await findCommandDirs(sub, depth - 1, found);
+  }
+}
+
+const PSEUDO_SEGMENT = /^(skills|plugins|cache|marketplaces|repos|data)$/;
+const SEMVER = /^\d+\.\d+\.\d+(?:[-+].+)?$/;
+const HASH_LIKE = /^[a-f0-9]{6,}$/;
+
+/**
+ * commands 디렉터리의 상위 segments에서 의미 있는 plugin name을 추출.
+ * 알려진 layout 패턴을 먼저 매칭하고, 안 맞으면 휴리스틱 fallback.
+ */
+function pluginNameFromDir(commandsDir: string, base: string): string {
+  const rel = path.relative(base, commandsDir).split(path.sep).join('/');
+
+  // cache/<mp>/<plugin>/<version>/(skills/<skill>/)?commands
+  const m1 = rel.match(/^cache\/[^/]+\/([^/]+)\/[^/]+(?:\/skills\/([^/]+))?\/commands$/);
+  if (m1) return m1[2] ?? m1[1];
+
+  // marketplaces/<mp>/(plugins/<plugin>/|skills/<skill>/)?commands
+  const m2 = rel.match(/^marketplaces\/([^/]+)(?:\/plugins\/([^/]+)|\/skills\/([^/]+))?\/commands$/);
+  if (m2) return m2[2] ?? m2[3] ?? m2[1];
+
+  // fallback — pseudo/version/hash skip 후 마지막 의미 있는 segment
+  const segments = rel.split('/').slice(0, -1);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i];
+    if (PSEUDO_SEGMENT.test(s)) continue;
+    if (SEMVER.test(s)) continue;
+    if (HASH_LIKE.test(s)) continue;
+    return s;
+  }
+  return segments[segments.length - 1] ?? 'plugin';
+}
+
 async function discoverClaude(): Promise<DiscoveredCommand[]> {
   const out: DiscoveredCommand[] = [];
 
   // 1) 사용자 커맨드 (~/.claude/commands)
   out.push(...(await readDirCommands(path.join(HOME, '.claude', 'commands'), 'user')));
 
-  // 2) plugin 커맨드 (~/.claude/plugins/cache/<owner>/<plugin>/commands)
-  const pluginsRoot = path.join(HOME, '.claude', 'plugins', 'cache');
-  if (await pathExists(pluginsRoot)) {
-    let owners: import('fs').Dirent[] = [];
-    try {
-      owners = await fs.readdir(pluginsRoot, { withFileTypes: true });
-    } catch { /* ignore */ }
-    for (const owner of owners) {
-      if (!owner.isDirectory()) continue;
-      const ownerDir = path.join(pluginsRoot, owner.name);
-      let plugins: import('fs').Dirent[] = [];
-      try {
-        plugins = await fs.readdir(ownerDir, { withFileTypes: true });
-      } catch { continue; }
-      for (const plugin of plugins) {
-        if (!plugin.isDirectory()) continue;
-        const cmdsDir = path.join(ownerDir, plugin.name, 'commands');
-        out.push(...(await readDirCommands(cmdsDir, `plugin:${plugin.name}`)));
-      }
-    }
+  // 2) plugin/marketplace — 어떤 깊이의 commands 디렉터리든 모두 디스커버
+  // 실제 layout 예시:
+  //   cache/<mp>/<plugin>/<version>/commands/*.md
+  //   cache/<mp>/<plugin>/<version>/skills/<skill>/commands/*.md
+  //   marketplaces/<mp>/commands/*.md
+  //   marketplaces/<mp>/plugins/<plugin>/commands/*.md
+  //   marketplaces/<mp>/skills/<skill>/commands/*.md
+  const pluginsRoot = path.join(HOME, '.claude', 'plugins');
+  const cmdDirs: string[] = [];
+  await findCommandDirs(pluginsRoot, 6, cmdDirs);
+  for (const dir of cmdDirs) {
+    const pluginName = pluginNameFromDir(dir, pluginsRoot);
+    // claude 컨벤션상 plugin commands는 `/<plugin>:<command>` 네임스페이스 형식.
+    // prefix를 plugin name으로 시작해 readDirCommands가 슬래시 이름을 그렇게 구성하도록 한다.
+    out.push(...(await readDirCommands(dir, `plugin:${pluginName}`, pluginName)));
   }
 
-  return out;
-}
-
-async function discoverCodex(): Promise<DiscoveredCommand[]> {
-  const out: DiscoveredCommand[] = [];
-  out.push(...(await readDirCommands(path.join(HOME, '.codex', 'commands'), 'user')));
-  out.push(...(await readDirCommands(path.join(HOME, '.codex', 'prompts'), 'user')));
-  return out;
-}
-
-async function discoverGemini(): Promise<DiscoveredCommand[]> {
-  const out: DiscoveredCommand[] = [];
-  out.push(...(await readDirCommands(path.join(HOME, '.gemini', 'commands'), 'user')));
-
-  const extRoot = path.join(HOME, '.gemini', 'extensions');
-  if (await pathExists(extRoot)) {
-    let exts: import('fs').Dirent[] = [];
-    try {
-      exts = await fs.readdir(extRoot, { withFileTypes: true });
-    } catch { /* ignore */ }
-    for (const ext of exts) {
-      if (!ext.isDirectory()) continue;
-      const cmdsDir = path.join(extRoot, ext.name, 'commands');
-      out.push(...(await readDirCommands(cmdsDir, `extension:${ext.name}`)));
-    }
-  }
   return out;
 }
 
@@ -156,9 +182,7 @@ function dedupe(list: DiscoveredCommand[]): DiscoveredCommand[] {
 }
 
 export async function discoverCommands(agentId: AgentId): Promise<DiscoveredCommand[]> {
-  let raw: DiscoveredCommand[] = [];
-  if (agentId === 'claude') raw = await discoverClaude();
-  else if (agentId === 'codex') raw = await discoverCodex();
-  else if (agentId === 'gemini') raw = await discoverGemini();
+  if (agentId !== 'claude') return [];
+  const raw = await discoverClaude();
   return dedupe(raw);
 }

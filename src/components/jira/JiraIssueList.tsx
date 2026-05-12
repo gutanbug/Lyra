@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
@@ -10,9 +10,14 @@ import type { NormalizedIssue, EpicGroup } from 'types/jira';
 
 interface JiraIssueListProps {
   browseProjectKey: string | null;
+  /** 보드 모드일 때만 채워짐 — 헤더 라벨에 함께 노출 */
+  browseBoardName?: string | null;
   browseEpics: NormalizedIssue[];
   browseChildrenMap: Record<string, NormalizedIssue[]>;
   isBrowseLoading: boolean;
+  isBrowseLoadingMore?: boolean;
+  hasMoreBrowseEpics?: boolean;
+  onLoadMoreBrowseEpics?: () => void;
   browseExpandedKeys: Set<string>;
   epicGroups: EpicGroup[];
   expandedEpics: Set<string>;
@@ -40,9 +45,13 @@ interface JiraIssueListProps {
 
 const JiraIssueList = ({
   browseProjectKey,
+  browseBoardName,
   browseEpics,
   browseChildrenMap,
   isBrowseLoading,
+  isBrowseLoadingMore = false,
+  hasMoreBrowseEpics = false,
+  onLoadMoreBrowseEpics,
   browseExpandedKeys,
   epicGroups,
   expandedEpics,
@@ -67,6 +76,21 @@ const JiraIssueList = ({
   onOpenPriorityDropdown,
   onItemContextMenu,
 }: JiraIssueListProps) => {
+  // 브라우즈 모드 무한 스크롤: sentinel이 viewport에 들어오면 다음 페이지 로드
+  const browseSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!browseProjectKey) return;
+    if (!hasMoreBrowseEpics || !onLoadMoreBrowseEpics) return;
+    const node = browseSentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry?.isIntersecting) onLoadMoreBrowseEpics();
+    }, { rootMargin: '200px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+    // 토큰이 새로 채워질 때마다 재구독 (이전 sentinel이 dispose되어 추가 트리거되지 않음)
+  }, [browseProjectKey, hasMoreBrowseEpics, onLoadMoreBrowseEpics, browseEpics.length]);
 
   // 브라우즈 모드 하위 항목 재귀 렌더링
   const renderBrowseChildren = (parentKey: string, depth: number): React.ReactNode[] => {
@@ -212,7 +236,10 @@ const JiraIssueList = ({
         <>
           <SectionHeader>
             <SectionTitle>
-              {browseProjectKey} 전체 이슈 ({browseEpics.length}건)
+              {browseBoardName
+                ? `${browseProjectKey} · ${browseBoardName} 보드`
+                : `${browseProjectKey} 전체 이슈`}{' '}
+              ({browseEpics.length}건)
             </SectionTitle>
             {browseEpics.length > 0 && (
               <ToggleAllButtons>
@@ -346,6 +373,19 @@ const JiraIssueList = ({
                   </EpicCard>
                 );
               })}
+              {/* 무한 스크롤 sentinel + 로딩 인디케이터 */}
+              {hasMoreBrowseEpics && (
+                <BrowseLoadMore ref={browseSentinelRef}>
+                  {isBrowseLoadingMore ? (
+                    <>
+                      <Spinner />
+                      <LoadingText>다음 에픽 불러오는 중...</LoadingText>
+                    </>
+                  ) : (
+                    <LoadingText>스크롤하면 추가 에픽이 로드됩니다.</LoadingText>
+                  )}
+                </BrowseLoadMore>
+              )}
             </EpicList>
           )}
         </>
@@ -589,6 +629,16 @@ const EpicList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+`;
+
+const BrowseLoadMore = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: ${jiraTheme.text.muted};
+  font-size: 0.8125rem;
 `;
 
 const EpicCard = styled.div`

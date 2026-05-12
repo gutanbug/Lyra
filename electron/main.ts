@@ -2,6 +2,8 @@ import { app, BrowserWindow, Menu } from 'electron';
 import * as path from 'path';
 import { initIntegrations } from './integrations/registry';
 import { registerIpcHandlers } from './ipc/handlers';
+import { permissionBridge } from './integrations/agents/permission-bridge';
+import { atlassianBridge } from './integrations/agents/atlassian-bridge';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -66,7 +68,14 @@ if (process.platform === 'darwin') {
 
 // Phase 1: 통합 워크스페이스 인프라 초기화
 initIntegrations();
+permissionBridge.start();
+atlassianBridge.start();
 registerIpcHandlers();
+
+app.on('before-quit', () => {
+  permissionBridge.stop();
+  atlassianBridge.stop();
+});
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({

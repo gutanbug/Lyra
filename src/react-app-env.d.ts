@@ -41,19 +41,54 @@ declare global {
           agentId: import('types/agent').AgentId;
           prompt: string;
           sessionId?: string | null;
+          permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
         }) => Promise<{ ok: boolean; message?: string }>;
         cancelTurn: (turnId: string) => Promise<boolean>;
         onTurnEvent: (
           handler: (event: {
             turnId: string;
-            type: 'chunk' | 'meta' | 'end' | 'error';
+            type:
+              | 'chunk'
+              | 'meta'
+              | 'end'
+              | 'error'
+              | 'block_start'
+              | 'block_delta'
+              | 'block_stop'
+              | 'tool_result';
             text?: string;
             sessionId?: string;
             model?: string;
             message?: string;
             costUsd?: number;
+            index?: number;
+            blockKind?: 'text' | 'thinking' | 'tool_use';
+            toolName?: string;
+            toolUseId?: string;
+            textDelta?: string;
+            thinkingDelta?: string;
+            jsonDelta?: string;
+            resultText?: string;
+            isError?: boolean;
           }) => void,
         ) => () => void;
+        listCommands: (
+          id: import('types/agent').AgentId,
+        ) => Promise<Array<{ name: string; description: string; source: string }>>;
+        onPermissionRequest: (
+          handler: (request: {
+            requestId: string;
+            turnId: string;
+            toolName: string;
+            input: unknown;
+          }) => void,
+        ) => () => void;
+        respondPermission: (response: {
+          requestId: string;
+          behavior: 'allow' | 'deny';
+          updatedInput?: unknown;
+          message?: string;
+        }) => Promise<boolean>;
       };
     };
   }

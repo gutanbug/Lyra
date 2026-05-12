@@ -269,7 +269,7 @@ const ThreadGroup = styled.div``;
 
 const CommentItem = styled.div`
   padding: 0.75rem;
-  background: ${jiraTheme.bg.subtle};
+  background: ${jiraTheme.bg.default};
   border-radius: 3px;
   border: 1px solid ${jiraTheme.border};
 `;

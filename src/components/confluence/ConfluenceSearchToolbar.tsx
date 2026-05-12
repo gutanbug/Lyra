@@ -4,6 +4,7 @@ import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { transition } from 'lib/styles/styles';
 import { isPersonalSpaceKey } from 'lib/utils/confluenceNormalizers';
+import { useSidebarToggle } from 'components/sidebar/SidebarLayout';
 import type { ConfluenceSpace, NormalizedConfluencePage } from 'types/confluence';
 import type { SearchFieldType } from 'lib/hooks/useConfluenceSearch';
 import { SEARCH_FIELD_LABELS } from 'lib/hooks/useConfluenceSearch';
@@ -84,12 +85,13 @@ const ConfluenceSearchToolbar = ({
   isLoading,
   onRefresh,
 }: ConfluenceSearchToolbarProps) => {
+  const { toggle: toggleSidebar } = useSidebarToggle();
   return (
     <Toolbar>
       <Logo>
         {hasServiceIcon('confluence') && (
           <LogoIconBtn
-            onClick={() => window.dispatchEvent(new Event('lyra:toggle-sidebar'))}
+            onClick={toggleSidebar}
             title="사이드바 열기/닫기 (⌘\)"
           >
             {getServiceIcon('confluence', 24)}

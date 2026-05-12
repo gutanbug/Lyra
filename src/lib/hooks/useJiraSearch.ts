@@ -30,6 +30,8 @@ interface DashboardCache {
   browseChildrenMap: Record<string, NormalizedIssue[]>;
   browseExpandedKeys: Set<string>;
   browseLoadedChildren: Set<string>;
+  /** 캐시 복원 시 무한 스크롤 페이지 토큰. null=더 없음, string=다음 페이지 토큰. undefined로 두면 페이지네이션 상태가 사라져 100건 이상 로드 불가. */
+  browseNextPageToken: string | null;
   doneCounts: StatusCount[];
   doneIssues: NormalizedIssue[];
   selectedStatuses: string[];
@@ -185,19 +187,26 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       browseChildrenMap: cached?.browseChildrenMap,
       browseExpandedKeys: cached?.browseExpandedKeys,
       browseLoadedChildren: cached?.browseLoadedChildren,
+      browseNextPageToken: cached?.browseNextPageToken,
     },
   });
   const {
     browseProjectKey,
+    browseBoardId,
+    browseBoardName,
     browseEpics,
     browseChildrenMap,
     isBrowseLoading,
+    isBrowseLoadingMore,
+    hasMoreBrowseEpics,
+    browseNextPageToken,
     browseExpandedKeys,
     browseLoadedChildren,
     setBrowseExpandedKeys,
     setBrowseEpics,
     setBrowseChildrenMap,
     loadBrowseChildren,
+    loadMoreBrowseEpics,
     toggleBrowseEpic,
   } = browseModeHook;
 
@@ -369,7 +378,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   useAccountScopedCache(
     jiraDashboardCache,
     currentAccountId,
-    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, selectedStatuses],
+    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, browseNextPageToken, selectedStatuses],
     () => ({
       myIssues,
       projects,
@@ -386,6 +395,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       browseChildrenMap,
       browseExpandedKeys,
       browseLoadedChildren,
+      browseNextPageToken,
       selectedStatuses: Array.from(selectedStatuses),
     }),
   );
@@ -503,9 +513,13 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     setDefaultExpandedChildren,
     defaultLoadingChildren,
     browseProjectKey,
+    browseBoardId,
+    browseBoardName,
     browseEpics,
     browseChildrenMap,
     isBrowseLoading,
+    isBrowseLoadingMore,
+    hasMoreBrowseEpics,
     browseExpandedKeys,
     setBrowseExpandedKeys,
     browseLoadedChildren,
@@ -533,6 +547,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     handleSearchChange,
     clearSearch,
     loadBrowseChildren,
+    loadMoreBrowseEpics,
     goToIssue,
     toggleEpic,
     expandAll,

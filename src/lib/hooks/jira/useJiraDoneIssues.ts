@@ -133,7 +133,8 @@ export function useJiraDoneIssues({
     try {
       const pc = buildProjectClause(selectedProjects);
       const projectClause = pc ? `${pc} AND ` : '';
-      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done`;
+      // Epic은 진척률·카운트 집계에서 제외 — 상위 묶음 단위라 다른 이슈와 중복 집계됨
+      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done AND issuetype != Epic`;
       const countMap = new Map<string, { category: string; count: number }>();
       const pageSize = 100;
       let pageToken: string | undefined;

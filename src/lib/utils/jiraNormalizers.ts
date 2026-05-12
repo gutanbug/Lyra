@@ -105,6 +105,50 @@ export function normalizeDetail(raw: Record<string, unknown>): NormalizedDetail 
   };
 }
 
+/**
+ * Jira 댓글의 부모 ID를 properties 배열에서 추출.
+ *
+ * Jira REST API에는 native parentId 필드가 없지만, 모던 UI의 "Reply" 기능으로
+ * 작성된 댓글은 properties[]에 부모 댓글 ID를 포함한다. 키 이름은 환경/버전마다
+ * 다를 수 있어 패턴 매칭으로 처리:
+ *   - key가 'parent' / 'reply' / 'thread' 단어를 포함
+ *   - value는 string(comment id) 또는 { id, commentId, parentId, parent }
+ *
+ * 키 이름이 모두 어긋나면 빈 문자열 반환 → 호출자가 flat list로 폴백.
+ */
+function extractParentCommentId(comment: Record<string, unknown>): string {
+  // 1) 일부 응답에서는 top-level field로 노출될 수 있음
+  const direct = comment.parent ?? (comment as Record<string, unknown>).parentId;
+  if (typeof direct === 'string' && direct) return direct;
+  if (direct && typeof direct === 'object') {
+    const o = direct as Record<string, unknown>;
+    const id = o.id ?? o.commentId ?? o.parentId ?? o.parent;
+    if (typeof id === 'string' && id) return id;
+  }
+
+  // 2) properties[]에서 패턴 매칭
+  const properties = comment.properties as unknown[] | undefined;
+  if (!Array.isArray(properties)) return '';
+  for (const p of properties) {
+    if (!p || typeof p !== 'object') continue;
+    const prop = p as Record<string, unknown>;
+    const key = String(prop.key ?? '').toLowerCase();
+    // 댓글 threading 관련 가능성 있는 키만 검사
+    if (!/parent|reply|thread/.test(key)) continue;
+    const value = prop.value;
+    if (typeof value === 'string' && value) return value;
+    if (value && typeof value === 'object') {
+      const v = value as Record<string, unknown>;
+      // 흔한 후보 필드
+      const candidate =
+        v.id ?? v.commentId ?? v.parentId ?? v.parent ?? v.parentCommentId ?? v.replyTo;
+      if (typeof candidate === 'string' && candidate) return candidate;
+      if (typeof candidate === 'number') return String(candidate);
+    }
+  }
+  return '';
+}
+
 /** ADF 본문의 첫 번째 paragraph 첫 번째 child가 mention인 경우 추출 */
 function extractLeadingMention(body: unknown): { id: string; text: string } | null {
   if (!body || typeof body !== 'object') return null;
@@ -129,6 +173,27 @@ function extractLeadingMention(body: unknown): { id: string; text: string } | nu
 }
 
 export function normalizeComments(raw: unknown[]): NormalizedComment[] {
+  // 진단 로그 — Jira 응답이 threading 메타를 어디에 담는지 식별하기 위함.
+  // 각 comment의 top-level 키 + properties 배열을 한 번에 dump해 부모 ID 위치를 찾는다.
+  // 부모 ID 매칭이 정상화되면 제거.
+  if (Array.isArray(raw) && raw.length > 0 && typeof window !== 'undefined') {
+    try {
+      const dump = raw.slice(0, 5).map((c) => {
+        if (!c || typeof c !== 'object') return c;
+        const cc = c as Record<string, unknown>;
+        return {
+          id: cc.id,
+          topLevelKeys: Object.keys(cc),
+          parent: cc.parent,
+          parentId: (cc as Record<string, unknown>).parentId,
+          properties: cc.properties,
+        };
+      });
+      // eslint-disable-next-line no-console
+      console.debug('[Jira comment threading diagnostic] sample:', dump);
+    } catch { /* ignore */ }
+  }
+
   return raw
     .filter((c) => c && typeof c === 'object')
     .map((c) => {
@@ -149,29 +214,45 @@ export function normalizeComments(raw: unknown[]): NormalizedComment[] {
         updated: str(comment.updated),
         replyToId: mention?.id || '',
         replyToName: mention?.text || '',
+        parentCommentId: extractParentCommentId(comment),
       };
     });
 }
 
-/** 댓글을 스레드(댓글 + 대댓글) 구조로 그룹핑 */
+/**
+ * 댓글 목록을 화면 표시용 thread 구조로 변환.
+ *
+ * 정렬·표시 규칙 (Jira 웹과 일치):
+ *  - 입력은 Jira API의 작성일 오름차순(`orderBy=+created`)
+ *  - 출력 최상위는 작성일 **오름차순**(오래된 것 위) — 실제 Jira 모던 UI와 동일
+ *  - 답글(replies)은 부모 아래에 작성일 오름차순으로 nest
+ *
+ * Threading 판정 — Jira properties에서 추출한 `parentCommentId`만 신뢰.
+ * 단순 mention 기반 휴리스틱은 누군가를 언급한 모든 댓글을 답글로 잘못 묶어
+ * 실제 Jira UI와 어긋나므로 폐기. parentCommentId가 비어 있으면 최상위로 처리.
+ *
+ * 안전장치 — 부모 ID가 미존재하거나(삭제됨/권한 없음 등) 답글 자신을 가리키는
+ * 자기참조 등은 최상위로 강등.
+ */
 export function buildCommentThreads(comments: NormalizedComment[]): CommentThread[] {
+  // id → 최상위 thread index 매핑
+  const idToIdx = new Map<string, number>();
   const threads: CommentThread[] = [];
-  const authorThreadMap = new Map<string, number>();
 
-  for (const comment of comments) {
-    if (comment.replyToId) {
-      const threadIdx = authorThreadMap.get(comment.replyToId);
-      if (threadIdx !== undefined && threads[threadIdx]) {
-        threads[threadIdx].replies.push(comment);
-        continue;
-      }
-    }
-
+  // 1차: 부모가 없거나 부모를 못 찾는 경우 = 최상위
+  for (const c of comments) {
+    if (c.parentCommentId && c.parentCommentId !== c.id && idToIdx.has(c.parentCommentId)) continue;
     const idx = threads.length;
-    threads.push({ comment, replies: [] });
-    if (comment.authorId) {
-      authorThreadMap.set(comment.authorId, idx);
-    }
+    threads.push({ comment: c, replies: [] });
+    idToIdx.set(c.id, idx);
+  }
+
+  // 2차: parentCommentId로 답글 attach
+  for (const c of comments) {
+    if (!c.parentCommentId || c.parentCommentId === c.id) continue;
+    const parentIdx = idToIdx.get(c.parentCommentId);
+    if (parentIdx === undefined) continue; // 1차에서 이미 최상위로 들어간 것은 skip
+    threads[parentIdx].replies.push(c);
   }
 
   return threads;

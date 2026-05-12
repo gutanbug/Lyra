@@ -62,13 +62,15 @@ const JiraDashboard = () => {
     isSuggestLoading, activeSuggestionIdx, setActiveSuggestionIdx,
     expandedEpics, defaultChildrenMap, defaultExpandedChildren, setDefaultExpandedChildren,
     defaultLoadingChildren,
-    browseProjectKey, browseEpics, browseChildrenMap, isBrowseLoading,
+    browseProjectKey, browseBoardName,
+    browseEpics, browseChildrenMap, isBrowseLoading,
+    isBrowseLoadingMore, hasMoreBrowseEpics,
     browseExpandedKeys, setBrowseExpandedKeys, browseLoadedChildren,
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
     selectedStatuses, doneIssues, toggleStatus,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
-    loadBrowseChildren, loadDefaultChildren,
+    loadBrowseChildren, loadMoreBrowseEpics, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
     handleTransitioned, handleAssigned, saveSpaceSettings,
   } = search;
@@ -185,9 +187,13 @@ const JiraDashboard = () => {
 
       <JiraIssueList
         browseProjectKey={browseProjectKey}
+        browseBoardName={browseBoardName}
         browseEpics={browseEpics}
         browseChildrenMap={browseChildrenMap}
         isBrowseLoading={isBrowseLoading}
+        isBrowseLoadingMore={isBrowseLoadingMore}
+        hasMoreBrowseEpics={hasMoreBrowseEpics}
+        onLoadMoreBrowseEpics={loadMoreBrowseEpics}
         browseExpandedKeys={browseExpandedKeys}
         epicGroups={epicGroups}
         expandedEpics={expandedEpics}

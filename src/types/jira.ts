@@ -106,6 +106,8 @@ export interface NormalizedComment {
   updated: string;
   replyToId: string;
   replyToName: string;
+  /** 진짜 부모 댓글 ID — Jira properties에서 추출 (있으면 답글, 없으면 최상위) */
+  parentCommentId: string;
 }
 
 export interface CommentThread {

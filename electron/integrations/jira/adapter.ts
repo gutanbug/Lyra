@@ -24,6 +24,7 @@ interface InvokeParams {
   projectKey?: string;
   fieldId?: string;
   fieldValue?: unknown;
+  boardId?: number;
 }
 
 export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -79,6 +80,8 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
       transitionIssue: (params: unknown) => this.transitionIssue(params),
       getProjectVersions: (params: unknown) => this.getProjectVersions(params),
       getProjectComponents: (params: unknown) => this.getProjectComponents(params),
+      getProjectBoards: (params: unknown) => this.getProjectBoards(params),
+      getBoardFilterJql: (params: unknown) => this.getBoardFilterJql(params),
       getProjectFields: (params: unknown) => this.getProjectFields(params),
       updateIssueField: (params: unknown) => this.updateIssueField(params),
       getAttachmentContent: (params: unknown) => this.getAttachmentContent(params),
@@ -193,6 +196,20 @@ export class JiraAdapter implements IntegrationAdapter<JiraCredentials> {
     if (!projectKey) throw new Error('projectKey is required');
     const client = new JiraClient(credentials);
     return client.getProjectComponents(projectKey);
+  }
+
+  private async getProjectBoards(params: unknown): Promise<unknown> {
+    const { credentials, projectKey } = (params || {}) as InvokeParams;
+    if (!projectKey) throw new Error('projectKey is required');
+    const client = new JiraClient(credentials);
+    return client.getProjectBoards(projectKey);
+  }
+
+  private async getBoardFilterJql(params: unknown): Promise<unknown> {
+    const { credentials, boardId } = (params || {}) as InvokeParams;
+    if (!boardId) throw new Error('boardId is required');
+    const client = new JiraClient(credentials);
+    return client.getBoardFilterJql(boardId);
   }
 
   private async updateIssueField(params: unknown): Promise<unknown> {

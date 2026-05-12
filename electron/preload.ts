@@ -54,8 +54,13 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       ipcRenderer.invoke('agents:setApiKey', id, key),
     setBinaryPath: (id: string, binaryPath: string | null) =>
       ipcRenderer.invoke('agents:setBinaryPath', id, binaryPath),
-    startTurn: (payload: { turnId: string; agentId: string; prompt: string; sessionId?: string | null }) =>
-      ipcRenderer.invoke('agents:startTurn', payload),
+    startTurn: (payload: {
+      turnId: string;
+      agentId: string;
+      prompt: string;
+      sessionId?: string | null;
+      permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+    }) => ipcRenderer.invoke('agents:startTurn', payload),
     cancelTurn: (turnId: string) => ipcRenderer.invoke('agents:cancelTurn', turnId),
     onTurnEvent: (handler: (event: unknown) => void) => {
       const listener = (_e: unknown, payload: unknown) => handler(payload);
@@ -64,5 +69,19 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
         ipcRenderer.removeListener('agents:turnEvent', listener);
       };
     },
+    listCommands: (id: string) => ipcRenderer.invoke('agents:listCommands', id),
+    onPermissionRequest: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown) => handler(payload);
+      ipcRenderer.on('agents:permissionRequest', listener);
+      return () => {
+        ipcRenderer.removeListener('agents:permissionRequest', listener);
+      };
+    },
+    respondPermission: (response: {
+      requestId: string;
+      behavior: 'allow' | 'deny';
+      updatedInput?: unknown;
+      message?: string;
+    }) => ipcRenderer.invoke('agents:permissionResponse', response),
   },
 });

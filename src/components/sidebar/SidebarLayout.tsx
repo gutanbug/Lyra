@@ -1,7 +1,26 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { theme } from 'lib/styles/theme';
 import { PanelLeftClose } from 'lucide-react';
+import { useSplitView } from 'modules/contexts/splitView';
+
+/**
+ * 자식 트리에서 현재 사이드바를 토글할 수 있도록 노출.
+ * Split View에서 두 개의 SidebarLayout이 동시에 마운트될 때 window 이벤트
+ * 기반 토글은 두 사이드바를 동시에 열어버린다 — 따라서 각자의 자식만 자기
+ * SidebarLayout을 토글하도록 React Context로 한정.
+ */
+interface SidebarContextValue {
+  open: boolean;
+  toggle: () => void;
+}
+const SidebarContext = createContext<SidebarContextValue | null>(null);
+
+export const useSidebarToggle = (): SidebarContextValue => {
+  const ctx = useContext(SidebarContext);
+  // SidebarLayout 외부에서 호출돼도 안전하게 no-op 반환
+  return ctx ?? { open: false, toggle: () => {} };
+};
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 500;
@@ -30,26 +49,27 @@ const SidebarLayout = ({ sidebar, children }: Props) => {
   const dragging = useRef(false);
   const startX = useRef(0);
   const startW = useRef(0);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const toggle = useCallback(() => setOpen((v) => !v), []);
+  const { isSplit } = useSplitView();
 
-  // CmdOrCtrl + \ 단축키
+  // CmdOrCtrl + \ 단축키 — Split View에서는 focus가 자기 wrapper 안에 있을 때만 반응
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-        e.preventDefault();
-        toggle();
+      if (!((e.metaKey || e.ctrlKey) && e.key === '\\')) return;
+      if (isSplit) {
+        const active = document.activeElement;
+        if (!wrapperRef.current || !active || !wrapperRef.current.contains(active)) return;
       }
+      e.preventDefault();
+      toggle();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [toggle]);
+  }, [toggle, isSplit]);
 
-  // 커스텀 이벤트로 사이드바 토글
-  useEffect(() => {
-    const handler = () => toggle();
-    window.addEventListener('lyra:toggle-sidebar', handler);
-    return () => window.removeEventListener('lyra:toggle-sidebar', handler);
-  }, [toggle]);
+  // window 이벤트 기반 토글은 Split View에서 두 사이드바 동시 토글 문제를 일으키므로
+  // 제거. 자식 컴포넌트는 useSidebarToggle() 훅으로 자기 사이드바만 제어해야 한다.
 
   // 드래그 핸들러
   useEffect(() => {
@@ -91,20 +111,22 @@ const SidebarLayout = ({ sidebar, children }: Props) => {
   }, [width]);
 
   return (
-    <Wrapper>
-      <SidebarPanel $open={open} $width={width}>
-        <SidebarHeader>
-          <CloseBtn onClick={toggle} title="메뉴 닫기 (⌘\)">
-            <PanelLeftClose size={16} />
-          </CloseBtn>
-        </SidebarHeader>
-        <SidebarContent>{sidebar}</SidebarContent>
-      </SidebarPanel>
-      {open && <ResizeHandle onMouseDown={onResizeStart} />}
-      <MainPanel>
-        {children}
-      </MainPanel>
-    </Wrapper>
+    <SidebarContext.Provider value={{ open, toggle }}>
+      <Wrapper ref={wrapperRef}>
+        <SidebarPanel $open={open} $width={width}>
+          <SidebarHeader>
+            <CloseBtn onClick={toggle} title="메뉴 닫기 (⌘\)">
+              <PanelLeftClose size={16} />
+            </CloseBtn>
+          </SidebarHeader>
+          <SidebarContent>{sidebar}</SidebarContent>
+        </SidebarPanel>
+        {open && <ResizeHandle onMouseDown={onResizeStart} />}
+        <MainPanel>
+          {children}
+        </MainPanel>
+      </Wrapper>
+    </SidebarContext.Provider>
   );
 };
 

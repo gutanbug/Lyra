@@ -7,6 +7,27 @@ export interface SlashCommand {
   description: string;
   /** 인자가 있을 때 힌트 (예: '<model>', '[pr]') — 없으면 생략 */
   args?: string;
+  /** 출처 라벨 — 'builtin' | 'user' | 'plugin:<name>' | 'extension:<name>' */
+  source?: string;
+}
+
+/**
+ * 빌트인 + 디스커버리 결과를 병합하고 이름 기준으로 중복을 제거한다.
+ * 빌트인이 우선(같은 이름이 있으면 디스커버리 항목은 무시).
+ */
+export function mergeCommands(
+  builtin: SlashCommand[],
+  discovered: SlashCommand[],
+): SlashCommand[] {
+  const seen = new Set(builtin.map((c) => c.name.toLowerCase()));
+  const out: SlashCommand[] = builtin.map((c) => ({ ...c, source: c.source ?? 'builtin' }));
+  for (const d of discovered) {
+    const key = d.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...d, source: d.source ?? 'user' });
+  }
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -35,34 +56,8 @@ const CLAUDE_BUILTINS: SlashCommand[] = [
   { name: '/exit', description: 'Claude Code 종료' },
 ];
 
-const CODEX_BUILTINS: SlashCommand[] = [
-  { name: '/help', description: '사용 가능한 명령어 도움말' },
-  { name: '/clear', description: '대화 컨텍스트 초기화' },
-  { name: '/compact', description: '대화를 요약·압축해 컨텍스트 확보' },
-  { name: '/model', description: '사용할 모델 변경', args: '<model>' },
-  { name: '/init', description: '프로젝트 초기화' },
-  { name: '/login', description: 'OpenAI 계정 로그인' },
-  { name: '/logout', description: 'OpenAI 계정 로그아웃' },
-  { name: '/exit', description: 'Codex CLI 종료' },
-];
-
-const GEMINI_BUILTINS: SlashCommand[] = [
-  { name: '/help', description: '사용 가능한 명령어 도움말' },
-  { name: '/clear', description: '대화 컨텍스트 초기화' },
-  { name: '/auth', description: '계정 로그인/로그아웃' },
-  { name: '/chat', description: '대화 저장·불러오기', args: 'save|list|load' },
-  { name: '/memory', description: '메모리 관리', args: 'show|add|refresh' },
-  { name: '/tools', description: '사용 가능한 도구 목록' },
-  { name: '/mcp', description: 'MCP 서버 관리' },
-  { name: '/stats', description: '사용 통계 확인' },
-  { name: '/theme', description: '테마 변경' },
-  { name: '/quit', description: 'Gemini CLI 종료' },
-];
-
 export const BUILTIN_SLASH_COMMANDS: Record<AgentId, SlashCommand[]> = {
   claude: CLAUDE_BUILTINS,
-  codex: CODEX_BUILTINS,
-  gemini: GEMINI_BUILTINS,
 };
 
 /**

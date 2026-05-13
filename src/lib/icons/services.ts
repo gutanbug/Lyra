@@ -92,12 +92,44 @@ function renderAtlassianIcon(size: number): React.ReactElement {
   );
 }
 
+/** GitHub 로고 SVG (Octocat mark, currentColor) */
+function renderGitHubIcon(size: number): React.ReactElement {
+  return React.createElement('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'currentColor',
+    'aria-hidden': true,
+  },
+    React.createElement('path', {
+      d: 'M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-1.92c-3.2.69-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.17 1.18a11.05 11.05 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.6.23 2.78.11 3.07.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.55 4.57-1.53 7.85-5.84 7.85-10.92C23.5 5.65 18.35.5 12 .5z',
+    }),
+  );
+}
+
+/** GitLab 로고 SVG (단색 tanuki mark) */
+function renderGitLabIcon(size: number): React.ReactElement {
+  return React.createElement('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: '#FC6D26',
+    'aria-hidden': true,
+  },
+    React.createElement('path', {
+      d: 'M23.955 13.587l-1.342-4.135-2.664-8.189a.455.455 0 0 0-.867 0L16.418 9.45H7.582L4.918 1.263a.455.455 0 0 0-.867 0L1.386 9.452.044 13.587a.92.92 0 0 0 .331 1.023L12 23.054l11.625-8.443a.92.92 0 0 0 .33-1.024',
+    }),
+  );
+}
+
 type IconRenderer = (size: number) => React.ReactElement;
 
 const SERVICE_ICONS: Record<string, IconRenderer> = {
   atlassian: renderAtlassianIcon,
   jira: renderJiraIcon,
   confluence: renderConfluenceIcon,
+  github: renderGitHubIcon,
+  gitlab: renderGitLabIcon,
 };
 
 /**

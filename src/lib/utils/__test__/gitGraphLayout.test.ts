@@ -113,17 +113,14 @@ describe('gitGraphLayout', () => {
     expect(maxLaneCount(nodes)).toBe(2);
   });
 
-  it('lane reuse only after cooldown rows have elapsed', () => {
-    // 8 row 쿨다운: lane 0이 row 0에서 freed → row 7 까지는 재사용 안 됨, row 8부터 OK.
-    // 9개의 무관 root commit을 연속 배치하면 처음 8개는 새 lane, 9번째에서 lane 0 재사용.
+  it('no-reuse policy: freed lanes never reused, even far apart', () => {
+    // 시각적 끊김 방지를 위해 lane 재사용 자체를 금지. 9개 무관 root commit은 9개 다른 lane.
     const seq = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((s) => commit(s));
     const nodes = layoutGraph(seq);
-    // 처음 8개는 lane 0~7 (재사용 불가)
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 9; i++) {
       expect(nodes[i].lane).toBe(i);
     }
-    // 9번째 (row 8): lane 0이 row 0에서 freed, 거리 8 >= 8 → 재사용 가능.
-    expect(nodes[8].lane).toBe(0);
+    expect(maxLaneCount(nodes)).toBe(9);
   });
 
   it('color rotates through LANE_COLORS palette', () => {

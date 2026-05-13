@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
     openDialog: () => ipcRenderer.invoke('localGit:openDialog'),
     openRepo: (path: string) => ipcRenderer.invoke('localGit:openRepo', path),
     getRepoMeta: (repoId: string) => ipcRenderer.invoke('localGit:getRepoMeta', repoId),
+    getCommits: (repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
+      ipcRenderer.invoke('localGit:getCommits', repoId, absPath, options),
   },
   agents: {
     getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),

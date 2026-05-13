@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import styled from 'styled-components';
 import {
@@ -13,7 +13,11 @@ import {
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import { useLocalRepo } from 'modules/contexts/localRepo';
-import type { LocalRepo } from 'types/git';
+import { localGitController } from 'controllers/account';
+import type { Commit, LocalRepo } from 'types/git';
+import CommitGraph from 'components/git/CommitGraph';
+
+const DEFAULT_COMMITS_LIMIT = 500;
 
 /** 절대 경로의 마지막 세그먼트(=폴더 이름)를 추출. */
 function basename(p: string): string {
@@ -133,12 +137,7 @@ const GitWorkspacePage = () => {
               <CenterRepoPath title={currentRepo.path}>{currentRepo.path}</CenterRepoPath>
             </CenterHeader>
             <CenterBody>
-              <GraphPlaceholder>
-                <GraphPlaceholderTitle>커밋 그래프</GraphPlaceholderTitle>
-                <GraphPlaceholderHint>
-                  커밋 그래프 렌더링은 M6에서 추가됩니다.
-                </GraphPlaceholderHint>
-              </GraphPlaceholder>
+              <CommitsArea repo={currentRepo} />
             </CenterBody>
           </Center>
 
@@ -163,6 +162,80 @@ const GitWorkspacePage = () => {
 };
 
 export default GitWorkspacePage;
+
+// ─── 커밋 영역 ─────────────────────────
+
+/**
+ * currentRepo가 바뀌거나 새로고침되면 commits를 다시 가져오는 컨테이너.
+ * repo.head/branches가 변경될 때마다 refetch (간단한 식별자로 사용).
+ */
+const CommitsArea = ({ repo }: { repo: LocalRepo }) => {
+  const [commits, setCommits] = useState<Commit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // repo.id + branches 신호 변경 시 refetch.
+  // (Watcher 통합은 M7에서 — 현재는 명시적 refresh 호출 시점에 branches 시그니처가 바뀌는 패턴에 의존.)
+  const branchesSig = repo.branches.map((b) => `${b.scope}:${b.name}@${b.sha}`).join('|');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    localGitController
+      .getCommits(repo.id, repo.path, { limit: DEFAULT_COMMITS_LIMIT })
+      .then((cs) => {
+        if (cancelled) return;
+        setCommits(cs);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        const err = e as { message?: string };
+        setError(err.message || '커밋을 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo.id, repo.path, branchesSig]);
+
+  if (loading && commits.length === 0) {
+    return <CommitsHint>커밋을 불러오는 중…</CommitsHint>;
+  }
+  if (error) {
+    return <CommitsHint>{error}</CommitsHint>;
+  }
+  if (commits.length === 0) {
+    return <CommitsHint>아직 커밋이 없습니다.</CommitsHint>;
+  }
+  return (
+    <CommitsScroll>
+      <CommitGraph commits={commits} />
+    </CommitsScroll>
+  );
+};
+
+const CommitsScroll = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: ${theme.bgPrimary};
+  border: 1px solid ${theme.border};
+  border-radius: 8px;
+`;
+
+const CommitsHint = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${theme.textMuted};
+  font-size: 0.875rem;
+`;
 
 // ─── Collapsible 섹션 컴포넌트 ─────────────────────────
 
@@ -449,29 +522,6 @@ const CenterBody = styled.div`
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-`;
-
-const GraphPlaceholder = styled.div`
-  height: 100%;
-  border: 1px dashed ${theme.border};
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 2rem;
-  color: ${theme.textMuted};
-`;
-
-const GraphPlaceholderTitle = styled.div`
-  font-size: 1rem;
-  font-weight: 600;
-  color: ${theme.textPrimary};
-`;
-
-const GraphPlaceholderHint = styled.div`
-  font-size: 0.875rem;
 `;
 
 const RightSidebar = styled.aside`

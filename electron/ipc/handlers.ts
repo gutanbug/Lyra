@@ -21,6 +21,7 @@ import type {
   PollOAuthParams as GitLabPollParams,
 } from '../integrations/gitlab/adapter';
 import { openDialog as localGitOpenDialog, openRepo as localGitOpenRepo, getRepoMeta as localGitGetRepoMeta } from '../integrations/localGit/service';
+import { getCommits as localGitGetCommits } from '../integrations/localGit/graph';
 
 /**
  * OAuthFlowError를 IPC 경로에서 안전한 모양(plain Error + 명시적 code 속성)으로 재포장.
@@ -177,6 +178,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('localGit:openDialog', () => localGitOpenDialog());
   ipcMain.handle('localGit:openRepo', (_, absPath: string) => localGitOpenRepo(absPath));
   ipcMain.handle('localGit:getRepoMeta', (_, repoId: string) => localGitGetRepoMeta(repoId));
+  ipcMain.handle(
+    'localGit:getCommits',
+    (_, repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
+      localGitGetCommits(repoId, absPath, options || {}),
+  );
 
   // === AI Agent CLI 관리 ===
   ipcMain.handle('agents:getAllStatus', () => AgentManager.getAllStatus());

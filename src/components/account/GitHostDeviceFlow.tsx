@@ -5,7 +5,7 @@ import { transition } from 'lib/styles/styles';
 import { useGitHostOAuth } from 'lib/hooks/useGitHostOAuth';
 
 interface Props {
-  host: 'github';
+  host: 'github' | 'gitlab';
   /** 사용자가 입력 가능한 self-hosted 옵션 (선택). 비어 있으면 .com 기본값. */
   initialBaseUrl?: string;
   initialClientId?: string;
@@ -15,6 +15,8 @@ interface Props {
     grantedScopes: string[];
     baseUrl: string;
     clientId: string;
+    refreshToken?: string;
+    expiresInSec?: number;
   }) => void;
 }
 
@@ -33,6 +35,12 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
   const deliveredRef = useRef(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const hostLabel = host === 'github' ? 'GitHub' : 'GitLab';
+  const advancedToggleLabel = host === 'github' ? 'self-hosted (GHES) 사용' : 'self-hosted GitLab 사용';
+  const advancedBasePlaceholder = host === 'github'
+    ? 'https://ghe.example.com/api/v3'
+    : 'https://gitlab.example.com';
+
   useEffect(() => {
     if (state.status === 'idle') deliveredRef.current = false;
     if (state.status === 'success' && state.accessToken && !deliveredRef.current) {
@@ -42,9 +50,11 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
         grantedScopes: state.grantedScopes || [],
         baseUrl: baseUrl.trim(),
         clientId: clientId.trim(),
+        refreshToken: state.refreshToken,
+        expiresInSec: state.expiresInSec,
       });
     }
-  }, [state.status, state.accessToken, state.grantedScopes, onSuccess, baseUrl, clientId]);
+  }, [state.status, state.accessToken, state.grantedScopes, state.refreshToken, state.expiresInSec, onSuccess, baseUrl, clientId]);
 
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
@@ -80,7 +90,7 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
           </ErrorBox>
         )}
         <AdvancedToggle type="button" onClick={() => setAdvanced((v) => !v)}>
-          {advanced ? '▾' : '▸'} self-hosted (GHES) 사용
+          {advanced ? '▾' : '▸'} {advancedToggleLabel}
         </AdvancedToggle>
         {advanced && (
           <>
@@ -88,7 +98,7 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
               API base URL
               <Input
                 type="url"
-                placeholder="https://ghe.example.com/api/v3"
+                placeholder={advancedBasePlaceholder}
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
               />
@@ -114,7 +124,7 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
             });
           }}
         >
-          GitHub 연결
+          {hostLabel} 연결
         </PrimaryButton>
       </Container>
     );
@@ -124,7 +134,7 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
     return (
       <Container>
         <CodeBlock>
-          <CodeLabel>다음 코드를 GitHub에 입력하세요</CodeLabel>
+          <CodeLabel>다음 코드를 {hostLabel}에 입력하세요</CodeLabel>
           <UserCode>{state.userCode}</UserCode>
           <CopyButton type="button" onClick={handleCopy}>
             {copied ? '복사됨' : '코드 복사'}

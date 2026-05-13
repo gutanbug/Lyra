@@ -19,6 +19,7 @@ const MENUS = [
   { id: 'confluence', path: '/confluence', label: 'Confluence', icon: 'confluence' },
   { id: 'github', path: '/github', label: 'GitHub', icon: 'github' },
   { id: 'gitlab', path: '/gitlab', label: 'GitLab', icon: 'gitlab' },
+  { id: 'repo', path: '/repo', label: 'Local Repos', icon: '' },
 ] as const;
 
 const Header = () => {
@@ -69,6 +70,7 @@ const Header = () => {
       confluence: '/confluence',
       github: '/github',
       gitlab: '/gitlab',
+      repo: '/repo',
     };
     addTab(contextMenu.menuId, paths[contextMenu.menuId] || `/${contextMenu.menuId}`);
     setContextMenu(null);

@@ -44,7 +44,7 @@ const NavigationBridge = ({ active = true }: { active?: boolean }) => {
 };
 
 /** 메뉴 순서 (단축키 [ ] 로 이동할 때 사용) */
-const MENU_PATHS = ['/jira', '/confluence', '/github', '/gitlab'] as const;
+const MENU_PATHS = ['/jira', '/confluence', '/github', '/gitlab', '/repo'] as const;
 
 /** 메뉴 id → 컴포넌트 매핑 */
 const PANEL_MAP: Record<string, React.ComponentType> = {

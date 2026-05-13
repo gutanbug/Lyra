@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import styled, { css } from 'styled-components';
 import type { Commit, GraphNode } from 'types/git';
-import { layoutGraph, maxLaneCount, paletteByLane } from 'lib/utils/gitGraphLayout';
+import { layoutGraph, maxLaneCount } from 'lib/utils/gitGraphLayout';
 import { theme } from 'lib/styles/theme';
 
 interface Props {
@@ -92,7 +92,7 @@ const CommitGraph = ({ commits }: Props) => {
                 // parent가 윈도우 밖이면 캔버스 하단까지 연장(시각적 "off-screen 이어짐" 표시).
                 const y2 = parentRow !== undefined ? rowY(parentRow) : totalHeight + ROW_HEIGHT;
                 const key = `${n.sha}-${p.parentSha}-${i}`;
-                const stroke = paletteByLane(p.parentLane);
+                const stroke = p.parentColor;
 
                 if (x1 === x2) {
                   return (

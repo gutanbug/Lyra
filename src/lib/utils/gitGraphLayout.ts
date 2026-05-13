@@ -41,29 +41,47 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
   for (let i = 0; i < commits.length; i++) shaToRow.set(commits[i].sha, i);
 
   const lanes: (string | null)[] = [];
+  /**
+   * 각 lane의 현재 chain id. lane이 새로 할당될 때마다 globalChainCounter에서 받아온다.
+   * lane을 재사용해 새 chain이 시작되면 새 id로 갱신 — 색상이 바뀌어 두 chain이 시각적으로 구분된다.
+   */
+  const laneChainId: number[] = [];
+  let globalChainCounter = 0;
+
   const commitLanes = new Array<number>(commits.length);
+  const commitChainIds = new Array<number>(commits.length);
   const activeLanesPerRow = new Array<number[]>(commits.length);
 
   /**
-   * lane 할당: 항상 새 lane을 push (재사용 없음).
+   * lane 할당: 적극적인 재사용 정책.
+   * 1. freed lane(가장 낮은 인덱스부터)이 있으면 재사용 → 그래프 폭 최소화.
+   * 2. 없으면 새 lane을 push.
    *
-   * 시각적 일관성을 위해 freed lane을 재사용하지 않는다.
-   * 재사용을 하면 무관한 두 커밋이 같은 lane에 배치되어 그래프가 "끊겨" 보이는 회귀가 발생.
-   * 대신 그래프 폭이 커지지만, 패널은 자체 가로 스크롤(360px)로 좌우 이동 가능.
+   * 어느 경우든 새 chain id를 부여해 색상이 새로 매겨진다. 동일 lane에서 인접한 두 chain은
+   * 다른 색을 갖게 되어 "같은 lane = 같은 chain" 시각적 모호함이 해소된다.
    */
   const allocLane = (): number => {
+    const chainId = globalChainCounter++;
+    for (let i = 0; i < lanes.length; i++) {
+      if (lanes[i] === null) {
+        laneChainId[i] = chainId;
+        return i;
+      }
+    }
     lanes.push(null);
+    laneChainId.push(chainId);
     return lanes.length - 1;
   };
 
   for (let row = 0; row < commits.length; row++) {
     const c = commits[row];
 
-    // 1. C의 lane 결정
+    // 1. C의 lane 결정 — 기존 lane이 C의 sha를 기다리고 있으면 그 lane 이어받기(chain id 유지)
     let myLane = lanes.findIndex((s) => s === c.sha);
     if (myLane === -1) myLane = allocLane();
 
     commitLanes[row] = myLane;
+    commitChainIds[row] = laneChainId[myLane];
 
     // 2. 같은 sha를 기다리던 다른 lane들 close (merge 흡수)
     for (let i = 0; i < lanes.length; i++) {
@@ -76,9 +94,9 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
     if (c.parents.length === 0) {
       lanes[myLane] = null;
     } else {
-      lanes[myLane] = c.parents[0];
+      lanes[myLane] = c.parents[0]; // first-parent는 같은 lane·같은 chain 이어감
       for (let i = 1; i < c.parents.length; i++) {
-        const newLane = allocLane();
+        const newLane = allocLane(); // 추가 parent는 새 chain 시작
         lanes[newLane] = c.parents[i];
       }
     }
@@ -89,14 +107,17 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
       .filter((i) => i !== -1);
   }
 
-  // 5. 두 번째 패스 — parent의 lane 해결
+  // 5. 두 번째 패스 — parent의 lane/색상 해결
+  const palette = (id: number) => paletteByLane(id);
   const nodes: GraphNode[] = commits.map((c, row) => {
     const myLane = commitLanes[row];
+    const myChainId = commitChainIds[row];
     const parentLinks = c.parents.map((p) => {
       const parentRow = shaToRow.get(p);
-      // parent가 결과 윈도우 밖이면 fallback으로 자신의 lane을 사용(=그래프 가장자리로 향하는 끝점).
+      // parent가 결과 윈도우 밖이면 fallback으로 자신의 lane/chain을 사용.
       const parentLane = parentRow !== undefined ? commitLanes[parentRow] : myLane;
-      return { parentSha: p, parentLane };
+      const parentChainId = parentRow !== undefined ? commitChainIds[parentRow] : myChainId;
+      return { parentSha: p, parentLane, parentColor: palette(parentChainId) };
     });
     return {
       sha: c.sha,
@@ -104,7 +125,7 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
       lane: myLane,
       parentLinks,
       activeLanes: activeLanesPerRow[row],
-      color: paletteByLane(myLane),
+      color: palette(myChainId),
     };
   });
 

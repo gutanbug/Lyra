@@ -101,8 +101,10 @@ export interface GraphNode {
 
 export interface ParentLink {
   parentSha: string;
-  /** 부모가 위치하는 lane */
+  /** 부모가 위치하는 lane (x 좌표 계산용) */
   parentLane: number;
+  /** 부모 체인 색상 (재사용된 lane에서 새 chain 시작 시 색이 바뀜) */
+  parentColor: string;
 }
 
 export type GitErrorCode =

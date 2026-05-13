@@ -1,4 +1,5 @@
 import type { Account, AccountInput } from 'types/account';
+import type { LocalRepo } from 'types/git';
 import { publishApiError } from 'lib/utils/apiErrorBus';
 
 declare const window: Window & {
@@ -63,6 +64,11 @@ declare const window: Window & {
           }
       >;
     };
+    localGit: {
+      openDialog: () => Promise<string | null>;
+      openRepo: (path: string) => Promise<LocalRepo>;
+      getRepoMeta: (repoId: string) => Promise<LocalRepo>;
+    };
   };
 };
 
@@ -106,6 +112,15 @@ export const integrationController = {
       throw error;
     });
   },
+};
+
+export const localGitController = {
+  openDialog: () =>
+    api()?.localGit.openDialog() ?? Promise.resolve(null),
+  openRepo: (path: string) =>
+    api()?.localGit.openRepo(path) ?? Promise.reject(new Error('workspaceAPI not available')),
+  getRepoMeta: (repoId: string) =>
+    api()?.localGit.getRepoMeta(repoId) ?? Promise.reject(new Error('workspaceAPI not available')),
 };
 
 export const gitHostOAuthController = {

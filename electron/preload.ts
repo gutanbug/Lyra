@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
     pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
       ipcRenderer.invoke('gitlab:pollOAuth', params),
   },
+  localGit: {
+    openDialog: () => ipcRenderer.invoke('localGit:openDialog'),
+    openRepo: (path: string) => ipcRenderer.invoke('localGit:openRepo', path),
+    getRepoMeta: (repoId: string) => ipcRenderer.invoke('localGit:getRepoMeta', repoId),
+  },
   agents: {
     getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),
     getStatus: (id: string) => ipcRenderer.invoke('agents:getStatus', id),

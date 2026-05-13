@@ -5,13 +5,14 @@
  * - DEFAULT_OAUTH_BASE_URL: OAuth 엔드포인트(/login/device/code, /login/oauth/access_token)는
  *     API 도메인과 별도(github.com). GHES는 https://ghe.example.com.
  * - DEFAULT_CLIENT_ID: Lyra가 GitHub에 등록한 .com용 OAuth App client_id.
- *     실제 client_id는 별도 이슈로 발급·교체. 그 전까지는 placeholder.
+ *     OAuth App의 client_id는 PKCE/Device Flow에서 공개 식별자로 취급되므로 코드 커밋 가능.
+ *     해당 OAuth App에서 Device Flow 옵션이 활성화되어 있어야 한다.
  * - DEFAULT_SCOPES: MVP는 'repo'(private repo 메타) + 'read:user'(/user 검증).
  *     'read:org'는 향후 PR/MR 단계에서 추가.
  */
 export const DEFAULT_API_BASE_URL = 'https://api.github.com';
 export const DEFAULT_OAUTH_BASE_URL = 'https://github.com';
-export const DEFAULT_CLIENT_ID = 'Iv1.lyra-placeholder';
+export const DEFAULT_CLIENT_ID = 'Ov23liX6SdTUxWjHw8k5';
 export const DEFAULT_SCOPES = ['repo', 'read:user'];
 
 /**

@@ -1,4 +1,4 @@
-export { accountController, integrationController, gitHostOAuthController } from './account';
+export { accountController, integrationController, gitHostOAuthController, localGitController } from './account';
 
 /**
  * Fetch API Return Class

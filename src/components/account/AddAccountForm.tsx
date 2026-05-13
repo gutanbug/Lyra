@@ -427,8 +427,20 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         </>
       )}
 
-      {isGitHostAccount(serviceType) && !isEdit && (
+      {serviceType === 'github' && !isEdit && !displayName.trim() && (
+        <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
+          표시 이름을 입력하면 GitHub 연결 버튼이 활성화됩니다.
+        </div>
+      )}
+
+      {serviceType === 'github' && !isEdit && !!displayName.trim() && (
         <GitHostDeviceFlow host="github" onSuccess={handleOAuthSuccess} />
+      )}
+
+      {serviceType === 'gitlab' && !isEdit && (
+        <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
+          GitLab 계정 추가는 추후 마일스톤에서 지원됩니다.
+        </div>
       )}
 
       {isGitHostAccount(serviceType) && isEdit && (

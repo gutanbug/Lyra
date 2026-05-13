@@ -132,9 +132,13 @@ const Header = () => {
   useEffect(() => {
     const handleToggleProfile = () => setProfileOpen((v) => {
       if (!v) {
-        // 열릴 때: 현재 활성 계정의 인덱스를 선택
-        const idx = flatAccounts.findIndex((a) => a.id === activeAccount?.id);
-        setProfileIdx(idx >= 0 ? idx : 0);
+        // 열릴 때: 활성화 가능한 계정이 있을 때만 인덱스 지정. 없으면 -1.
+        if (flatAccounts.length === 0) {
+          setProfileIdx(-1);
+        } else {
+          const idx = flatAccounts.findIndex((a) => a.id === activeAccount?.id);
+          setProfileIdx(idx >= 0 ? idx : 0);
+        }
       }
       return !v;
     });
@@ -166,6 +170,13 @@ const Header = () => {
   useEffect(() => {
     if (!profileOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 활성화 가능한 계정이 없으면 ArrowDown/ArrowUp/Enter는 무동작(Escape만 살림).
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setProfileOpen(false);
+        return;
+      }
+      if (flatAccounts.length === 0) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setProfileIdx((prev) => (prev + 1) % flatAccounts.length);
@@ -174,10 +185,7 @@ const Header = () => {
         setProfileIdx((prev) => (prev - 1 + flatAccounts.length) % flatAccounts.length);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (profileIdx >= 0) handleProfileSelect(profileIdx);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setProfileOpen(false);
+        if (profileIdx >= 0 && profileIdx < flatAccounts.length) handleProfileSelect(profileIdx);
       }
     };
     window.addEventListener('keydown', handleKeyDown);

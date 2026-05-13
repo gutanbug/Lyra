@@ -189,7 +189,14 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
   }, []);
 
   const handleOAuthSuccess = useCallback(
-    async (payload: { accessToken: string; grantedScopes: string[]; baseUrl: string; clientId: string }) => {
+    async (payload: {
+      accessToken: string;
+      grantedScopes: string[];
+      baseUrl: string;
+      clientId: string;
+      refreshToken?: string;
+      expiresInSec?: number;
+    }) => {
       if (!displayName.trim()) {
         newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
         return;
@@ -197,12 +204,18 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
 
       setIsSubmitting(true);
       try {
+        const defaultBaseUrl =
+          serviceType === 'github' ? 'https://api.github.com' :
+          serviceType === 'gitlab' ? 'https://gitlab.com' :
+          '';
         const credentials: GitHostCredentials = {
-          baseUrl:
-            payload.baseUrl.trim() ||
-            (serviceType === 'github' ? 'https://api.github.com' : ''),
+          baseUrl: payload.baseUrl.trim() || defaultBaseUrl,
           oauthClientId: payload.clientId,
           accessToken: payload.accessToken,
+          refreshToken: payload.refreshToken,
+          tokenExpiresAt: payload.expiresInSec
+            ? new Date(Date.now() + payload.expiresInSec * 1000).toISOString()
+            : undefined,
           scopes: payload.grantedScopes,
         };
 
@@ -437,10 +450,14 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         <GitHostDeviceFlow host="github" onSuccess={handleOAuthSuccess} />
       )}
 
-      {serviceType === 'gitlab' && !isEdit && (
+      {serviceType === 'gitlab' && !isEdit && !displayName.trim() && (
         <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
-          GitLab 계정 추가는 추후 마일스톤에서 지원됩니다.
+          표시 이름을 입력하면 GitLab 연결 버튼이 활성화됩니다.
         </div>
+      )}
+
+      {serviceType === 'gitlab' && !isEdit && !!displayName.trim() && (
+        <GitHostDeviceFlow host="gitlab" onSuccess={handleOAuthSuccess} />
       )}
 
       {isGitHostAccount(serviceType) && isEdit && (

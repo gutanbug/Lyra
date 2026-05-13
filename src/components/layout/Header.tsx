@@ -9,7 +9,7 @@ import type { Tab } from 'modules/contexts/tab';
 import { useSplitView } from 'modules/contexts/splitView';
 import { useAccount } from 'modules/contexts/account';
 import { useAgentSidebar } from 'modules/contexts/agentSidebar';
-import { isAtlassianAccount } from 'types/account';
+import { isAtlassianAccount, isGitHostAccount } from 'types/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
 
@@ -35,8 +35,12 @@ const Header = () => {
   const [profileIdx, setProfileIdx] = useState(-1);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // 계정 flat 리스트 (방향키 탐색용)
-  const flatAccounts = useMemo(() => accounts, [accounts]);
+  // 계정 flat 리스트 (방향키 탐색용).
+  // Git host(GitHub/GitLab)는 활성화 개념이 없으므로 키보드 탐색·클릭 활성화 대상에서 제외.
+  const flatAccounts = useMemo(
+    () => accounts.filter((a) => !isGitHostAccount(a.serviceType)),
+    [accounts],
+  );
 
   // 컨텍스트 메뉴 상태 (메뉴 우클릭)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; menuId: string } | null>(null);
@@ -242,46 +246,65 @@ const Header = () => {
                     groupMap.get(groupKey)!.push(a);
                   }
                   let flatIdx = 0;
-                  return Array.from(groupMap.entries()).map(([groupKey, group]) => (
-                    <React.Fragment key={groupKey}>
-                      <AccountGroupLabel>
-                        {hasServiceIcon(groupKey) && (
-                          <SectionIconWrap>{getServiceIcon(groupKey, 13)}</SectionIconWrap>
-                        )}
-                        {groupKey.charAt(0).toUpperCase() + groupKey.slice(1)}
-                      </AccountGroupLabel>
-                      {group.map((account) => {
-                        const isCurrentActive = activeAccount?.id === account.id;
-                        const idx = flatIdx++;
-                        const isHighlighted = idx === profileIdx;
-                        return (
-                          <AccountItem
-                            key={account.id}
-                            $active={isCurrentActive}
-                            $highlighted={isHighlighted}
-                            onClick={() => handleProfileSelect(idx)}
-                            onMouseEnter={() => setProfileIdx(idx)}
-                          >
-                            <AccountInfo>
-                              <AccountName>{account.displayName}</AccountName>
-                              {'baseUrl' in account.credentials && (
-                                <AccountMeta>
-                                  {(account.credentials as { baseUrl?: string }).baseUrl}
-                                </AccountMeta>
+                  return Array.from(groupMap.entries()).map(([groupKey, group]) => {
+                    const isReadOnlyGroup = isGitHostAccount(groupKey);
+                    return (
+                      <React.Fragment key={groupKey}>
+                        <AccountGroupLabel>
+                          {hasServiceIcon(groupKey) && (
+                            <SectionIconWrap>{getServiceIcon(groupKey, 13)}</SectionIconWrap>
+                          )}
+                          {groupKey.charAt(0).toUpperCase() + groupKey.slice(1)}
+                          {isReadOnlyGroup && <ReadOnlyHint>조회 전용</ReadOnlyHint>}
+                        </AccountGroupLabel>
+                        {group.map((account) => {
+                          // Git host 계정은 활성화 대상에서 제외 — flatIdx 증가 없음, click 무시.
+                          if (isReadOnlyGroup) {
+                            return (
+                              <ReadOnlyAccountItem key={account.id}>
+                                <AccountInfo>
+                                  <AccountName>{account.displayName}</AccountName>
+                                  {'baseUrl' in account.credentials && (
+                                    <AccountMeta>
+                                      {(account.credentials as { baseUrl?: string }).baseUrl}
+                                    </AccountMeta>
+                                  )}
+                                </AccountInfo>
+                              </ReadOnlyAccountItem>
+                            );
+                          }
+                          const isCurrentActive = activeAccount?.id === account.id;
+                          const idx = flatIdx++;
+                          const isHighlighted = idx === profileIdx;
+                          return (
+                            <AccountItem
+                              key={account.id}
+                              $active={isCurrentActive}
+                              $highlighted={isHighlighted}
+                              onClick={() => handleProfileSelect(idx)}
+                              onMouseEnter={() => setProfileIdx(idx)}
+                            >
+                              <AccountInfo>
+                                <AccountName>{account.displayName}</AccountName>
+                                {'baseUrl' in account.credentials && (
+                                  <AccountMeta>
+                                    {(account.credentials as { baseUrl?: string }).baseUrl}
+                                  </AccountMeta>
+                                )}
+                              </AccountInfo>
+                              {isCurrentActive && (
+                                <ActiveBadge>
+                                  <CheckSvg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="2,6 5,9 10,3" />
+                                  </CheckSvg>
+                                </ActiveBadge>
                               )}
-                            </AccountInfo>
-                            {isCurrentActive && (
-                              <ActiveBadge>
-                                <CheckSvg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="2,6 5,9 10,3" />
-                                </CheckSvg>
-                              </ActiveBadge>
-                            )}
-                          </AccountItem>
-                        );
-                      })}
-                    </React.Fragment>
-                  ));
+                            </AccountItem>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  });
                 })()}
               </ProfileDropdown>
             )}
@@ -672,6 +695,24 @@ const SectionIconWrap = styled.span`
   flex-shrink: 0;
 
   & > svg { width: 100%; height: 100%; }
+`;
+
+const ReadOnlyHint = styled.span`
+  margin-left: 0.35rem;
+  font-size: 0.55rem;
+  font-weight: 500;
+  color: ${theme.textMuted};
+  text-transform: none;
+  letter-spacing: 0;
+`;
+
+const ReadOnlyAccountItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.875rem;
+  cursor: default;
+  opacity: 0.85;
 `;
 
 const AccountItem = styled.div<{ $active?: boolean; $highlighted?: boolean }>`

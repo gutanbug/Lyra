@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
-import { isEpicType } from 'lib/utils/jiraUtils';
 import type { NormalizedIssue } from 'types/jira';
 import type { StatusCount } from 'lib/hooks/useJiraSearch';
 
@@ -31,19 +30,26 @@ export function useJiraStatusFilter({
   doneCounts,
   cachedSelectedStatuses,
 }: UseJiraStatusFilterOptions): UseJiraStatusFilterResult {
+  // 저장 이력 추적: localStorage에 한 번도 저장된 적이 없으면 false → statusCounts 도착 시 전체 선택 기본값 적용.
+  // 빈 배열([])은 "사용자가 의도적으로 모두 해제"한 상태이므로 초기화 대상에서 제외해야 한다.
+  const initializedRef = useRef<boolean>(false);
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(() => {
-    if (cachedSelectedStatuses && cachedSelectedStatuses.length > 0) {
+    if (cachedSelectedStatuses !== undefined) {
+      initializedRef.current = true;
       return new Set(cachedSelectedStatuses);
     }
-    return new Set(loadSelectedStatuses(accountId));
+    const stored = loadSelectedStatuses(accountId);
+    if (stored !== null) {
+      initializedRef.current = true;
+      return new Set(stored);
+    }
+    return new Set();
   });
 
   const statusCounts = useMemo(() => {
     const countMap = new Map<string, { category: string; count: number }>();
     for (const issue of myIssues) {
       if (myIssueKeys.size > 0 && !myIssueKeys.has(issue.key)) continue;
-      // Epic은 상위 묶음 단위라 진척률 계산에서 제외
-      if (isEpicType(issue.issueTypeName)) continue;
       const name = issue.statusName || '기타';
       const cat = issue.statusCategory || '';
       const entry = countMap.get(name);
@@ -67,11 +73,23 @@ export function useJiraStatusFilter({
     return counts;
   }, [myIssues, myIssueKeys, doneCounts]);
 
+  // 최초 진입(저장 이력 없음)에서 statusCounts가 처음 도착하면 전체 선택을 기본값으로 적용.
+  // 사용자가 의도적으로 모두 해제(빈 배열로 저장)한 경우는 initializedRef=true라 트리거되지 않음.
+  useEffect(() => {
+    if (initializedRef.current) return;
+    if (statusCounts.length === 0) return;
+    const all = statusCounts.map((sc) => sc.name);
+    initializedRef.current = true;
+    setSelectedStatuses(new Set(all));
+    saveSelectedStatuses(accountId, all);
+  }, [statusCounts, accountId]);
+
   const toggleStatus = useCallback((statusName: string) => {
     setSelectedStatuses((prev) => {
       const next = new Set(prev);
       if (next.has(statusName)) next.delete(statusName);
       else next.add(statusName);
+      initializedRef.current = true;
       saveSelectedStatuses(accountId, Array.from(next));
       return next;
     });

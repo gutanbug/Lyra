@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import type { Account } from 'types/account';
+import { isAtlassianAccount, isGitHostAccount } from 'types/account';
 import { accountController } from 'controllers/account';
 import { useAccount } from 'modules/contexts/account';
 import { newSnackbar } from 'modules/actions/snackbar';
@@ -132,51 +133,102 @@ const AccountList = ({ onEdit, onSelect, selectedId }: AccountListProps) => {
 
   if (accounts.length === 0) {
     return (
-      <Empty>계정을 추가하고 활성화해주세요.</Empty>
+      <Empty>계정을 추가해주세요.</Empty>
     );
   }
 
+  /**
+   * 계정 그룹 분류:
+   * - atlassian: Jira/Confluence 등 — 단일 활성 계정 개념 유지
+   * - gitHost: GitHub/GitLab — 등록한 모든 계정이 동시에 사용됨, 활성화 개념 없음
+   * - others: 기타(Notion/Trello/Slack 등 향후)
+   */
+  const atlassianAccounts = accounts.filter((a) => isAtlassianAccount(a.serviceType));
+  const gitHostAccounts = accounts.filter((a) => isGitHostAccount(a.serviceType));
+  const otherAccounts = accounts.filter(
+    (a) => !isAtlassianAccount(a.serviceType) && !isGitHostAccount(a.serviceType),
+  );
+
+  const renderItem = (account: Account) => {
+    const isGitHost = isGitHostAccount(account.serviceType);
+    return (
+      <Item
+        key={account.id}
+        $active={!isGitHost && activeAccount?.id === account.id}
+        $selected={selectedId === account.id}
+        onClick={() => onSelect?.(account.id)}
+      >
+        <Info>
+          <Name>
+            {hasServiceIcon(account.serviceType) ? (
+              <>
+                <AccountIconWrap>{getServiceIcon(account.serviceType, 20)}</AccountIconWrap>
+                {account.displayName}
+              </>
+            ) : (
+              account.displayName
+            )}
+          </Name>
+          <Meta>
+            {account.serviceType.charAt(0).toUpperCase() + account.serviceType.slice(1)}
+            {'baseUrl' in account.credentials &&
+              ` · ${(account.credentials as { baseUrl?: string }).baseUrl}`}
+          </Meta>
+        </Info>
+        <Actions>
+          {!isGitHost && activeAccount?.id !== account.id && (
+            <Button onClick={() => handleSetActive(account.id)}>활성화</Button>
+          )}
+          {onEdit && (
+            <Button onClick={() => onEdit(account)}>수정</Button>
+          )}
+          <Button $variant="danger" onClick={() => handleRemove(account)}>
+            삭제
+          </Button>
+        </Actions>
+      </Item>
+    );
+  };
+
   return (
-    <List>
-      {accounts.map((account) => (
-        <Item
-          key={account.id}
-          $active={activeAccount?.id === account.id}
-          $selected={selectedId === account.id}
-          onClick={() => onSelect?.(account.id)}
-        >
-          <Info>
-            <Name>
-              {hasServiceIcon(account.serviceType) ? (
-                <>
-                  <AccountIconWrap>{getServiceIcon(account.serviceType, 20)}</AccountIconWrap>
-                  {account.displayName}
-                </>
-              ) : (
-                account.displayName
-              )}
-            </Name>
-            <Meta>
-              {account.serviceType.charAt(0).toUpperCase() + account.serviceType.slice(1)}
-              {'baseUrl' in account.credentials &&
-                ` · ${(account.credentials as { baseUrl?: string }).baseUrl}`}
-            </Meta>
-          </Info>
-          <Actions>
-            {activeAccount?.id !== account.id && (
-              <Button onClick={() => handleSetActive(account.id)}>활성화</Button>
-            )}
-            {onEdit && (
-              <Button onClick={() => onEdit(account)}>수정</Button>
-            )}
-            <Button $variant="danger" onClick={() => handleRemove(account)}>
-              삭제
-            </Button>
-          </Actions>
-        </Item>
-      ))}
-    </List>
+    <>
+      {atlassianAccounts.length > 0 && (
+        <Section>
+          <SectionHeader>Atlassian</SectionHeader>
+          <List>{atlassianAccounts.map(renderItem)}</List>
+        </Section>
+      )}
+      {gitHostAccounts.length > 0 && (
+        <Section>
+          <SectionHeader>Github / Gitlab</SectionHeader>
+          <List>{gitHostAccounts.map(renderItem)}</List>
+        </Section>
+      )}
+      {otherAccounts.length > 0 && (
+        <Section>
+          <SectionHeader>기타</SectionHeader>
+          <List>{otherAccounts.map(renderItem)}</List>
+        </Section>
+      )}
+    </>
   );
 };
+
+const Section = styled.section`
+  margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const SectionHeader = styled.h3`
+  margin: 0 0 0.5rem 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: ${theme.textMuted};
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
 
 export default AccountList;

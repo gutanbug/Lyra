@@ -1,4 +1,5 @@
 import type { Account, AccountInput } from 'types/account';
+import type { LocalRepo, Commit } from 'types/git';
 import { publishApiError } from 'lib/utils/apiErrorBus';
 
 declare const window: Window & {
@@ -21,6 +22,61 @@ declare const window: Window & {
         action: string;
         params?: Record<string, unknown>;
       }) => Promise<unknown>;
+    };
+    github: {
+      beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) => Promise<{
+        deviceCode: string;
+        userCode: string;
+        verificationUri: string;
+        expiresIn: number;
+        interval: number;
+        oauthBaseUrl: string;
+        clientId: string;
+        scopes: string[];
+      }>;
+      pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) => Promise<
+        | { status: 'pending' }
+        | { status: 'slow_down'; intervalIncrease: number }
+        | { status: 'success'; accessToken: string; scope: string; tokenType: string }
+      >;
+    };
+    gitlab: {
+      beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) => Promise<{
+        deviceCode: string;
+        userCode: string;
+        verificationUri: string;
+        expiresIn: number;
+        interval: number;
+        oauthBaseUrl: string;
+        clientId: string;
+        scopes: string[];
+      }>;
+      pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) => Promise<
+        | { status: 'pending' }
+        | { status: 'slow_down'; intervalIncrease: number }
+        | {
+            status: 'success';
+            accessToken: string;
+            refreshToken?: string;
+            scope: string;
+            tokenType: string;
+            expiresIn?: number;
+          }
+      >;
+    };
+    localGit: {
+      openDialog: () => Promise<string | null>;
+      openRepo: (path: string) => Promise<LocalRepo>;
+      getRepoMeta: (repoId: string) => Promise<LocalRepo>;
+      getCommits: (
+        repoId: string,
+        absPath: string,
+        options?: { limit?: number; skip?: number },
+      ) => Promise<Commit[]>;
+      watch: (repoId: string, absPath: string) => Promise<void>;
+      unwatch: (repoId: string) => Promise<void>;
+      onRepoChanged: (handler: (payload: { repoId: string }) => void) => () => void;
+      checkInstalled: () => Promise<{ installed: boolean; version?: string }>;
     };
   };
 };
@@ -64,5 +120,47 @@ export const integrationController = {
       publishApiError({ serviceType: payload.serviceType, action: payload.action, error });
       throw error;
     });
+  },
+};
+
+export const localGitController = {
+  openDialog: () =>
+    api()?.localGit.openDialog() ?? Promise.resolve(null),
+  openRepo: (path: string) =>
+    api()?.localGit.openRepo(path) ?? Promise.reject(new Error('workspaceAPI not available')),
+  getRepoMeta: (repoId: string) =>
+    api()?.localGit.getRepoMeta(repoId) ?? Promise.reject(new Error('workspaceAPI not available')),
+  getCommits: (repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
+    api()?.localGit.getCommits(repoId, absPath, options)
+      ?? Promise.reject(new Error('workspaceAPI not available')),
+  watch: (repoId: string, absPath: string) =>
+    api()?.localGit.watch(repoId, absPath) ?? Promise.resolve(),
+  unwatch: (repoId: string) =>
+    api()?.localGit.unwatch(repoId) ?? Promise.resolve(),
+  /**
+   * repo 변경 이벤트 구독. handler에 `{ repoId }` payload 전달.
+   * 반환된 함수를 호출하면 구독 해제. workspaceAPI 미사용 시 no-op unsubscribe 반환.
+   */
+  onRepoChanged: (handler: (payload: { repoId: string }) => void): (() => void) => {
+    const api_ = api();
+    if (!api_) return () => {};
+    return api_.localGit.onRepoChanged(handler);
+  },
+  checkInstalled: () =>
+    api()?.localGit.checkInstalled() ?? Promise.resolve({ installed: false }),
+};
+
+export const gitHostOAuthController = {
+  github: {
+    begin: (params: { baseUrl?: string; clientId?: string; scopes?: string[] } = {}) =>
+      api()?.github.beginOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+    poll: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      api()?.github.pollOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+  },
+  gitlab: {
+    begin: (params: { baseUrl?: string; clientId?: string; scopes?: string[] } = {}) =>
+      api()?.gitlab.beginOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+    poll: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      api()?.gitlab.pollOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
   },
 };

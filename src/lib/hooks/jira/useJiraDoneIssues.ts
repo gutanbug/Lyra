@@ -10,12 +10,15 @@ export interface UseJiraDoneIssuesOptions {
   selectedProjects: string[];
   cached?: {
     doneIssues?: NormalizedIssue[];
+    doneOwnKeys?: Set<string>;
     doneCounts?: StatusCount[];
   };
 }
 
 export interface UseJiraDoneIssuesResult {
   doneIssues: NormalizedIssue[];
+  /** assignee = currentUser() 로 직접 매칭된 완료 이슈의 키 집합. 부모/조부모 보강분은 제외. */
+  doneOwnKeys: Set<string>;
   doneCounts: StatusCount[];
   setDoneIssues: React.Dispatch<React.SetStateAction<NormalizedIssue[]>>;
   setDoneCounts: React.Dispatch<React.SetStateAction<StatusCount[]>>;
@@ -34,6 +37,16 @@ export function useJiraDoneIssues({
   cached,
 }: UseJiraDoneIssuesOptions): UseJiraDoneIssuesResult {
   const [doneIssues, setDoneIssues] = useState<NormalizedIssue[]>(cached?.doneIssues ?? []);
+  // 캐시 복원 시 본조회 키 정보가 별도로 저장돼 있지 않을 수 있으므로,
+  // 캐시된 doneIssues 전체 키로 안전한 상위 근사치를 채워 두고, fetchDoneIssues가 정확한 집합으로 덮어쓰도록 한다.
+  // 그렇지 않으면 strict 필터가 캐시 복원 직후 완료 이슈를 한 건도 통과시키지 못한다.
+  const [doneOwnKeys, setDoneOwnKeys] = useState<Set<string>>(() => {
+    if (cached?.doneOwnKeys) return new Set(cached.doneOwnKeys);
+    if (cached?.doneIssues && cached.doneIssues.length > 0) {
+      return new Set(cached.doneIssues.map((i) => i.key));
+    }
+    return new Set();
+  });
   const [doneCounts, setDoneCounts] = useState<StatusCount[]>(cached?.doneCounts ?? []);
   const [, setDoneIssuesLoaded] = useState<boolean>(
     Boolean(cached && cached.doneIssues && cached.doneIssues.length > 0),
@@ -46,6 +59,7 @@ export function useJiraDoneIssues({
       const projectClause = pc ? `${pc} AND ` : '';
       const allDone: NormalizedIssue[] = [];
       const allKeys = new Set<string>();
+      const ownKeys = new Set<string>();
       const pageSize = 100;
       let pageToken: string | undefined;
       const maxPages = 20;
@@ -66,6 +80,7 @@ export function useJiraDoneIssues({
         for (const i of issues) {
           allDone.push(i);
           allKeys.add(i.key);
+          ownKeys.add(i.key);
         }
         pageToken = result.nextPageToken as string | undefined;
         if (!pageToken || issues.length < pageSize) break;
@@ -122,6 +137,7 @@ export function useJiraDoneIssues({
       }
 
       setDoneIssues(allDone);
+      setDoneOwnKeys(ownKeys);
       setDoneIssuesLoaded(true);
     } catch (err) {
       console.error('[JiraDashboard] fetchDoneIssues error:', err);
@@ -133,8 +149,7 @@ export function useJiraDoneIssues({
     try {
       const pc = buildProjectClause(selectedProjects);
       const projectClause = pc ? `${pc} AND ` : '';
-      // Epic은 진척률·카운트 집계에서 제외 — 상위 묶음 단위라 다른 이슈와 중복 집계됨
-      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done AND issuetype != Epic`;
+      const jql = `${projectClause}assignee = currentUser() AND statusCategory = Done`;
       const countMap = new Map<string, { category: string; count: number }>();
       const pageSize = 100;
       let pageToken: string | undefined;
@@ -169,6 +184,7 @@ export function useJiraDoneIssues({
 
   return {
     doneIssues,
+    doneOwnKeys,
     doneCounts,
     setDoneIssues,
     setDoneCounts,

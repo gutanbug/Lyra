@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import styled from 'styled-components';
-import type { AccountInput, AtlassianCredentials } from 'types/account';
-import { isAtlassianAccount } from 'types/account';
+import type { AccountInput, AtlassianCredentials, GitHostCredentials } from 'types/account';
+import { isAtlassianAccount, isGitHostAccount } from 'types/account';
 import { accountController, integrationController } from 'controllers/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
+import GitHostDeviceFlow from './GitHostDeviceFlow';
 
 const Form = styled.form`
   display: flex;
@@ -138,6 +139,20 @@ const ServiceDropdownItem = styled.li`
   }
 `;
 
+const AuthMethodRow = styled.div`
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+`;
+
+const AuthMethodOption = styled.label`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  color: ${theme.textPrimary};
+`;
+
 interface AddAccountFormProps {
   onSuccess: () => void;
   /** 수정 모드일 때 기존 계정 데이터 */
@@ -167,6 +182,10 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
   const [baseUrl, setBaseUrl] = useState(editCreds?.baseUrl || '');
   const [email, setEmail] = useState(editCreds?.email || '');
   const [apiToken, setApiToken] = useState('');
+  /** Git host 전용: 인증 방식. */
+  const [authMethod, setAuthMethod] = useState<'oauth' | 'pat'>('oauth');
+  /** Git host PAT 모드에서 사용자가 입력한 Personal Access Token. */
+  const [patToken, setPatToken] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
 
@@ -187,8 +206,136 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
     });
   }, []);
 
+  const handleOAuthSuccess = useCallback(
+    async (payload: {
+      accessToken: string;
+      grantedScopes: string[];
+      baseUrl: string;
+      clientId: string;
+      refreshToken?: string;
+      expiresInSec?: number;
+    }) => {
+      if (!displayName.trim()) {
+        newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        const defaultBaseUrl =
+          serviceType === 'github' ? 'https://api.github.com' :
+          serviceType === 'gitlab' ? 'https://gitlab.com' :
+          '';
+        const credentials: GitHostCredentials = {
+          baseUrl: payload.baseUrl.trim() || defaultBaseUrl,
+          oauthClientId: payload.clientId,
+          accessToken: payload.accessToken,
+          refreshToken: payload.refreshToken,
+          tokenExpiresAt: payload.expiresInSec
+            ? new Date(Date.now() + payload.expiresInSec * 1000).toISOString()
+            : undefined,
+          scopes: payload.grantedScopes,
+        };
+
+        const result = await integrationController.validate(serviceType, credentials);
+        if (!result || (typeof result === 'object' && !(result as any).valid)) {
+          newSnackbar(snackbarDispatch, '연결 실패. OAuth 권한을 확인해주세요.', 'ERROR');
+          setIsSubmitting(false);
+          return;
+        }
+
+        let userMeta: Record<string, unknown> = {};
+        if (typeof result === 'object') {
+          const r = result as Record<string, unknown>;
+          userMeta = {
+            userDisplayName: r.userDisplayName,
+            userAccountId: r.userAccountId,
+            userAvatarUrl: r.userAvatarUrl || '',
+          };
+        }
+
+        const account: AccountInput = {
+          serviceType,
+          displayName: displayName.trim(),
+          credentials,
+          metadata: userMeta,
+        };
+        await accountController.add(account);
+        newSnackbar(snackbarDispatch, '계정이 추가되었습니다.', 'SUCCESS');
+        onSuccess();
+      } catch (err) {
+        newSnackbar(snackbarDispatch, '계정 추가에 실패했습니다.', 'ERROR');
+        console.error(err);
+        setIsSubmitting(false);
+      }
+    },
+    [displayName, serviceType, snackbarDispatch, onSuccess]
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // === Git host PAT 흐름 ===
+    if (isGitHostAccount(serviceType) && !isEdit && authMethod === 'pat') {
+      if (!displayName.trim()) {
+        newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
+        return;
+      }
+      if (!patToken.trim()) {
+        newSnackbar(snackbarDispatch, 'Personal Access Token을 입력해주세요.', 'WARNING');
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const defaultBaseUrl =
+          serviceType === 'github' ? 'https://api.github.com' :
+          serviceType === 'gitlab' ? 'https://gitlab.com' :
+          '';
+        const credentials: GitHostCredentials = {
+          authMethod: 'pat',
+          baseUrl: baseUrl.trim().replace(/\/+$/, '') || defaultBaseUrl,
+          accessToken: patToken.trim(),
+          scopes: [],
+        };
+        const result = await integrationController.validate(serviceType, credentials);
+        if (!result || (typeof result === 'object' && !(result as any).valid)) {
+          newSnackbar(snackbarDispatch, '연결 실패. URL/PAT를 확인해주세요.', 'ERROR');
+          setIsSubmitting(false);
+          return;
+        }
+        let userMeta: Record<string, unknown> = {};
+        if (typeof result === 'object') {
+          const r = result as Record<string, unknown>;
+          userMeta = {
+            userDisplayName: r.userDisplayName,
+            userAccountId: r.userAccountId,
+            userAvatarUrl: r.userAvatarUrl || '',
+          };
+        }
+        const account: AccountInput = {
+          serviceType,
+          displayName: displayName.trim(),
+          credentials,
+          metadata: userMeta,
+        };
+        await accountController.add(account);
+        newSnackbar(snackbarDispatch, '계정이 추가되었습니다.', 'SUCCESS');
+        onSuccess();
+      } catch (err) {
+        newSnackbar(snackbarDispatch, '계정 추가에 실패했습니다.', 'ERROR');
+        console.error(err);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // === Git host OAuth 흐름은 GitHostDeviceFlow가 처리. Submit 버튼은 안 보이는 게 정상. ===
+    if (isGitHostAccount(serviceType)) {
+      newSnackbar(snackbarDispatch, 'GitHub/GitLab 연결을 먼저 완료해주세요.', 'WARNING');
+      return;
+    }
+
     if (!displayName.trim()) {
       newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
       return;
@@ -365,16 +512,100 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         </>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (isEdit ? '수정 중...' : '추가 중...') : (isEdit ? '수정' : '추가')}
-        </Button>
-        {isAtlassianAccount(serviceType) && (
-          <Button type="button" onClick={handleValidate} disabled={isValidating}>
-            {isValidating ? '확인 중...' : '연결 확인'}
+      {isGitHostAccount(serviceType) && !isEdit && (
+        <Label>
+          인증 방식
+          <AuthMethodRow>
+            <AuthMethodOption>
+              <input
+                type="radio"
+                name="authMethod"
+                checked={authMethod === 'oauth'}
+                onChange={() => setAuthMethod('oauth')}
+              />
+              OAuth (권장)
+            </AuthMethodOption>
+            <AuthMethodOption>
+              <input
+                type="radio"
+                name="authMethod"
+                checked={authMethod === 'pat'}
+                onChange={() => setAuthMethod('pat')}
+              />
+              Personal Access Token
+            </AuthMethodOption>
+          </AuthMethodRow>
+        </Label>
+      )}
+
+      {isGitHostAccount(serviceType) && !isEdit && !displayName.trim() && (
+        <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
+          표시 이름을 입력하면 {serviceType === 'github' ? 'GitHub' : 'GitLab'} 연결이 활성화됩니다.
+        </div>
+      )}
+
+      {isGitHostAccount(serviceType) && !isEdit && !!displayName.trim() && authMethod === 'oauth' && (
+        <GitHostDeviceFlow
+          host={serviceType as 'github' | 'gitlab'}
+          onSuccess={handleOAuthSuccess}
+        />
+      )}
+
+      {isGitHostAccount(serviceType) && !isEdit && !!displayName.trim() && authMethod === 'pat' && (
+        <>
+          <Label>
+            {serviceType === 'github' ? 'GitHub' : 'GitLab'} URL (선택)
+            <Input
+              type="url"
+              placeholder={
+                serviceType === 'github'
+                  ? 'https://api.github.com 또는 GHES URL'
+                  : 'https://gitlab.com 또는 self-hosted URL'
+              }
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+          </Label>
+          <Label>
+            Personal Access Token
+            <Input
+              type="password"
+              placeholder={
+                serviceType === 'github'
+                  ? 'classic PAT 또는 fine-grained PAT'
+                  : 'PAT (scopes: api, read_user)'
+              }
+              value={patToken}
+              onChange={(e) => setPatToken(e.target.value)}
+            />
+          </Label>
+          <div style={{ fontSize: '0.8rem', color: theme.textMuted }}>
+            {serviceType === 'github'
+              ? '발급: github.com/settings/tokens → scopes: repo, read:user'
+              : '발급: gitlab.com/-/user_settings/personal_access_tokens → scopes: api, read_user'}
+          </div>
+        </>
+      )}
+
+      {isGitHostAccount(serviceType) && isEdit && (
+        <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
+          GitHub/GitLab 계정 수정은 추후 지원됩니다. 계정 삭제 후 재등록하세요.
+        </div>
+      )}
+
+      {(!isGitHostAccount(serviceType) ||
+        (isGitHostAccount(serviceType) && !isEdit && authMethod === 'pat')) && (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? (isEdit ? '수정 중...' : '추가 중...') : (isEdit ? '수정' : '추가')}
           </Button>
-        )}
-      </div>
+          {isAtlassianAccount(serviceType) && (
+            <Button type="button" onClick={handleValidate} disabled={isValidating}>
+              {isValidating ? '확인 중...' : '연결 확인'}
+            </Button>
+          )}
+        </div>
+      )}
     </Form>
   );
 };

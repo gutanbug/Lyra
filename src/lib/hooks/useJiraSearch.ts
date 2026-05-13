@@ -18,6 +18,7 @@ export interface StatusCount { name: string; category: string; count: number }
 
 interface DashboardCache {
   myIssues: NormalizedIssue[];
+  myIssueKeys: Set<string>;
   projects: JiraProject[];
   selectedProjects: string[];
   searchQuery: string;
@@ -34,6 +35,7 @@ interface DashboardCache {
   browseNextPageToken: string | null;
   doneCounts: StatusCount[];
   doneIssues: NormalizedIssue[];
+  doneOwnKeys: Set<string>;
   selectedStatuses: string[];
 }
 
@@ -80,11 +82,13 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     selectedProjects,
     cached: {
       doneIssues: cached?.doneIssues,
+      doneOwnKeys: cached?.doneOwnKeys,
       doneCounts: cached?.doneCounts,
     },
   });
   const {
     doneIssues,
+    doneOwnKeys,
     doneCounts,
     setDoneIssues,
     setDoneIssuesLoaded,
@@ -93,16 +97,19 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   } = doneIssuesHook;
 
   // 하위 이슈/부모 조회 헬퍼 (expandState/browseMode/issueSearch 공용 의존성)
-  const fetchChildren = useCallback(async (parentKeys: string[], projectFilter?: string[], isEpic = false): Promise<NormalizedIssue[]> => {
+  // onlyMine=true: assignee = currentUser() 조건을 JQL에 추가하여 내 담당 하위 이슈만 반환.
+  // 대시보드 N-depth 확장 시 사용. 브라우즈/검색 모드는 false로 유지하여 전체 결과를 노출한다.
+  const fetchChildren = useCallback(async (parentKeys: string[], projectFilter?: string[], isEpic = false, onlyMine = false): Promise<NormalizedIssue[]> => {
     if (parentKeys.length === 0 || !activeAccount) return [];
     const allChildren: NormalizedIssue[] = [];
     const seenKeys = new Set<string>();
     const parentKeySet = new Set(parentKeys);
     const pc = projectFilter && projectFilter.length > 0 ? `${buildProjectClause(projectFilter)} AND ` : '';
+    const assigneeClause = onlyMine ? 'assignee = currentUser() AND ' : '';
 
     // parent JQL — 직접 자식 반환
     try {
-      const jql = `${pc}parent IN (${parentKeys.join(',')}) ORDER BY created ASC`;
+      const jql = `${pc}${assigneeClause}parent IN (${parentKeys.join(',')}) ORDER BY created ASC`;
       const result = await integrationController.invoke({
         accountId: activeAccount.id,
         serviceType: 'jira',
@@ -119,7 +126,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     // Epic Link JQL — 에픽일 때만 실행 (서브태스크 제외)
     if (isEpic) {
       try {
-        const jql = `${pc}"Epic Link" IN (${parentKeys.join(',')}) AND issuetype not in subTaskIssueTypes() ORDER BY created ASC`;
+        const jql = `${pc}${assigneeClause}"Epic Link" IN (${parentKeys.join(',')}) AND issuetype not in subTaskIssueTypes() ORDER BY created ASC`;
         const result = await integrationController.invoke({
           accountId: activeAccount.id,
           serviceType: 'jira',
@@ -137,7 +144,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       } catch {
         // subTaskIssueTypes() 미지원 시 폴백
         try {
-          const jql = `${pc}"Epic Link" IN (${parentKeys.join(',')}) ORDER BY created ASC`;
+          const jql = `${pc}${assigneeClause}"Epic Link" IN (${parentKeys.join(',')}) ORDER BY created ASC`;
           const result = await integrationController.invoke({
             accountId: activeAccount.id,
             serviceType: 'jira',
@@ -241,7 +248,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   // myIssuesHook.onIssuesLoaded가 expandStateHook보다 앞에 선언되므로,
   // 아래에서 할당되는 expandStateHook.loadAllDescendants를 ref로 간접 참조한다.
   const expandStateRef = useRef<{
-    loadAllDescendants: (issues: NormalizedIssue[], projectFilter?: string[]) => Promise<void>;
+    loadAllDescendants: (issues: NormalizedIssue[], projectFilter?: string[], onlyMine?: boolean) => Promise<void>;
   } | null>(null);
 
   // 내 이슈 (myIssues): 초기값 cached 기반, onIssuesLoaded에서 expandState.loadAllDescendants 호출
@@ -251,10 +258,12 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     selectedProjects,
     cached: {
       myIssues: cached?.myIssues,
+      myIssueKeys: cached?.myIssueKeys,
     },
     onIssuesLoaded: useCallback(
       (issues: NormalizedIssue[]) => {
-        expandStateRef.current?.loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined);
+        // 내 담당 대시보드 → 하위 N-depth도 내 담당으로 제한
+        expandStateRef.current?.loadAllDescendants(issues, selectedProjects.length > 0 ? selectedProjects : undefined, true);
       },
       [selectedProjects],
     ),
@@ -286,6 +295,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     expandedEpics,
     setExpandedEpics,
     defaultChildrenMap,
+    setDefaultChildrenMap,
     defaultExpandedChildren,
     setDefaultExpandedChildren,
     defaultLoadingChildren,
@@ -378,9 +388,10 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   useAccountScopedCache(
     jiraDashboardCache,
     currentAccountId,
-    [myIssues, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, browseNextPageToken, selectedStatuses],
+    [myIssues, myIssueKeys, projects, selectedProjects, searchQuery, searchResults, expandedEpics, defaultChildrenMap, defaultExpandedChildren, doneCounts, doneIssues, doneOwnKeys, browseProjectKey, browseEpics, browseChildrenMap, browseExpandedKeys, browseLoadedChildren, browseNextPageToken, selectedStatuses],
     () => ({
       myIssues,
+      myIssueKeys,
       projects,
       selectedProjects,
       searchQuery,
@@ -390,6 +401,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       defaultExpandedChildren,
       doneCounts,
       doneIssues,
+      doneOwnKeys,
       browseProjectKey,
       browseEpics,
       browseChildrenMap,
@@ -441,6 +453,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   // ── 상태 업데이트 콜백 (transition/assignee 드롭다운에서 사용) ──
 
   const handleTransitioned = useCallback((issueKey: string, toName: string, toCategory: string) => {
+    // 1) 낙관적 갱신: 즉시 보이는 statusName/statusCategory를 새 값으로 패치
+    //    (사용자 피드백 지연 최소화 + 서버 응답 도착 전 일관성 유지)
     const updateIssues = (list: NormalizedIssue[]) =>
       list.map((i) => i.key === issueKey ? { ...i, statusName: toName, statusCategory: toCategory } : i);
     setMyIssues((prev) => updateIssues(prev));
@@ -454,7 +468,23 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
       }
       return next;
     });
-  }, [setMyIssues, setDoneIssues, setSearchResults, setBrowseEpics, setBrowseChildrenMap]);
+    setDefaultChildrenMap((prev) => {
+      const next: Record<string, NormalizedIssue[]> = {};
+      for (const [key, children] of Object.entries(prev)) {
+        next[key] = updateIssues(children);
+      }
+      return next;
+    });
+
+    // 2) 서버 동기화: Done ↔ non-Done 버킷 이동, doneOwnKeys/doneCounts 같은
+    //    파생 상태를 정확히 맞추려면 재조회가 필요하다. (낙관적 패치만으로는 부족)
+    fetchMyIssues();
+    fetchDoneCounts();
+    fetchDoneIssues();
+  }, [
+    setMyIssues, setDoneIssues, setSearchResults, setBrowseEpics, setBrowseChildrenMap, setDefaultChildrenMap,
+    fetchMyIssues, fetchDoneCounts, fetchDoneIssues,
+  ]);
 
   const handleAssigned = useCallback((issueKey: string, displayName: string) => {
     const updateIssues = (list: NormalizedIssue[]) =>
@@ -488,6 +518,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
   return {
     // State
     myIssues,
+    myIssueKeys,
     isLoading,
     doneCounts,
     projects,
@@ -533,6 +564,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     filteredProjects,
     selectedStatuses,
     doneIssues,
+    doneOwnKeys,
 
     // Callbacks
     fetchProjects,

@@ -45,6 +45,35 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       params?: Record<string, unknown>;
     }) => ipcRenderer.invoke('integration:invoke', payload),
   },
+  github: {
+    beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) =>
+      ipcRenderer.invoke('github:beginOAuth', params),
+    pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      ipcRenderer.invoke('github:pollOAuth', params),
+  },
+  gitlab: {
+    beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) =>
+      ipcRenderer.invoke('gitlab:beginOAuth', params),
+    pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      ipcRenderer.invoke('gitlab:pollOAuth', params),
+  },
+  localGit: {
+    openDialog: () => ipcRenderer.invoke('localGit:openDialog'),
+    openRepo: (path: string) => ipcRenderer.invoke('localGit:openRepo', path),
+    getRepoMeta: (repoId: string) => ipcRenderer.invoke('localGit:getRepoMeta', repoId),
+    getCommits: (repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
+      ipcRenderer.invoke('localGit:getCommits', repoId, absPath, options),
+    watch: (repoId: string, absPath: string) => ipcRenderer.invoke('localGit:watch', repoId, absPath),
+    unwatch: (repoId: string) => ipcRenderer.invoke('localGit:unwatch', repoId),
+    checkInstalled: () => ipcRenderer.invoke('localGit:checkInstalled'),
+    onRepoChanged: (handler: (payload: { repoId: string }) => void) => {
+      const listener = (_e: unknown, payload: { repoId: string }) => handler(payload);
+      ipcRenderer.on('localGit:changed', listener);
+      return () => {
+        ipcRenderer.removeListener('localGit:changed', listener);
+      };
+    },
+  },
   agents: {
     getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),
     getStatus: (id: string) => ipcRenderer.invoke('agents:getStatus', id),

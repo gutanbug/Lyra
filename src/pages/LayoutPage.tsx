@@ -9,6 +9,7 @@ import AgentChatSidebar from 'components/agent/AgentChatSidebar';
 
 const JiraPage = lazy(() => import('pages/JiraPage'));
 const ConfluencePage = lazy(() => import('pages/ConfluencePage'));
+const GitWorkspacePage = lazy(() => import('pages/GitWorkspacePage'));
 const AccountSettings = lazy(() => import('pages/AccountSettings'));
 const StatsPage = lazy(() => import('pages/StatsPage'));
 const NotFound = lazy(() => import('pages/NotFound'));
@@ -41,12 +42,13 @@ const NavigationBridge = ({ active = true }: { active?: boolean }) => {
 };
 
 /** 메뉴 순서 (단축키 [ ] 로 이동할 때 사용) */
-const MENU_PATHS = ['/jira', '/confluence'] as const;
+const MENU_PATHS = ['/jira', '/confluence', '/git'] as const;
 
 /** 메뉴 id → 컴포넌트 매핑 */
 const PANEL_MAP: Record<string, React.ComponentType> = {
   jira: JiraPage,
   confluence: ConfluencePage,
+  git: GitWorkspacePage,
   settings: AccountSettings,
 };
 
@@ -54,6 +56,7 @@ const PANEL_MAP: Record<string, React.ComponentType> = {
 const INITIAL_PATH: Record<string, string> = {
   jira: '/jira',
   confluence: '/confluence',
+  git: '/git',
   settings: '/settings',
 };
 
@@ -65,6 +68,11 @@ const SingleView = ({ navActive }: { navActive: boolean }) => (
         <Redirect from="/" to="/jira" exact />
         <Route path="/jira" component={JiraPage} />
         <Route path="/confluence" component={ConfluencePage} />
+        <Route path="/git" component={GitWorkspacePage} />
+        {/* 구 라우트는 단일 /git으로 리다이렉트 (계정 추가 흐름 등 외부 링크가 남아있을 수 있음) */}
+        <Redirect from="/github" to="/git" />
+        <Redirect from="/gitlab" to="/git" />
+        <Redirect from="/repo" to="/git" />
         <Route path="/settings" component={AccountSettings} exact />
         <Route path="/stats" component={StatsPage} exact />
         <Route path="*" component={NotFound} />

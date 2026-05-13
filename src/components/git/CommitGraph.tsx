@@ -13,15 +13,23 @@ const LANE_WIDTH = 22;
 const NODE_RADIUS = 5;
 const EDGE_WIDTH = 1.8;
 const RIGHT_PAD = 12;
+/** 그래프 패널의 기본 가시 폭 (사용자 가로 스크롤로 더 넓게 볼 수 있음). */
+const GRAPH_PANE_WIDTH = 360;
 
 /**
  * 커밋 그래프 + 메타데이터 컬럼.
- * - 한 행 = ROW_HEIGHT(24px), lane 폭 = LANE_WIDTH(16px).
- * - SVG는 전체 그래프(최대 lane 수 × LANE_WIDTH + 여백)를 단일 캔버스로 그린다.
- * - 각 commit node = 원. parentLinks별로 부모 행/lane까지 라인.
- *   - 같은 lane: 직선
- *   - 다른 lane: 단순 직선(베지어 등 향상은 후속)
- * - parent SHA가 윈도우 밖이면 SVG 캔버스 끝으로 연장.
+ * 레이아웃:
+ *  - 좌측 GraphPane: 고정 폭(GRAPH_PANE_WIDTH) + 자체 `overflow-x: auto`.
+ *    그래프가 더 넓어도 패널 폭은 유지되고, 사용자가 가로 스크롤로 좌우 이동.
+ *  - 우측 CommitList: 항상 보이는 메시지/작성자/sha/date 컬럼 (flex: 1).
+ *  - 세로 스크롤은 두 영역이 함께 (외부 컨테이너에서 처리).
+ *
+ * SVG:
+ *  - 한 행 = ROW_HEIGHT, lane 폭 = LANE_WIDTH.
+ *  - 각 commit node = 원. parentLinks별로 부모 행/lane까지 라인.
+ *    - 같은 lane: 직선
+ *    - 다른 lane: 시작 부근의 짧은 곡선 + 부모까지 직선 수직 (GitKraken-style "fork-and-drop")
+ *  - parent SHA가 윈도우 밖이면 캔버스 끝으로 짧은 fade.
  */
 const CommitGraph = ({ commits }: Props) => {
   const nodes: GraphNode[] = useMemo(() => layoutGraph(commits), [commits]);
@@ -43,13 +51,14 @@ const CommitGraph = ({ commits }: Props) => {
 
   return (
     <Wrapper>
-      <GraphCanvas style={{ width: graphWidth, minWidth: graphWidth }}>
-        <svg
-          width={graphWidth}
-          height={totalHeight}
-          viewBox={`0 0 ${graphWidth} ${totalHeight}`}
-          xmlns="http://www.w3.org/2000/svg"
-        >
+      <GraphPane>
+        <GraphInner style={{ width: graphWidth, height: totalHeight }}>
+          <svg
+            width={graphWidth}
+            height={totalHeight}
+            viewBox={`0 0 ${graphWidth} ${totalHeight}`}
+            xmlns="http://www.w3.org/2000/svg"
+          >
           {nodes.flatMap((n) =>
             n.parentLinks.map((p, i) => {
               const parentRow = shaToRow.get(p.parentSha);
@@ -110,8 +119,9 @@ const CommitGraph = ({ commits }: Props) => {
               strokeWidth={1.5}
             />
           ))}
-        </svg>
-      </GraphCanvas>
+          </svg>
+        </GraphInner>
+      </GraphPane>
 
       <CommitList>
         {commits.map((c) => (
@@ -158,11 +168,26 @@ const Wrapper = styled.div`
   min-height: 0;
 `;
 
-const GraphCanvas = styled.div`
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
+/**
+ * 고정 폭 그래프 패널. SVG가 더 넓을 경우 자체 가로 스크롤로 좌우 이동.
+ * 메시지 컬럼(CommitList)은 항상 우측에 보이는 상태로 유지된다.
+ */
+const GraphPane = styled.div`
+  width: ${GRAPH_PANE_WIDTH}px;
+  min-width: ${GRAPH_PANE_WIDTH}px;
+  max-width: ${GRAPH_PANE_WIDTH}px;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: ${theme.bgPrimary};
+  border-right: 1px solid ${theme.border};
+
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb:hover { background: ${theme.textMuted}; }
+`;
+
+const GraphInner = styled.div`
+  position: relative;
 
   & > svg {
     display: block;

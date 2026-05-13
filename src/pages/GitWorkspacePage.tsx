@@ -221,8 +221,10 @@ const CommitsArea = ({ repo }: { repo: LocalRepo }) => {
 const CommitsScroll = styled.div`
   flex: 1;
   min-height: 0;
+  /* 세로 스크롤만 — 가로는 그래프 패널 내부에서 자체 처리.
+     메시지 컬럼은 항상 보이도록 외부 가로 스크롤 차단. */
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
   background: ${theme.bgPrimary};
   border: 1px solid ${theme.border};
   border-radius: 8px;

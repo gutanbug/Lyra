@@ -39,7 +39,7 @@ export function paletteByLane(lane: number): string {
  * 반대로 절대 재사용하지 않으면 lane이 무한히 증가해 그래프가 지나치게 넓어진다.
  * 쿨다운 행 수: freed 시점으로부터 이 행 수만큼 떨어져야 재사용 가능.
  */
-const LANE_REUSE_COOLDOWN_ROWS = 5;
+const LANE_REUSE_COOLDOWN_ROWS = 8;
 
 export function layoutGraph(commits: Commit[]): GraphNode[] {
   if (commits.length === 0) return [];

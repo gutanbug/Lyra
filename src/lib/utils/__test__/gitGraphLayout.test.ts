@@ -103,7 +103,7 @@ describe('gitGraphLayout', () => {
 
   it('unrelated root commits go to distinct lanes (no lane reuse)', () => {
     // 끊긴 그래프 회귀 테스트: 두 root commit A, B가 같은 lane에 배치되면 시각적 단절.
-    // 재사용 금지 정책으로 A는 lane 0, B는 lane 1에 가야 한다.
+    // 쿨다운 정책으로 가까운 행에서는 lane 재사용 금지 — A는 lane 0, B는 lane 1.
     const nodes = layoutGraph([
       commit('A'),
       commit('B'),
@@ -111,6 +111,19 @@ describe('gitGraphLayout', () => {
     expect(nodes[0].lane).toBe(0);
     expect(nodes[1].lane).toBe(1);
     expect(maxLaneCount(nodes)).toBe(2);
+  });
+
+  it('lane reuse only after cooldown rows have elapsed', () => {
+    // 8 row 쿨다운: lane 0이 row 0에서 freed → row 7 까지는 재사용 안 됨, row 8부터 OK.
+    // 9개의 무관 root commit을 연속 배치하면 처음 8개는 새 lane, 9번째에서 lane 0 재사용.
+    const seq = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((s) => commit(s));
+    const nodes = layoutGraph(seq);
+    // 처음 8개는 lane 0~7 (재사용 불가)
+    for (let i = 0; i < 8; i++) {
+      expect(nodes[i].lane).toBe(i);
+    }
+    // 9번째 (row 8): lane 0이 row 0에서 freed, 거리 8 >= 8 → 재사용 가능.
+    expect(nodes[8].lane).toBe(0);
   });
 
   it('color rotates through LANE_COLORS palette', () => {

@@ -39,6 +39,30 @@ declare const window: Window & {
         | { status: 'success'; accessToken: string; scope: string; tokenType: string }
       >;
     };
+    gitlab: {
+      beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) => Promise<{
+        deviceCode: string;
+        userCode: string;
+        verificationUri: string;
+        expiresIn: number;
+        interval: number;
+        oauthBaseUrl: string;
+        clientId: string;
+        scopes: string[];
+      }>;
+      pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) => Promise<
+        | { status: 'pending' }
+        | { status: 'slow_down'; intervalIncrease: number }
+        | {
+            status: 'success';
+            accessToken: string;
+            refreshToken?: string;
+            scope: string;
+            tokenType: string;
+            expiresIn?: number;
+          }
+      >;
+    };
   };
 };
 
@@ -90,5 +114,11 @@ export const gitHostOAuthController = {
       api()?.github.beginOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
     poll: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
       api()?.github.pollOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+  },
+  gitlab: {
+    begin: (params: { baseUrl?: string; clientId?: string; scopes?: string[] } = {}) =>
+      api()?.gitlab.beginOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+    poll: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      api()?.gitlab.pollOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
   },
 };

@@ -11,19 +11,33 @@ import { permissionBridge } from '../integrations/agents/permission-bridge';
 import type { PermissionRequest, PermissionResponse } from '../integrations/agents/permission-bridge';
 import { BrowserWindow } from 'electron';
 import { GitHubAdapter } from '../integrations/github/adapter';
-import type { BeginOAuthParams, PollOAuthParams } from '../integrations/github/adapter';
-import { OAuthFlowError } from '../integrations/github/oauth';
+import type {
+  BeginOAuthParams as GitHubBeginParams,
+  PollOAuthParams as GitHubPollParams,
+} from '../integrations/github/adapter';
+import { GitLabAdapter } from '../integrations/gitlab/adapter';
+import type {
+  BeginOAuthParams as GitLabBeginParams,
+  PollOAuthParams as GitLabPollParams,
+} from '../integrations/gitlab/adapter';
 
 /**
  * OAuthFlowError를 IPC 경로에서 안전한 모양(plain Error + 명시적 code 속성)으로 재포장.
  * Electron 구조적 복제(structured clone)가 사용자 정의 Error 서브클래스의 인스턴스 메서드를
  * 잃을 수 있어, 렌더러에서 `error.code` 접근이 끊기는 회귀를 방지한다.
+ * github/gitlab 각자의 OAuthFlowError 클래스를 별도 import하지 않고, code+message duck-typing으로 처리.
  */
 function rethrowOAuth<T>(fn: () => Promise<T>): Promise<T> {
   return fn().catch((e: unknown) => {
-    if (e instanceof OAuthFlowError) {
-      const err = new Error(e.message) as Error & { code: string; name: string };
-      err.code = e.code;
+    if (
+      e &&
+      typeof e === 'object' &&
+      typeof (e as { code?: unknown }).code === 'string' &&
+      typeof (e as { message?: unknown }).message === 'string'
+    ) {
+      const oauth = e as { code: string; message: string };
+      const err = new Error(oauth.message) as Error & { code: string; name: string };
+      err.code = oauth.code;
       err.name = 'OAuthFlowError';
       throw err;
     }
@@ -139,13 +153,23 @@ export function registerIpcHandlers(): void {
   // === OAuth (계정 없이 호출 가능) ===
   ipcMain.handle(
     'github:beginOAuth',
-    async (_, params: BeginOAuthParams) =>
+    async (_, params: GitHubBeginParams) =>
       rethrowOAuth(() => GitHubAdapter.beginOAuth(params || {})),
   );
   ipcMain.handle(
     'github:pollOAuth',
-    async (_, params: PollOAuthParams) =>
+    async (_, params: GitHubPollParams) =>
       rethrowOAuth(() => GitHubAdapter.pollOAuth(params)),
+  );
+  ipcMain.handle(
+    'gitlab:beginOAuth',
+    async (_, params: GitLabBeginParams) =>
+      rethrowOAuth(() => GitLabAdapter.beginOAuth(params || {})),
+  );
+  ipcMain.handle(
+    'gitlab:pollOAuth',
+    async (_, params: GitLabPollParams) =>
+      rethrowOAuth(() => GitLabAdapter.pollOAuth(params)),
   );
 
   // === AI Agent CLI 관리 ===

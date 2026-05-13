@@ -9,10 +9,10 @@ interface Props {
 }
 
 const ROW_HEIGHT = 24;
-const LANE_WIDTH = 16;
-const NODE_RADIUS = 4;
-const EDGE_WIDTH = 1.5;
-const RIGHT_PAD = 10;
+const LANE_WIDTH = 18;
+const NODE_RADIUS = 5;
+const EDGE_WIDTH = 1.8;
+const RIGHT_PAD = 12;
 /** 그래프 패널의 기본 가시 폭. 더 넓은 그래프는 자체 가로 스크롤로 좌우 이동. */
 const GRAPH_PANE_WIDTH = 360;
 /** 행 배경 lane 색상 알파(저채도). hover 시 더 진해진다. */

@@ -268,7 +268,6 @@ const Header = () => {
                             <SectionIconWrap>{getServiceIcon(groupKey, 13)}</SectionIconWrap>
                           )}
                           {groupKey.charAt(0).toUpperCase() + groupKey.slice(1)}
-                          {isReadOnlyGroup && <ReadOnlyHint>조회 전용</ReadOnlyHint>}
                         </AccountGroupLabel>
                         {group.map((account) => {
                           // Git host 계정은 활성화 대상에서 제외 — flatIdx 증가 없음, click 무시.

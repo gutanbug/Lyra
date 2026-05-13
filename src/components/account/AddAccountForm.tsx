@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import styled from 'styled-components';
-import type { AccountInput, AtlassianCredentials } from 'types/account';
-import { isAtlassianAccount } from 'types/account';
+import type { AccountInput, AtlassianCredentials, GitHostCredentials } from 'types/account';
+import { isAtlassianAccount, isGitHostAccount } from 'types/account';
 import { accountController, integrationController } from 'controllers/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
+import GitHostDeviceFlow from './GitHostDeviceFlow';
 
 const Form = styled.form`
   display: flex;
@@ -187,8 +188,69 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
     });
   }, []);
 
+  const handleOAuthSuccess = useCallback(
+    async (payload: { accessToken: string; grantedScopes: string[]; baseUrl: string; clientId: string }) => {
+      if (!displayName.trim()) {
+        newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        const credentials: GitHostCredentials = {
+          baseUrl:
+            payload.baseUrl.trim() ||
+            (serviceType === 'github' ? 'https://api.github.com' : ''),
+          oauthClientId: payload.clientId,
+          accessToken: payload.accessToken,
+          scopes: payload.grantedScopes,
+        };
+
+        const result = await integrationController.validate(serviceType, credentials);
+        if (!result || (typeof result === 'object' && !(result as any).valid)) {
+          newSnackbar(snackbarDispatch, '연결 실패. OAuth 권한을 확인해주세요.', 'ERROR');
+          setIsSubmitting(false);
+          return;
+        }
+
+        let userMeta: Record<string, unknown> = {};
+        if (typeof result === 'object') {
+          const r = result as Record<string, unknown>;
+          userMeta = {
+            userDisplayName: r.userDisplayName,
+            userAccountId: r.userAccountId,
+            userAvatarUrl: r.userAvatarUrl || '',
+          };
+        }
+
+        const account: AccountInput = {
+          serviceType,
+          displayName: displayName.trim(),
+          credentials,
+          metadata: userMeta,
+        };
+        await accountController.add(account);
+        newSnackbar(snackbarDispatch, '계정이 추가되었습니다.', 'SUCCESS');
+        onSuccess();
+      } catch (err) {
+        newSnackbar(snackbarDispatch, '계정 추가에 실패했습니다.', 'ERROR');
+        console.error(err);
+        setIsSubmitting(false);
+      }
+    },
+    [displayName, serviceType, snackbarDispatch, onSuccess]
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isGitHostAccount(serviceType)) {
+      newSnackbar(
+        snackbarDispatch,
+        'GitHub/GitLab 계정은 OAuth 흐름으로 추가됩니다.',
+        'WARNING'
+      );
+      return;
+    }
     if (!displayName.trim()) {
       newSnackbar(snackbarDispatch, '표시 이름을 입력해주세요.', 'WARNING');
       return;
@@ -365,16 +427,28 @@ const AddAccountForm = ({ onSuccess, editAccount }: AddAccountFormProps) => {
         </>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (isEdit ? '수정 중...' : '추가 중...') : (isEdit ? '수정' : '추가')}
-        </Button>
-        {isAtlassianAccount(serviceType) && (
-          <Button type="button" onClick={handleValidate} disabled={isValidating}>
-            {isValidating ? '확인 중...' : '연결 확인'}
+      {isGitHostAccount(serviceType) && !isEdit && (
+        <GitHostDeviceFlow host="github" onSuccess={handleOAuthSuccess} />
+      )}
+
+      {isGitHostAccount(serviceType) && isEdit && (
+        <div style={{ fontSize: '0.875rem', color: theme.textMuted }}>
+          GitHub/GitLab 계정 수정은 추후 지원됩니다. 계정 삭제 후 재등록하세요.
+        </div>
+      )}
+
+      {!isGitHostAccount(serviceType) && (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? (isEdit ? '수정 중...' : '추가 중...') : (isEdit ? '수정' : '추가')}
           </Button>
-        )}
-      </div>
+          {isAtlassianAccount(serviceType) && (
+            <Button type="button" onClick={handleValidate} disabled={isValidating}>
+              {isValidating ? '확인 중...' : '연결 확인'}
+            </Button>
+          )}
+        </div>
+      )}
     </Form>
   );
 };

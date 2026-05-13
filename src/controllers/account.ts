@@ -73,6 +73,9 @@ declare const window: Window & {
         absPath: string,
         options?: { limit?: number; skip?: number },
       ) => Promise<Commit[]>;
+      watch: (repoId: string, absPath: string) => Promise<void>;
+      unwatch: (repoId: string) => Promise<void>;
+      onRepoChanged: (handler: (payload: { repoId: string }) => void) => () => void;
     };
   };
 };
@@ -129,6 +132,19 @@ export const localGitController = {
   getCommits: (repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
     api()?.localGit.getCommits(repoId, absPath, options)
       ?? Promise.reject(new Error('workspaceAPI not available')),
+  watch: (repoId: string, absPath: string) =>
+    api()?.localGit.watch(repoId, absPath) ?? Promise.resolve(),
+  unwatch: (repoId: string) =>
+    api()?.localGit.unwatch(repoId) ?? Promise.resolve(),
+  /**
+   * repo 변경 이벤트 구독. handler에 `{ repoId }` payload 전달.
+   * 반환된 함수를 호출하면 구독 해제. workspaceAPI 미사용 시 no-op unsubscribe 반환.
+   */
+  onRepoChanged: (handler: (payload: { repoId: string }) => void): (() => void) => {
+    const api_ = api();
+    if (!api_) return () => {};
+    return api_.localGit.onRepoChanged(handler);
+  },
 };
 
 export const gitHostOAuthController = {

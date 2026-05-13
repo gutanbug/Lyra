@@ -22,6 +22,7 @@ import type {
 } from '../integrations/gitlab/adapter';
 import { openDialog as localGitOpenDialog, openRepo as localGitOpenRepo, getRepoMeta as localGitGetRepoMeta } from '../integrations/localGit/service';
 import { getCommits as localGitGetCommits } from '../integrations/localGit/graph';
+import { watchRepo as localGitWatchRepo, unwatchRepo as localGitUnwatchRepo, setChangeListener as localGitSetChangeListener } from '../integrations/localGit/watcher';
 
 /**
  * OAuthFlowError를 IPC 경로에서 안전한 모양(plain Error + 명시적 code 속성)으로 재포장.
@@ -183,6 +184,18 @@ export function registerIpcHandlers(): void {
     (_, repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
       localGitGetCommits(repoId, absPath, options || {}),
   );
+  ipcMain.handle('localGit:watch', (_, repoId: string, absPath: string) => {
+    localGitWatchRepo(repoId, absPath);
+  });
+  ipcMain.handle('localGit:unwatch', (_, repoId: string) => localGitUnwatchRepo(repoId));
+
+  // Watcher broadcast — repo가 변경되면 모든 BrowserWindow에 알림.
+  // 동일 repoId에 대한 debounce는 renderer 측 LocalRepoProvider가 처리.
+  localGitSetChangeListener((repoId) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('localGit:changed', { repoId });
+    }
+  });
 
   // === AI Agent CLI 관리 ===
   ipcMain.handle('agents:getAllStatus', () => AgentManager.getAllStatus());

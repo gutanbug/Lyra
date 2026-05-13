@@ -63,6 +63,15 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
     getRepoMeta: (repoId: string) => ipcRenderer.invoke('localGit:getRepoMeta', repoId),
     getCommits: (repoId: string, absPath: string, options?: { limit?: number; skip?: number }) =>
       ipcRenderer.invoke('localGit:getCommits', repoId, absPath, options),
+    watch: (repoId: string, absPath: string) => ipcRenderer.invoke('localGit:watch', repoId, absPath),
+    unwatch: (repoId: string) => ipcRenderer.invoke('localGit:unwatch', repoId),
+    onRepoChanged: (handler: (payload: { repoId: string }) => void) => {
+      const listener = (_e: unknown, payload: { repoId: string }) => handler(payload);
+      ipcRenderer.on('localGit:changed', listener);
+      return () => {
+        ipcRenderer.removeListener('localGit:changed', listener);
+      };
+    },
   },
   agents: {
     getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),

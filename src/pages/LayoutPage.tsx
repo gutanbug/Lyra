@@ -9,6 +9,9 @@ import AgentChatSidebar from 'components/agent/AgentChatSidebar';
 
 const JiraPage = lazy(() => import('pages/JiraPage'));
 const ConfluencePage = lazy(() => import('pages/ConfluencePage'));
+const GitHubPage = lazy(() => import('pages/GitHubPage'));
+const GitLabPage = lazy(() => import('pages/GitLabPage'));
+const RepoGraphPage = lazy(() => import('pages/RepoGraphPage'));
 const AccountSettings = lazy(() => import('pages/AccountSettings'));
 const StatsPage = lazy(() => import('pages/StatsPage'));
 const NotFound = lazy(() => import('pages/NotFound'));
@@ -41,12 +44,15 @@ const NavigationBridge = ({ active = true }: { active?: boolean }) => {
 };
 
 /** 메뉴 순서 (단축키 [ ] 로 이동할 때 사용) */
-const MENU_PATHS = ['/jira', '/confluence'] as const;
+const MENU_PATHS = ['/jira', '/confluence', '/github', '/gitlab'] as const;
 
 /** 메뉴 id → 컴포넌트 매핑 */
 const PANEL_MAP: Record<string, React.ComponentType> = {
   jira: JiraPage,
   confluence: ConfluencePage,
+  github: GitHubPage,
+  gitlab: GitLabPage,
+  repo: RepoGraphPage,
   settings: AccountSettings,
 };
 
@@ -54,6 +60,9 @@ const PANEL_MAP: Record<string, React.ComponentType> = {
 const INITIAL_PATH: Record<string, string> = {
   jira: '/jira',
   confluence: '/confluence',
+  github: '/github',
+  gitlab: '/gitlab',
+  repo: '/repo',
   settings: '/settings',
 };
 
@@ -65,6 +74,9 @@ const SingleView = ({ navActive }: { navActive: boolean }) => (
         <Redirect from="/" to="/jira" exact />
         <Route path="/jira" component={JiraPage} />
         <Route path="/confluence" component={ConfluencePage} />
+        <Route path="/github" component={GitHubPage} />
+        <Route path="/gitlab" component={GitLabPage} />
+        <Route path="/repo" component={RepoGraphPage} />
         <Route path="/settings" component={AccountSettings} exact />
         <Route path="/stats" component={StatsPage} exact />
         <Route path="*" component={NotFound} />

@@ -106,6 +106,36 @@ function runAuthCheck(
   });
 }
 
+/**
+ * OS-네이티브 크리덴셜 스토어에서 항목 삭제.
+ * - darwin: `security delete-generic-password -s <service>`
+ * - win32: `cmdkey /delete:<target>`
+ * - 항목이 없거나 미지원 플랫폼이면 false 반환.
+ */
+function deleteNativeCredential(
+  spec: { darwin?: string; win32?: string } | undefined,
+): Promise<boolean> {
+  if (!spec) return Promise.resolve(false);
+
+  if (process.platform === 'darwin' && spec.darwin) {
+    return new Promise((resolve) => {
+      execFile('security', ['delete-generic-password', '-s', spec.darwin!], { timeout: 3000 }, (err) => {
+        resolve(!err);
+      });
+    });
+  }
+
+  if (process.platform === 'win32' && spec.win32) {
+    return new Promise((resolve) => {
+      execFile('cmdkey', [`/delete:${spec.win32}`], { timeout: 3000 }, (err) => {
+        resolve(!err);
+      });
+    });
+  }
+
+  return Promise.resolve(false);
+}
+
 /** credential 파일 탐색 → 인증 여부 + mtime */
 function detectCredential(descriptor: AgentDescriptor): { path: string | null; mtime: string | null } {
   const dir = path.join(HOME, descriptor.credentialDir);
@@ -234,30 +264,46 @@ export const AgentManager = {
     }
   },
 
-  /** 로그아웃 — CLI logout 명령 또는 credential 파일 제거 */
+  /** 로그아웃 — CLI logout 명령 → 네이티브 크리덴셜 삭제 → credential 파일 제거 */
   async logout(id: AgentId): Promise<{ ok: boolean; message: string }> {
     const descriptor = AGENT_DESCRIPTORS[id];
+    const binaryPath = await resolveBinaryPath(descriptor);
 
-    if (descriptor.logoutArgs) {
-      const binaryPath = await resolveBinaryPath(descriptor);
-      if (binaryPath) {
-        const ok = await new Promise<boolean>((resolve) => {
-          execFile(binaryPath, descriptor.logoutArgs!, { timeout: 6000 }, (err) => resolve(!err));
-        });
-        if (ok) return { ok: true, message: '로그아웃되었습니다.' };
-      }
+    if (descriptor.logoutArgs && binaryPath) {
+      const ok = await new Promise<boolean>((resolve) => {
+        execFile(binaryPath, descriptor.logoutArgs!, { timeout: 6000 }, (err) => resolve(!err));
+      });
+      if (ok) return { ok: true, message: '로그아웃되었습니다.' };
     }
 
-    // 폴백: credential 파일 직접 제거
+    // 폴백 1: OS 네이티브 크리덴셜 스토어 삭제 (Keychain / Credential Manager)
+    // 바이너리가 사라진 뒤에도 Keychain 항목이 남아있어 OAuth로 잘못 표시되는 경우 처리.
+    const nativeDeleted = await deleteNativeCredential(descriptor.nativeCredential);
+
+    // 폴백 2: credential 파일 직접 제거
     const cred = detectCredential(descriptor);
+    let fileDeleted = false;
+    let fileError: string | null = null;
     if (cred.path) {
       try {
         fs.unlinkSync(cred.path);
-        return { ok: true, message: 'credential 파일을 제거했습니다.' };
+        fileDeleted = true;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, message: `credential 파일 제거 실패: ${msg}` };
+        fileError = err instanceof Error ? err.message : String(err);
       }
+    }
+
+    if (nativeDeleted && fileDeleted) {
+      return { ok: true, message: '네이티브 크리덴셜과 파일을 모두 제거했습니다.' };
+    }
+    if (nativeDeleted) {
+      return { ok: true, message: '네이티브 크리덴셜을 제거했습니다.' };
+    }
+    if (fileDeleted) {
+      return { ok: true, message: 'credential 파일을 제거했습니다.' };
+    }
+    if (fileError) {
+      return { ok: false, message: `credential 파일 제거 실패: ${fileError}` };
     }
     return { ok: true, message: '이미 로그아웃 상태입니다.' };
   },

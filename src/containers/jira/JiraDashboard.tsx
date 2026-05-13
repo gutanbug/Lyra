@@ -55,7 +55,7 @@ const JiraDashboard = () => {
   const search = useJiraSearch({ activeAccount, history });
 
   const {
-    myIssues, isLoading, projects, selectedProjects, setSelectedProjects,
+    myIssues, myIssueKeys, isLoading, projects, selectedProjects, setSelectedProjects,
     showSpaceSettings, setShowSpaceSettings, spaceFilter, setSpaceFilter,
     searchQuery, searchResults, isSearching,
     suggestions, showSuggestions, setShowSuggestions,
@@ -68,7 +68,7 @@ const JiraDashboard = () => {
     browseExpandedKeys, setBrowseExpandedKeys, browseLoadedChildren,
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
-    selectedStatuses, doneIssues, toggleStatus,
+    selectedStatuses, doneIssues, doneOwnKeys, toggleStatus,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadMoreBrowseEpics, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
@@ -97,7 +97,10 @@ const JiraDashboard = () => {
   const isSearchMode = searchResults !== null;
   const baseIssues = isSearchMode ? searchResults : myIssues;
 
-  // 상태 필터 적용: 선택된 상태가 없으면(초기) 전체 표시, 있으면 필터링
+  // 상태 필터 적용:
+  // - 검색 모드: 필터 무시(전체 표시)
+  // - 선택된 상태가 없음: 아무 이슈도 표시하지 않음 (사용자가 명시적으로 모두 해제한 상태)
+  // - 그 외: Epic 포함 모든 이슈를 자신의 statusName 기준으로 엄격히 필터링
   const displayIssues = useMemo(() => {
     // 완료 이슈를 base에 합산 (중복 제거)
     const keySet = new Set(baseIssues.map((i) => i.key));
@@ -109,13 +112,18 @@ const JiraDashboard = () => {
       }
     }
 
-    // 상태 필터 적용 (검색 모드에서는 모든 상태 표시)
+    // 기본 모드의 1차 매칭은 "내 담당 이슈(myIssueKeys)"로만 한정.
+    // myIssues 배열에는 부모/조부모 보강분이 포함되어 있어, 그것들이 상태만 같다고 단독으로 노출되면
+    // "다른 사람 담당의 에픽"이 끼어 들어온다. 조상은 자식이 매칭됐을 때만 아래 부모-체인 백필을 통해 합류해야 한다.
     let filtered: NormalizedIssue[];
-    if (isSearchMode || selectedStatuses.size === 0) {
+    if (isSearchMode) {
       filtered = merged;
+    } else if (selectedStatuses.size === 0) {
+      filtered = [];
     } else {
       filtered = merged.filter((issue) =>
-        isEpicType(issue.issueTypeName) || selectedStatuses.has(issue.statusName)
+        (myIssueKeys.has(issue.key) || doneOwnKeys.has(issue.key))
+        && selectedStatuses.has(issue.statusName)
       );
     }
 
@@ -141,7 +149,7 @@ const JiraDashboard = () => {
     }
 
     return extras.length > 0 ? [...filtered, ...extras] : filtered;
-  }, [baseIssues, doneIssues, selectedStatuses]);
+  }, [baseIssues, doneIssues, selectedStatuses, myIssueKeys, doneOwnKeys, isSearchMode]);
 
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
@@ -204,6 +212,7 @@ const JiraDashboard = () => {
         isSearching={isSearching}
         isSearchMode={isSearchMode}
         myDisplayName={myDisplayName}
+        selectedStatuses={selectedStatuses}
         onToggleEpic={toggleEpic}
         onToggleBrowseEpic={toggleBrowseEpic}
         onExpandAll={expandAll}

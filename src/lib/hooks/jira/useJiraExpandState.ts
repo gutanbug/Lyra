@@ -6,7 +6,7 @@ export interface UseJiraExpandStateOptions {
   accountId: string;
   activeAccount: { id: string } | null | undefined;
   myIssues: NormalizedIssue[];
-  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean) => Promise<NormalizedIssue[]>;
+  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean, onlyMine?: boolean) => Promise<NormalizedIssue[]>;
   selectedProjects: string[];
   /** 단축키 처리 시 전달할 epic 그룹 ref (composer에서 주입) */
   epicGroupsRef: React.RefObject<EpicGroup[]>;
@@ -32,7 +32,7 @@ export interface UseJiraExpandStateResult {
   setDefaultExpandedChildren: React.Dispatch<React.SetStateAction<Set<string>>>;
   defaultLoadingChildren: Set<string>;
   loadDefaultChildren: (epicKey: string) => Promise<void>;
-  loadAllDescendants: (issues: NormalizedIssue[], projectFilter?: string[]) => Promise<void>;
+  loadAllDescendants: (issues: NormalizedIssue[], projectFilter?: string[], onlyMine?: boolean) => Promise<void>;
   toggleEpic: (epicKey: string) => void;
   expandAll: (groups: EpicGroup[]) => void;
   collapseAll: () => void;
@@ -64,7 +64,7 @@ export function useJiraExpandState({
     cached?.defaultChildrenMap ? new Set(Object.keys(cached.defaultChildrenMap)) : new Set()
   );
 
-  const loadAllDescendants = useCallback(async (issues: NormalizedIssue[], projectFilter?: string[]) => {
+  const loadAllDescendants = useCallback(async (issues: NormalizedIssue[], projectFilter?: string[], onlyMine = false) => {
     const childrenMap: Record<string, NormalizedIssue[]> = {};
     const loaded = new Set<string>();
     const issueMap = new Map<string, NormalizedIssue>();
@@ -84,7 +84,7 @@ export function useJiraExpandState({
           try {
             const parentIssue = issueMap.get(key);
             const epic = parentIssue ? isEpicType(parentIssue.issueTypeName) : false;
-            const children = await fetchChildren([key], projectFilter, epic);
+            const children = await fetchChildren([key], projectFilter, epic, onlyMine);
             childrenMap[key] = children;
             for (const child of children) {
               issueMap.set(child.key, child);
@@ -124,7 +124,7 @@ export function useJiraExpandState({
 
     setDefaultLoadingChildren((prev) => new Set(prev).add(parentKey));
     try {
-      const children = await fetchChildren([parentKey], selectedProjects, epic);
+      const children = await fetchChildren([parentKey], selectedProjects, epic, true);
       setDefaultChildrenMap((prev) => ({
         ...prev,
         [parentKey]: children,

@@ -48,6 +48,10 @@ const AgentCard = ({
     return { label: 'API Key 연결됨', tone: 'ok' as const };
   })();
 
+  // 바이너리는 없는데 OS 크리덴셜만 남아있는 비정상 상태.
+  // 사용자가 '로그아웃'으로 잔여 자격증명을 청소할 수 있도록 안내.
+  const orphanedCredential = !status.installed && status.authenticated;
+
   return (
     <Card>
       <CardHeader>
@@ -96,6 +100,11 @@ const AgentCard = ({
             )}
             {status.authMethod === 'none' && <Muted>인증되지 않음</Muted>}
           </AuthLine>
+          {orphanedCredential && (
+            <Sub>
+              CLI가 설치되어 있지 않은데 OS 크리덴셜이 남아있습니다. [로그아웃]을 눌러 정리하세요.
+            </Sub>
+          )}
         </Value>
       </Row>
 

@@ -35,7 +35,16 @@ export function useJiraMyIssues({
   onIssuesLoaded,
 }: UseJiraMyIssuesOptions): UseJiraMyIssuesResult {
   const [myIssues, setMyIssues] = useState<NormalizedIssue[]>(cached?.myIssues ?? []);
-  const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(cached?.myIssueKeys ?? new Set());
+  // 캐시 복원 시 originalKeys가 없으면 myIssues 전체 키로 안전한 상위 근사치를 채워 두고,
+  // fetchMyIssues가 정확한 집합으로 덮어쓰도록 한다. 비워두면 상세 → 대시보드 복귀 시 strict 필터가
+  // 모든 비완료 이슈를 걸러내 목록이 빈 상태로 표시된다.
+  const [myIssueKeys, setMyIssueKeys] = useState<Set<string>>(() => {
+    if (cached?.myIssueKeys) return new Set(cached.myIssueKeys);
+    if (cached?.myIssues && cached.myIssues.length > 0) {
+      return new Set(cached.myIssues.map((i) => i.key));
+    }
+    return new Set();
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchMyIssues = useCallback(async () => {

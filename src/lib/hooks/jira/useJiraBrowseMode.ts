@@ -7,7 +7,7 @@ import type { NormalizedIssue } from 'types/jira';
 export interface UseJiraBrowseModeOptions {
   accountId: string;
   activeAccount: { id: string } | null | undefined;
-  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean) => Promise<NormalizedIssue[]>;
+  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean, onlyMine?: boolean) => Promise<NormalizedIssue[]>;
   cached?: {
     browseProjectKey?: string | null;
     browseEpics?: NormalizedIssue[];

@@ -28,6 +28,8 @@ interface JiraIssueListProps {
   isSearching: boolean;
   isSearchMode: boolean;
   myDisplayName: string | undefined;
+  /** 상태 필터 — 기본 모드에서 펼친 N-depth 하위 항목에도 동일하게 적용한다. */
+  selectedStatuses: Set<string>;
   onToggleEpic: (epicKey: string) => void;
   onToggleBrowseEpic: (epicKey: string) => void;
   onExpandAll: (groups: EpicGroup[]) => void;
@@ -62,6 +64,7 @@ const JiraIssueList = ({
   isSearching,
   isSearchMode,
   myDisplayName,
+  selectedStatuses,
   onToggleEpic,
   onToggleBrowseEpic,
   onExpandAll,
@@ -157,9 +160,31 @@ const JiraIssueList = ({
     return rows;
   };
 
+  // 상태 필터: 자기 statusName이 선택 집합에 있거나, 로드된 자손 중 매칭이 있으면 통과.
+  // (조상 백필) — N-depth 트리에서 '중간 노드'가 자기 상태로는 매칭되지 않아도
+  // 매칭되는 후손이 있으면 표시해 트리 모양을 유지한다.
+  const issueOrLoadedDescendantMatches = (issue: NormalizedIssue): boolean => {
+    if (selectedStatuses.has(issue.statusName)) return true;
+    const grand = defaultChildrenMap[issue.key];
+    if (!grand || grand.length === 0) return false;
+    return grand.some(issueOrLoadedDescendantMatches);
+  };
+
   // 기본 모드 N-depth 하위 항목 재귀 렌더링
   const renderDefaultChildren = (parentKey: string, depth: number): React.ReactNode[] => {
-    const children = defaultChildrenMap[parentKey] || [];
+    const allChildren = defaultChildrenMap[parentKey] || [];
+    if (allChildren.length === 0) return [];
+
+    // 검색 모드: 상태 필터 무시. 선택된 상태가 없으면(사용자가 모두 해제): 빈 결과.
+    // 그 외: 상태 필터 + 자손 백필 적용.
+    let children: NormalizedIssue[];
+    if (isSearchMode) {
+      children = allChildren;
+    } else if (selectedStatuses.size === 0) {
+      children = [];
+    } else {
+      children = allChildren.filter(issueOrLoadedDescendantMatches);
+    }
     if (children.length === 0) return [];
 
     const rows: React.ReactNode[] = [];

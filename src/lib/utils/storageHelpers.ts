@@ -41,15 +41,19 @@ export function saveSelectedProjects(accountId: string, keys: string[]): void {
 
 // ── Jira 상태 필터 ──
 
-export function loadSelectedStatuses(accountId: string): string[] {
+/**
+ * 저장된 상태 필터를 로드한다.
+ * - null: 저장된 적이 없음 (최초 진입 → 호출부에서 전체 선택 기본값 적용)
+ * - string[]: 저장된 적이 있음 (빈 배열이면 사용자가 명시적으로 모두 해제한 상태)
+ */
+export function loadSelectedStatuses(accountId: string): string[] | null {
   try {
     const raw = localStorage.getItem(`lyra:jira:selectedStatuses:${accountId}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
   } catch { /* ignore */ }
-  return [];
+  return null;
 }
 
 export function saveSelectedStatuses(accountId: string, statuses: string[]): void {

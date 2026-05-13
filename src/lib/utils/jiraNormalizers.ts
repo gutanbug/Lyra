@@ -484,7 +484,9 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
     // defaultChildrenMap에서 해당 스토리 하위로 표시됨
   }
 
-  const groups = Array.from(epicMap.values()).filter((g) => g.children.length > 0);
+  // 자식이 없는 Epic 그룹도 노출 (Epic 자체가 필터/조회 결과에 포함된 경우 보여줘야 함).
+  // 다만 '__no_epic__' 그룹은 자식(에픽이 없는 이슈들)이 없으면 의미가 없으므로 제거.
+  const groups = Array.from(epicMap.values()).filter((g) => g.key !== NO_EPIC || g.children.length > 0);
   groups.sort((a, b) => {
     if (a.key === NO_EPIC) return 1;
     if (b.key === NO_EPIC) return -1;

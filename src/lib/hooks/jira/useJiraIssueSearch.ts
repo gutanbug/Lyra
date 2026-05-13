@@ -10,7 +10,7 @@ export interface UseJiraIssueSearchOptions {
   selectedProjects: string[];
   projects: JiraProject[];
   fetchByKeys: (keys: Set<string>) => Promise<NormalizedIssue[]>;
-  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean) => Promise<NormalizedIssue[]>;
+  fetchChildren: (parentKeys: string[], projectFilter?: string[], isEpic?: boolean, onlyMine?: boolean) => Promise<NormalizedIssue[]>;
   /** 검색 결과 로드 완료 시 composer에서 loadAllDescendants 등 후속 작업 처리 */
   onResultsLoaded?: (issues: NormalizedIssue[], projectFilter?: string[]) => void;
   cached?: {

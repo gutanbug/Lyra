@@ -1,6 +1,8 @@
 import type { IntegrationAdapter } from './types';
 import { JiraAdapter } from './jira/adapter';
 import { ConfluenceAdapter } from './confluence/adapter';
+import { GitHubAdapter } from './github/adapter';
+import { GitLabAdapter } from './gitlab/adapter';
 
 const adapters = new Map<string, IntegrationAdapter>();
 
@@ -26,6 +28,8 @@ export function getAvailableServices(): IntegrationAdapter[] {
 export function initIntegrations(): void {
   registerIntegration(new JiraAdapter());
   registerIntegration(new ConfluenceAdapter());
+  registerIntegration(new GitHubAdapter());
+  registerIntegration(new GitLabAdapter());
   // registerIntegration(new NotionAdapter());
   // registerIntegration(new TrelloAdapter());
 }

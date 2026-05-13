@@ -200,7 +200,7 @@ const AccountList = ({ onEdit, onSelect, selectedId }: AccountListProps) => {
       )}
       {gitHostAccounts.length > 0 && (
         <Section>
-          <SectionHeader>Git 호스트</SectionHeader>
+          <SectionHeader>Github / Gitlab</SectionHeader>
           <List>{gitHostAccounts.map(renderItem)}</List>
         </Section>
       )}

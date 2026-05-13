@@ -17,9 +17,7 @@ import { snackbarContext } from 'modules/contexts/snackbar';
 const MENUS = [
   { id: 'jira', path: '/jira', label: 'Jira', icon: 'jira' },
   { id: 'confluence', path: '/confluence', label: 'Confluence', icon: 'confluence' },
-  { id: 'github', path: '/github', label: 'GitHub', icon: 'github' },
-  { id: 'gitlab', path: '/gitlab', label: 'GitLab', icon: 'gitlab' },
-  { id: 'repo', path: '/repo', label: 'Local Repos', icon: '' },
+  { id: 'git', path: '/git', label: 'Git', icon: '' },
 ] as const;
 
 const Header = () => {
@@ -68,9 +66,7 @@ const Header = () => {
     const paths: Record<string, string> = {
       jira: '/jira',
       confluence: '/confluence',
-      github: '/github',
-      gitlab: '/gitlab',
-      repo: '/repo',
+      git: '/git',
     };
     addTab(contextMenu.menuId, paths[contextMenu.menuId] || `/${contextMenu.menuId}`);
     setContextMenu(null);

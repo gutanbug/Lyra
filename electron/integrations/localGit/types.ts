@@ -10,6 +10,27 @@ export interface LocalRepo {
   detached: boolean;
   branches: BranchRef[];
   remotes: Record<string, string>;
+  tags: TagRef[];
+  stashes: StashRef[];
+  worktrees: WorktreeRef[];
+}
+
+export interface TagRef {
+  name: string;
+  sha: string;
+}
+
+export interface StashRef {
+  index: number;
+  message: string;
+  branch?: string;
+}
+
+export interface WorktreeRef {
+  path: string;
+  sha: string;
+  branch?: string;
+  primary: boolean;
 }
 
 export interface BranchRef {

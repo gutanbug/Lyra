@@ -12,6 +12,38 @@ export interface LocalRepo {
   branches: BranchRef[];
   /** remote URLs (key: remote name, value: fetch url) */
   remotes: Record<string, string>;
+  /** tag 이름 목록(sha 포함). 가벼운 메타만 — 상세는 별도 조회. */
+  tags: TagRef[];
+  /** stash 엔트리. M5에선 메시지만, 본문은 후속. */
+  stashes: StashRef[];
+  /** worktree 목록. 메인 worktree 포함 가능. */
+  worktrees: WorktreeRef[];
+}
+
+export interface TagRef {
+  name: string;
+  /** annotated tag일 경우 tag object sha, lightweight면 commit sha */
+  sha: string;
+}
+
+export interface StashRef {
+  /** `stash@{N}` 인덱스 (0이 가장 최근) */
+  index: number;
+  /** 'WIP on branch: subject' 형태의 메시지 */
+  message: string;
+  /** stash 대상 브랜치 이름 (파싱 가능 시) */
+  branch?: string;
+}
+
+export interface WorktreeRef {
+  /** worktree 절대 경로 */
+  path: string;
+  /** HEAD가 가리키는 sha */
+  sha: string;
+  /** 추적 중인 branch 이름 (detached이면 비어있음) */
+  branch?: string;
+  /** 메인 worktree 여부 (true면 repo.path와 동일) */
+  primary: boolean;
 }
 
 export interface BranchRef {

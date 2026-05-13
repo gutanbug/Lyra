@@ -118,6 +118,48 @@ describe('gitGraphLayout', () => {
     expect(firstEight.size).toBe(LANE_COLORS.length);
   });
 
+  describe('M6+ chain-based compaction', () => {
+    it('demo: re-uses lanes for non-overlapping chains via post-pass remap', () => {
+      // 두 개의 독립 chain이 시간상 겹치지 않으면 같은 target lane으로 압축되어야 한다.
+      // 1차 패스의 aggressive reuse도 같은 결과를 내지만, compaction이 그 결과를 보존하는지 확인.
+      const nodes = layoutGraph([
+        commit('A'), // row 0: 새 chain 0 lane 0, root → freed
+        commit('B'), // row 1: 새 chain 1 lane 0 (재사용), root
+        commit('C'), // row 2: 새 chain 2 lane 0 (재사용), root
+      ]);
+      expect(nodes.every((n) => n.lane === 0)).toBe(true);
+      expect(maxLaneCount(nodes)).toBe(1);
+      // 각 chain은 별도 색
+      expect(new Set(nodes.map((n) => n.color)).size).toBe(3);
+    });
+
+    it('preserves merge ordering: M[A,B] keeps A on lane 0 and B on lane 1', () => {
+      // 머지 commit은 동시에 active한 chain들이 distinct lane을 가져야 한다.
+      const nodes = layoutGraph([
+        commit('M', ['A', 'B']),
+        commit('A'),
+        commit('B'),
+      ]);
+      expect(nodes[0].lane).toBe(0); // M
+      expect(nodes[1].lane).toBe(0); // A (first-parent inheritance)
+      expect(nodes[2].lane).toBe(1); // B (second-parent, separate chain)
+      expect(maxLaneCount(nodes)).toBe(2);
+    });
+
+    it('parentLane remaps consistently after compaction', () => {
+      // parentLink.parentLane이 compaction 후에도 parent의 실제 lane을 가리켜야 한다.
+      const nodes = layoutGraph([
+        commit('M', ['A', 'B']),
+        commit('A'),
+        commit('B'),
+      ]);
+      // M's first parent A goes to A's actual lane (0)
+      expect(nodes[0].parentLinks[0]).toMatchObject({ parentSha: 'A', parentLane: 0 });
+      // M's second parent B goes to B's actual lane (1)
+      expect(nodes[0].parentLinks[1]).toMatchObject({ parentSha: 'B', parentLane: 1 });
+    });
+  });
+
   it('color rotates through LANE_COLORS palette by chain id', () => {
     const nodes = layoutGraph([
       commit('M', ['A', 'B', 'C']), // octopus merge — 3 parents

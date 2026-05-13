@@ -47,21 +47,19 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
    */
   const laneChainId: number[] = [];
   let globalChainCounter = 0;
+  /**
+   * chainId → 그 chain이 처음 만들어진(alloc된) 행. 2차 패스 압축에서 chain의 시각적 lifetime
+   * `[allocRow, lastCommitRow]` 를 계산하는 데 사용 (M6+).
+   */
+  const chainAllocRow: number[] = [];
 
   const commitLanes = new Array<number>(commits.length);
   const commitChainIds = new Array<number>(commits.length);
   const activeLanesPerRow = new Array<number[]>(commits.length);
 
-  /**
-   * lane 할당: 적극적인 재사용 정책.
-   * 1. freed lane(가장 낮은 인덱스부터)이 있으면 재사용 → 그래프 폭 최소화.
-   * 2. 없으면 새 lane을 push.
-   *
-   * 어느 경우든 새 chain id를 부여해 색상이 새로 매겨진다. 동일 lane에서 인접한 두 chain은
-   * 다른 색을 갖게 되어 "같은 lane = 같은 chain" 시각적 모호함이 해소된다.
-   */
-  const allocLane = (): number => {
+  const allocLane = (currentRow: number): number => {
     const chainId = globalChainCounter++;
+    chainAllocRow[chainId] = currentRow;
     for (let i = 0; i < lanes.length; i++) {
       if (lanes[i] === null) {
         laneChainId[i] = chainId;
@@ -78,7 +76,7 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
 
     // 1. C의 lane 결정 — 기존 lane이 C의 sha를 기다리고 있으면 그 lane 이어받기(chain id 유지)
     let myLane = lanes.findIndex((s) => s === c.sha);
-    if (myLane === -1) myLane = allocLane();
+    if (myLane === -1) myLane = allocLane(row);
 
     commitLanes[row] = myLane;
     commitChainIds[row] = laneChainId[myLane];
@@ -96,7 +94,7 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
     } else {
       lanes[myLane] = c.parents[0]; // first-parent는 같은 lane·같은 chain 이어감
       for (let i = 1; i < c.parents.length; i++) {
-        const newLane = allocLane(); // 추가 parent는 새 chain 시작
+        const newLane = allocLane(row); // 추가 parent는 새 chain 시작
         lanes[newLane] = c.parents[i];
       }
     }
@@ -129,7 +127,99 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
     };
   });
 
-  return nodes;
+  // 6. M6+ — chain 단위 multi-pass 압축. 안전한 경우 더 낮은 lane으로 재배치.
+  return compactLanes(nodes, commitChainIds, chainAllocRow);
+}
+
+/**
+ * Chain 단위 lane 압축 (M6+).
+ *
+ * 알고리즘:
+ *  1. 각 chain의 lifetime = `[allocRow, lastCommitRow]` 계산.
+ *  2. allocRow 오름차순으로 chain을 정렬.
+ *  3. 그리디 interval scheduling — 충돌 없는 lowest target lane에 할당.
+ *  4. node·parentLink의 lane을 remap.
+ *
+ * **이론적 한계**: 1차 패스의 aggressive reuse가 이미 greedy interval scheduling과 등가이므로
+ * 최소 lane 수 자체는 동일하다. 하지만 2차 패스는 다음을 보장한다:
+ *  - chain 단위로 명시적 lifetime을 추적해 향후 휴리스틱 확장 여지를 확보
+ *  - 1차 패스에서 chainId가 lane을 재사용할 때 새 chain id가 생기는 fragmented 케이스에서도
+ *    동일 chain은 동일 target lane을 보장 (시각적 일관성)
+ *  - 재배치가 안전한 경우(intervals 비충돌)에만 수행 — edge cross/dot overlap을 만들지 않음.
+ */
+function compactLanes(
+  nodes: GraphNode[],
+  commitChainIds: number[],
+  chainAllocRow: number[],
+): GraphNode[] {
+  if (nodes.length === 0) return [];
+
+  // 1) chainId → { allocRow, lastCommitRow }
+  const chainSpans = new Map<number, { allocRow: number; lastCommitRow: number }>();
+  for (const n of nodes) {
+    const cid = commitChainIds[n.row];
+    const span = chainSpans.get(cid);
+    if (span) {
+      if (n.row > span.lastCommitRow) span.lastCommitRow = n.row;
+    } else {
+      chainSpans.set(cid, {
+        allocRow: chainAllocRow[cid] ?? n.row,
+        lastCommitRow: n.row,
+      });
+    }
+  }
+
+  // 2) allocRow ASC 정렬 (안정 정렬 — chain id 순서로 동률 처리)
+  const sorted = Array.from(chainSpans.entries()).sort((a, b) => {
+    const da = a[1].allocRow - b[1].allocRow;
+    if (da !== 0) return da;
+    return a[0] - b[0]; // chain id tiebreak
+  });
+
+  // 3) Greedy interval scheduling
+  const targetIntervals: Array<Array<{ start: number; end: number }>> = [];
+  const chainToTarget = new Map<number, number>();
+
+  for (const [chainId, span] of sorted) {
+    let assigned = -1;
+    for (let t = 0; t < targetIntervals.length; t++) {
+      const intervals = targetIntervals[t];
+      const conflict = intervals.some(
+        (iv) => span.allocRow <= iv.end && iv.start <= span.lastCommitRow,
+      );
+      if (!conflict) {
+        assigned = t;
+        break;
+      }
+    }
+    if (assigned === -1) {
+      assigned = targetIntervals.length;
+      targetIntervals.push([]);
+    }
+    chainToTarget.set(chainId, assigned);
+    targetIntervals[assigned].push({ start: span.allocRow, end: span.lastCommitRow });
+  }
+
+  // 4) sha → chainId 인덱스 (parent lookup용)
+  const shaToChain = new Map<string, number>();
+  for (const n of nodes) {
+    shaToChain.set(n.sha, commitChainIds[n.row]);
+  }
+
+  // 5) Remap 적용. activeLanes는 렌더링에서 사용 안 하므로 그대로 둠.
+  return nodes.map((n) => {
+    const cid = commitChainIds[n.row];
+    const newLane = chainToTarget.get(cid) ?? n.lane;
+    return {
+      ...n,
+      lane: newLane,
+      parentLinks: n.parentLinks.map((p) => {
+        const parentChainId = shaToChain.get(p.parentSha) ?? cid;
+        const newParentLane = chainToTarget.get(parentChainId) ?? p.parentLane;
+        return { ...p, parentLane: newParentLane };
+      }),
+    };
+  });
 }
 
 /** 그래프에 등장하는 최대 lane 번호 (렌더링 캔버스 너비 계산용). 빈 입력은 0. */

@@ -138,9 +138,8 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
         if (myEpoch !== epochRef.current) return;
 
         // 브라우저 자동 open
-        const electronApi = (window as unknown as { electronAPI?: { openExternal?: (url: string) => void } }).electronAPI;
-        if (electronApi?.openExternal) {
-          electronApi.openExternal(r.verificationUri);
+        if (window.electronAPI?.openExternal) {
+          window.electronAPI.openExternal(r.verificationUri);
         }
 
         setState({

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
@@ -24,9 +24,19 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [clientId, setClientId] = useState(initialClientId);
   const [copied, setCopied] = useState(false);
+  /**
+   * onSuccess는 OAuth 한 흐름당 정확히 1회만 호출되어야 한다.
+   * 부모가 inline arrow를 onSuccess로 넘기면 effect deps의 identity가 매 렌더 변하므로,
+   * status가 success를 유지하는 동안 effect가 재실행되어 onSuccess가 반복 호출 → 계정 중복 생성.
+   * 흐름 식별을 ref로 박아 두고, reset/idle 복귀 시 해제한다.
+   */
+  const deliveredRef = useRef(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (state.status === 'success' && state.accessToken) {
+    if (state.status === 'idle') deliveredRef.current = false;
+    if (state.status === 'success' && state.accessToken && !deliveredRef.current) {
+      deliveredRef.current = true;
       onSuccess({
         accessToken: state.accessToken,
         grantedScopes: state.grantedScopes || [],
@@ -36,12 +46,20 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
     }
   }, [state.status, state.accessToken, state.grantedScopes, onSuccess, baseUrl, clientId]);
 
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
   const handleCopy = async () => {
     if (!state.userCode) return;
     try {
       await navigator.clipboard.writeText(state.userCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 1500);
     } catch {
       /* ignore clipboard failures (permissions, focus loss) */
     }
@@ -49,8 +67,7 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
 
   const handleOpenBrowser = () => {
     if (!state.verificationUri) return;
-    const api = (window as unknown as { electronAPI?: { openExternal?: (url: string) => void } }).electronAPI;
-    if (api?.openExternal) api.openExternal(state.verificationUri);
+    if (window.electronAPI?.openExternal) window.electronAPI.openExternal(state.verificationUri);
   };
 
   if (state.status === 'idle' || state.status === 'error') {
@@ -58,7 +75,8 @@ const GitHostDeviceFlow = ({ host, initialBaseUrl = '', initialClientId = '', on
       <Container>
         {state.status === 'error' && (
           <ErrorBox>
-            {state.errorMessage || 'OAuth failed.'} ({state.errorCode})
+            {state.errorMessage || 'OAuth failed.'}
+            {state.errorCode && state.errorCode !== 'UNKNOWN' ? ` (${state.errorCode})` : ''}
           </ErrorBox>
         )}
         <AdvancedToggle type="button" onClick={() => setAdvanced((v) => !v)}>

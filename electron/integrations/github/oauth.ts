@@ -25,14 +25,15 @@ export type AccessTokenResult =
   | { status: 'slow_down'; intervalIncrease: number }
   | { status: 'success'; accessToken: string; scope: string; tokenType: string };
 
-export interface OAuthFlowError {
-  code: 'OAUTH_EXPIRED' | 'OAUTH_DENIED' | 'NETWORK' | 'UNKNOWN';
-  message: string;
-  cause?: unknown;
-}
-
-function makeError(code: OAuthFlowError['code'], message: string, cause?: unknown): OAuthFlowError {
-  return { code, message, cause };
+export class OAuthFlowError extends Error {
+  constructor(
+    public readonly code: 'OAUTH_EXPIRED' | 'OAUTH_DENIED' | 'NETWORK' | 'UNKNOWN',
+    message: string,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'OAuthFlowError';
+  }
 }
 
 export async function beginDeviceFlow(
@@ -49,18 +50,29 @@ export async function beginDeviceFlow(
       body: JSON.stringify({ client_id: clientId, scope: scopes.join(' ') }),
     });
   } catch (e) {
-    throw makeError('NETWORK', 'GitHub OAuth network error', e);
+    throw new OAuthFlowError('NETWORK', 'GitHub OAuth network error', e);
   }
   if (!res.ok) {
-    throw makeError('NETWORK', `GitHub OAuth ${res.status} ${res.statusText}`);
+    throw new OAuthFlowError('NETWORK', `GitHub OAuth ${res.status} ${res.statusText}`);
   }
-  const data = (await res.json()) as {
+  let data: {
     device_code: string;
     user_code: string;
     verification_uri: string;
     expires_in: number;
     interval: number;
   };
+  try {
+    data = (await res.json()) as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    };
+  } catch (e) {
+    throw new OAuthFlowError('NETWORK', 'GitHub OAuth invalid JSON', e);
+  }
   return {
     deviceCode: data.device_code,
     userCode: data.user_code,
@@ -88,17 +100,27 @@ export async function pollAccessToken(
       }),
     });
   } catch (e) {
-    throw makeError('NETWORK', 'GitHub OAuth poll network error', e);
+    throw new OAuthFlowError('NETWORK', 'GitHub OAuth poll network error', e);
   }
   if (!res.ok) {
-    throw makeError('NETWORK', `GitHub OAuth poll ${res.status} ${res.statusText}`);
+    throw new OAuthFlowError('NETWORK', `GitHub OAuth poll ${res.status} ${res.statusText}`);
   }
-  const data = (await res.json()) as {
+  let data: {
     access_token?: string;
     scope?: string;
     token_type?: string;
     error?: string;
   };
+  try {
+    data = (await res.json()) as {
+      access_token?: string;
+      scope?: string;
+      token_type?: string;
+      error?: string;
+    };
+  } catch (e) {
+    throw new OAuthFlowError('NETWORK', 'GitHub OAuth invalid JSON', e);
+  }
   if (data.access_token) {
     return {
       status: 'success',
@@ -113,10 +135,10 @@ export async function pollAccessToken(
     case 'slow_down':
       return { status: 'slow_down', intervalIncrease: 5 };
     case 'expired_token':
-      throw makeError('OAUTH_EXPIRED', 'Device code expired');
+      throw new OAuthFlowError('OAUTH_EXPIRED', 'Device code expired');
     case 'access_denied':
-      throw makeError('OAUTH_DENIED', 'User denied authorization');
+      throw new OAuthFlowError('OAUTH_DENIED', 'User denied authorization');
     default:
-      throw makeError('UNKNOWN', `Unknown OAuth response: ${JSON.stringify(data)}`);
+      throw new OAuthFlowError('UNKNOWN', `Unknown OAuth response: ${JSON.stringify(data)}`);
   }
 }

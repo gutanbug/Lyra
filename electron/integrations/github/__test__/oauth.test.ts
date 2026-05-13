@@ -46,7 +46,7 @@ describe('github/oauth — Device Flow', () => {
       });
     });
 
-    it('throws OAUTH_NETWORK on non-2xx HTTP', async () => {
+    it('throws NETWORK on non-2xx HTTP', async () => {
       fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Error', json: async () => ({}) });
       await expect(beginDeviceFlow('https://github.com', 'CID', ['repo']))
         .rejects.toMatchObject({ code: 'NETWORK' });

@@ -13,6 +13,10 @@ export interface GitHostOAuthState {
   accessToken?: string;
   /** success 시 실제 부여된 scope 목록 */
   grantedScopes?: string[];
+  /** success 시 refresh token (GitLab 등 — 호스트가 발급한 경우만) */
+  refreshToken?: string;
+  /** success 시 만료 초 (호스트가 알려준 경우만) */
+  expiresInSec?: number;
   /** error 시 코드 */
   errorCode?: string;
   errorMessage?: string;
@@ -25,8 +29,8 @@ interface StartParams {
 }
 
 interface UseGitHostOAuthOptions {
-  /** 'github' | 'gitlab' — 현재는 github만 구현 */
-  host: 'github';
+  /** 'github' | 'gitlab' */
+  host: 'github' | 'gitlab';
 }
 
 export interface UseGitHostOAuthResult {
@@ -91,7 +95,10 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
         pollTimerRef.current = null;
         if (myEpoch !== epochRef.current) return;
         try {
-          const r = await gitHostOAuthController.github.poll({ baseUrl, clientId, deviceCode });
+          const r =
+            options.host === 'github'
+              ? await gitHostOAuthController.github.poll({ baseUrl, clientId, deviceCode })
+              : await gitHostOAuthController.gitlab.poll({ baseUrl, clientId, deviceCode });
           if (myEpoch !== epochRef.current) return;
           if (r.status === 'pending') {
             schedulePoll(myEpoch, baseUrl, clientId, deviceCode, intervalSec);
@@ -99,10 +106,13 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
             schedulePoll(myEpoch, baseUrl, clientId, deviceCode, intervalSec + r.intervalIncrease);
           } else if (r.status === 'success') {
             clearTimers();
+            const extra = r as { refreshToken?: string; expiresIn?: number };
             setState({
               status: 'success',
               accessToken: r.accessToken,
               grantedScopes: r.scope ? r.scope.split(/[\s,]+/).filter(Boolean) : [],
+              refreshToken: extra.refreshToken,
+              expiresInSec: extra.expiresIn,
             });
           }
         } catch (e) {
@@ -117,24 +127,19 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
         }
       }, intervalSec * 1000);
     },
-    [clearTimers],
+    [clearTimers, options.host],
   );
 
   const start = useCallback(
     async (params: StartParams = {}) => {
-      if (options.host !== 'github') {
-        setState({
-          status: 'error',
-          errorCode: 'UNSUPPORTED_HOST',
-          errorMessage: `Host '${options.host}' not yet supported`,
-        });
-        return;
-      }
       const myEpoch = ++epochRef.current;
       clearTimers();
       setState(INITIAL);
       try {
-        const r = await gitHostOAuthController.github.begin(params);
+        const r =
+          options.host === 'github'
+            ? await gitHostOAuthController.github.begin(params)
+            : await gitHostOAuthController.gitlab.begin(params);
         if (myEpoch !== epochRef.current) return;
 
         // 브라우저 자동 open

@@ -57,30 +57,41 @@ const CommitGraph = ({ commits }: Props) => {
               const y1 = rowY(n.row);
               const x2 = laneX(p.parentLane);
               const y2 = parentRow !== undefined ? rowY(parentRow) : y1 + ROW_HEIGHT * 2;
-              // 같은 lane이면 직선 — 그 외는 cubic bezier로 부드러운 S-curve.
-              const isStraight = x1 === x2;
-              if (isStraight) {
+              const key = `${n.sha}-${p.parentSha}-${i}`;
+              const stroke = paletteByLane(p.parentLane);
+
+              // 같은 lane이면 직선.
+              if (x1 === x2) {
                 return (
                   <line
-                    key={`${n.sha}-${p.parentSha}-${i}`}
+                    key={key}
                     x1={x1}
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    stroke={paletteByLane(p.parentLane)}
+                    stroke={stroke}
                     strokeWidth={EDGE_WIDTH}
                     strokeLinecap="round"
                   />
                 );
               }
-              // 베지어 컨트롤 포인트를 중앙 높이에 두어 S-curve를 만든다.
-              const midY = (y1 + y2) / 2;
-              const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+              // Diagonal: 시작 부근에서만 짧게 곡선으로 lane 전환, 이후 부모까지 직선 vertical.
+              // 한 행 정도(ROW_HEIGHT * 1.1)의 Y 거리 안에서 곡선을 마치고, 나머지는 수직선.
+              const transitionEnd = Math.min(y1 + ROW_HEIGHT * 1.1, y2);
+              if (transitionEnd >= y2 - 0.5) {
+                // 부모가 바로 다음 행 정도로 가깝다면 짧은 S-curve 한 번이면 충분.
+                const midY = (y1 + y2) / 2;
+                const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+                return <path key={key} d={d} stroke={stroke} strokeWidth={EDGE_WIDTH} strokeLinecap="round" fill="none" />;
+              }
+              // 일반 케이스: 시작점에서 짧은 곡선으로 lane 변경 → transition end 부터 부모까지 수직선.
+              const cpY = y1 + (transitionEnd - y1) * 0.55;
+              const d = `M ${x1} ${y1} C ${x1} ${cpY}, ${x2} ${cpY}, ${x2} ${transitionEnd} L ${x2} ${y2}`;
               return (
                 <path
-                  key={`${n.sha}-${p.parentSha}-${i}`}
+                  key={key}
                   d={d}
-                  stroke={paletteByLane(p.parentLane)}
+                  stroke={stroke}
                   strokeWidth={EDGE_WIDTH}
                   strokeLinecap="round"
                   fill="none"

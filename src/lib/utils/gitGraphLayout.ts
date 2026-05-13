@@ -34,6 +34,13 @@ export function paletteByLane(lane: number): string {
  * 결과: `git log --all --graph --oneline`과 유사한 lane 모양을 만든다. 완전 픽셀 일치는 보장하지 않으나
  * topo-order + first-parent-stays-in-lane 규칙으로 자연스러운 흐름이 유지된다.
  */
+/**
+ * freed lane을 즉시 재사용하면 두 무관한 commit이 같은 lane에 인접 배치되어 그래프가 끊겨 보인다.
+ * 반대로 절대 재사용하지 않으면 lane이 무한히 증가해 그래프가 지나치게 넓어진다.
+ * 쿨다운 행 수: freed 시점으로부터 이 행 수만큼 떨어져야 재사용 가능.
+ */
+const LANE_REUSE_COOLDOWN_ROWS = 5;
+
 export function layoutGraph(commits: Commit[]): GraphNode[] {
   if (commits.length === 0) return [];
 
@@ -41,17 +48,31 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
   for (let i = 0; i < commits.length; i++) shaToRow.set(commits[i].sha, i);
 
   const lanes: (string | null)[] = [];
+  /** lane이 마지막으로 상태 변경된 행 (할당/해제). 빈 lane을 재사용해도 안전한지 판단에 사용. */
+  const laneChangedAtRow: number[] = [];
   const commitLanes = new Array<number>(commits.length);
   const activeLanesPerRow = new Array<number[]>(commits.length);
 
-  // 항상 새 lane 할당.
-  // freed lane을 재사용하면 무관한 두 root/branch-tip이 같은 lane에 인접 배치되어
-  // 시각적으로 "그래프 중간이 끊긴" 인상이 생긴다(서로 연결선 없음).
-  // 결과적으로 lanes.length는 시간이 갈수록 커질 수 있으나, 각 lane이 하나의 논리적 흐름으로
-  // 유지되어 GitKraken-style의 안정적 lane 시각화를 제공한다.
-  const allocLane = (): number => {
+  /**
+   * lane 할당:
+   * 1. 쿨다운(5 row 이상)을 만족하는 freed lane이 있으면 재사용 — 그래프 폭을 제한.
+   * 2. 없으면 새 lane을 push — 인접한 무관 커밋이 같은 lane에 가지 않도록.
+   */
+  const allocLane = (currentRow: number): number => {
+    for (let i = 0; i < lanes.length; i++) {
+      if (lanes[i] === null && currentRow - laneChangedAtRow[i] >= LANE_REUSE_COOLDOWN_ROWS) {
+        laneChangedAtRow[i] = currentRow;
+        return i;
+      }
+    }
     lanes.push(null);
+    laneChangedAtRow.push(currentRow);
     return lanes.length - 1;
+  };
+
+  const setLane = (idx: number, value: string | null, atRow: number): void => {
+    lanes[idx] = value;
+    laneChangedAtRow[idx] = atRow;
   };
 
   for (let row = 0; row < commits.length; row++) {
@@ -59,26 +80,26 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
 
     // 1. C의 lane 결정
     let myLane = lanes.findIndex((s) => s === c.sha);
-    if (myLane === -1) myLane = allocLane();
+    if (myLane === -1) myLane = allocLane(row);
 
     commitLanes[row] = myLane;
 
     // 2. 같은 sha를 기다리던 다른 lane들 close (merge 흡수)
     for (let i = 0; i < lanes.length; i++) {
       if (i !== myLane && lanes[i] === c.sha) {
-        lanes[i] = null;
+        setLane(i, null, row);
       }
     }
 
     // 3. parent들로 lane 업데이트
     if (c.parents.length === 0) {
       // root commit — lane 비움
-      lanes[myLane] = null;
+      setLane(myLane, null, row);
     } else {
-      lanes[myLane] = c.parents[0];
+      setLane(myLane, c.parents[0], row);
       for (let i = 1; i < c.parents.length; i++) {
-        const newLane = allocLane();
-        lanes[newLane] = c.parents[i];
+        const newLane = allocLane(row);
+        setLane(newLane, c.parents[i], row);
       }
     }
 

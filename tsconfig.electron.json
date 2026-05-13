@@ -12,5 +12,6 @@
     "resolveJsonModule": true,
     "moduleResolution": "node"
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*"],
+  "exclude": ["electron/**/__test__/**", "electron/**/*.test.ts", "electron/**/*.spec.ts"]
 }

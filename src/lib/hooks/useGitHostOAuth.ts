@@ -42,7 +42,14 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
   const [state, setState] = useState<GitHostOAuthState>(INITIAL);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelledRef = useRef(false);
+  /**
+   * Epoch carries the identity of the currently-active OAuth flow. Each `start()`
+   * (and each `cancel()`/`reset()`) bumps this counter. All async callbacks capture
+   * the epoch they were scheduled under and abort if it no longer matches —
+   * preventing stale `begin()` responses and stale `expiry`/`poll` timers from
+   * landing after the user cancels or restarts.
+   */
+  const epochRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     if (pollTimerRef.current) {
@@ -56,33 +63,40 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
   }, []);
 
   const cancel = useCallback(() => {
-    cancelledRef.current = true;
+    epochRef.current += 1;
     clearTimers();
     setState((prev) => (prev.status === 'awaiting_user' ? INITIAL : prev));
   }, [clearTimers]);
 
   const reset = useCallback(() => {
-    cancelledRef.current = false;
+    epochRef.current += 1;
     clearTimers();
     setState(INITIAL);
   }, [clearTimers]);
 
   useEffect(() => () => {
-    cancelledRef.current = true;
+    epochRef.current += 1;
     clearTimers();
   }, [clearTimers]);
 
   const schedulePoll = useCallback(
-    (baseUrl: string | undefined, clientId: string | undefined, deviceCode: string, intervalSec: number) => {
+    (
+      myEpoch: number,
+      baseUrl: string | undefined,
+      clientId: string | undefined,
+      deviceCode: string,
+      intervalSec: number,
+    ) => {
       pollTimerRef.current = setTimeout(async () => {
-        if (cancelledRef.current) return;
+        pollTimerRef.current = null;
+        if (myEpoch !== epochRef.current) return;
         try {
           const r = await gitHostOAuthController.github.poll({ baseUrl, clientId, deviceCode });
-          if (cancelledRef.current) return;
+          if (myEpoch !== epochRef.current) return;
           if (r.status === 'pending') {
-            schedulePoll(baseUrl, clientId, deviceCode, intervalSec);
+            schedulePoll(myEpoch, baseUrl, clientId, deviceCode, intervalSec);
           } else if (r.status === 'slow_down') {
-            schedulePoll(baseUrl, clientId, deviceCode, intervalSec + r.intervalIncrease);
+            schedulePoll(myEpoch, baseUrl, clientId, deviceCode, intervalSec + r.intervalIncrease);
           } else if (r.status === 'success') {
             clearTimers();
             setState({
@@ -92,7 +106,7 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
             });
           }
         } catch (e) {
-          if (cancelledRef.current) return;
+          if (myEpoch !== epochRef.current) return;
           clearTimers();
           const err = e as { code?: string; message?: string };
           setState({
@@ -109,14 +123,19 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
   const start = useCallback(
     async (params: StartParams = {}) => {
       if (options.host !== 'github') {
-        throw new Error(`useGitHostOAuth: host '${options.host}' not yet supported`);
+        setState({
+          status: 'error',
+          errorCode: 'UNSUPPORTED_HOST',
+          errorMessage: `Host '${options.host}' not yet supported`,
+        });
+        return;
       }
-      cancelledRef.current = false;
+      const myEpoch = ++epochRef.current;
       clearTimers();
       setState(INITIAL);
       try {
         const r = await gitHostOAuthController.github.begin(params);
-        if (cancelledRef.current) return;
+        if (myEpoch !== epochRef.current) return;
 
         // 브라우저 자동 open
         const electronApi = (window as unknown as { electronAPI?: { openExternal?: (url: string) => void } }).electronAPI;
@@ -131,7 +150,9 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
         });
 
         expiryTimerRef.current = setTimeout(() => {
-          cancelledRef.current = true;
+          expiryTimerRef.current = null;
+          if (myEpoch !== epochRef.current) return;
+          epochRef.current += 1;
           clearTimers();
           setState({
             status: 'error',
@@ -140,8 +161,9 @@ export function useGitHostOAuth(options: UseGitHostOAuthOptions): UseGitHostOAut
           });
         }, r.expiresIn * 1000);
 
-        schedulePoll(params.baseUrl, params.clientId, r.deviceCode, r.interval);
+        schedulePoll(myEpoch, params.baseUrl, params.clientId, r.deviceCode, r.interval);
       } catch (e) {
+        if (myEpoch !== epochRef.current) return;
         const err = e as { code?: string; message?: string };
         setState({
           status: 'error',

@@ -44,10 +44,12 @@ export function layoutGraph(commits: Commit[]): GraphNode[] {
   const commitLanes = new Array<number>(commits.length);
   const activeLanesPerRow = new Array<number[]>(commits.length);
 
+  // 항상 새 lane 할당.
+  // freed lane을 재사용하면 무관한 두 root/branch-tip이 같은 lane에 인접 배치되어
+  // 시각적으로 "그래프 중간이 끊긴" 인상이 생긴다(서로 연결선 없음).
+  // 결과적으로 lanes.length는 시간이 갈수록 커질 수 있으나, 각 lane이 하나의 논리적 흐름으로
+  // 유지되어 GitKraken-style의 안정적 lane 시각화를 제공한다.
   const allocLane = (): number => {
-    for (let i = 0; i < lanes.length; i++) {
-      if (lanes[i] === null) return i;
-    }
     lanes.push(null);
     return lanes.length - 1;
   };

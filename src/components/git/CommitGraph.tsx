@@ -8,11 +8,11 @@ interface Props {
   commits: Commit[];
 }
 
-const ROW_HEIGHT = 24;
-const LANE_WIDTH = 16;
+const ROW_HEIGHT = 26;
+const LANE_WIDTH = 22;
 const NODE_RADIUS = 5;
-const EDGE_WIDTH = 1.6;
-const RIGHT_PAD = 8;
+const EDGE_WIDTH = 1.8;
+const RIGHT_PAD = 12;
 
 /**
  * 커밋 그래프 + 메타데이터 컬럼.
@@ -57,16 +57,33 @@ const CommitGraph = ({ commits }: Props) => {
               const y1 = rowY(n.row);
               const x2 = laneX(p.parentLane);
               const y2 = parentRow !== undefined ? rowY(parentRow) : y1 + ROW_HEIGHT * 2;
+              // 같은 lane이면 직선 — 그 외는 cubic bezier로 부드러운 S-curve.
+              const isStraight = x1 === x2;
+              if (isStraight) {
+                return (
+                  <line
+                    key={`${n.sha}-${p.parentSha}-${i}`}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke={paletteByLane(p.parentLane)}
+                    strokeWidth={EDGE_WIDTH}
+                    strokeLinecap="round"
+                  />
+                );
+              }
+              // 베지어 컨트롤 포인트를 중앙 높이에 두어 S-curve를 만든다.
+              const midY = (y1 + y2) / 2;
+              const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
               return (
-                <line
+                <path
                   key={`${n.sha}-${p.parentSha}-${i}`}
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
+                  d={d}
                   stroke={paletteByLane(p.parentLane)}
                   strokeWidth={EDGE_WIDTH}
                   strokeLinecap="round"
+                  fill="none"
                 />
               );
             }),

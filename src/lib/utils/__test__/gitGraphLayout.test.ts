@@ -101,6 +101,18 @@ describe('gitGraphLayout', () => {
     expect(nodes[2].activeLanes).toEqual([]);
   });
 
+  it('unrelated root commits go to distinct lanes (no lane reuse)', () => {
+    // 끊긴 그래프 회귀 테스트: 두 root commit A, B가 같은 lane에 배치되면 시각적 단절.
+    // 재사용 금지 정책으로 A는 lane 0, B는 lane 1에 가야 한다.
+    const nodes = layoutGraph([
+      commit('A'),
+      commit('B'),
+    ]);
+    expect(nodes[0].lane).toBe(0);
+    expect(nodes[1].lane).toBe(1);
+    expect(maxLaneCount(nodes)).toBe(2);
+  });
+
   it('color rotates through LANE_COLORS palette', () => {
     const nodes = layoutGraph([
       commit('M', ['A', 'B', 'C']), // octopus merge — 3 parents

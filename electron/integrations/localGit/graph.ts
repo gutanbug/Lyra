@@ -38,7 +38,9 @@ export async function getCommits(
   const git = simpleGit(absPath);
   const limit = options.limit ?? 500;
   const skip = options.skip ?? 0;
-  const args = ['log', '--all', '--topo-order', `--max-count=${limit}`];
+  // --date-order: 여러 브랜치의 커밋을 시간 순으로 인터리브.
+  // --topo-order는 한 브랜치를 끝까지 보여준 뒤 다음 브랜치로 넘어가 GitKraken과 시각적 차이가 큼.
+  const args = ['log', '--all', '--date-order', `--max-count=${limit}`];
   if (skip > 0) args.push(`--skip=${skip}`);
   args.push(`--pretty=format:${PRETTY_FORMAT}`);
 

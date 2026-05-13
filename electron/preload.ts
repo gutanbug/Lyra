@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       ipcRenderer.invoke('localGit:getCommits', repoId, absPath, options),
     watch: (repoId: string, absPath: string) => ipcRenderer.invoke('localGit:watch', repoId, absPath),
     unwatch: (repoId: string) => ipcRenderer.invoke('localGit:unwatch', repoId),
+    checkInstalled: () => ipcRenderer.invoke('localGit:checkInstalled'),
     onRepoChanged: (handler: (payload: { repoId: string }) => void) => {
       const listener = (_e: unknown, payload: { repoId: string }) => handler(payload);
       ipcRenderer.on('localGit:changed', listener);

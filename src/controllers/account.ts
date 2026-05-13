@@ -76,6 +76,7 @@ declare const window: Window & {
       watch: (repoId: string, absPath: string) => Promise<void>;
       unwatch: (repoId: string) => Promise<void>;
       onRepoChanged: (handler: (payload: { repoId: string }) => void) => () => void;
+      checkInstalled: () => Promise<{ installed: boolean; version?: string }>;
     };
   };
 };
@@ -145,6 +146,8 @@ export const localGitController = {
     if (!api_) return () => {};
     return api_.localGit.onRepoChanged(handler);
   },
+  checkInstalled: () =>
+    api()?.localGit.checkInstalled() ?? Promise.resolve({ installed: false }),
 };
 
 export const gitHostOAuthController = {

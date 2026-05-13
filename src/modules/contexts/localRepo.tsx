@@ -16,6 +16,14 @@ interface LocalRepoContextValue {
   isOpening: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  /**
+   * 시스템 git 설치 상태. Provider mount 시 1회 확인.
+   * - `null`: 아직 확인 안 됨
+   * - `true`: 설치됨
+   * - `false`: 미설치 (또는 PATH에 없음) → onboarding 안내 필요
+   */
+  gitInstalled: boolean | null;
+  gitVersion: string | null;
   openWithDialog: () => Promise<void>;
   openByPath: (absPath: string) => Promise<void>;
   switchRepo: (repoId: string) => void;
@@ -37,6 +45,8 @@ export const localRepoContext = createContext<LocalRepoContextValue>({
   isOpening: false,
   errorCode: null,
   errorMessage: null,
+  gitInstalled: null,
+  gitVersion: null,
   openWithDialog: noopAsync,
   openByPath: noopAsync,
   switchRepo: noop,
@@ -57,6 +67,23 @@ const LocalRepoProvider = ({ children }: { children: React.ReactNode }) => {
   const [isOpening, setIsOpening] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [gitInstalled, setGitInstalled] = useState<boolean | null>(null);
+  const [gitVersion, setGitVersion] = useState<string | null>(null);
+
+  // M8: 부트 시 1회 git CLI 설치 여부 확인.
+  useEffect(() => {
+    let cancelled = false;
+    localGitController.checkInstalled().then((result) => {
+      if (cancelled) return;
+      setGitInstalled(result.installed);
+      setGitVersion(result.version ?? null);
+    }).catch(() => {
+      if (cancelled) return;
+      setGitInstalled(false);
+      setGitVersion(null);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const currentRepo = openedRepos.find((r) => r.id === currentRepoId) ?? null;
 
@@ -200,6 +227,8 @@ const LocalRepoProvider = ({ children }: { children: React.ReactNode }) => {
         isOpening,
         errorCode,
         errorMessage,
+        gitInstalled,
+        gitVersion,
         openWithDialog,
         openByPath,
         switchRepo,

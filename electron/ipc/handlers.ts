@@ -20,7 +20,7 @@ import type {
   BeginOAuthParams as GitLabBeginParams,
   PollOAuthParams as GitLabPollParams,
 } from '../integrations/gitlab/adapter';
-import { openDialog as localGitOpenDialog, openRepo as localGitOpenRepo, getRepoMeta as localGitGetRepoMeta } from '../integrations/localGit/service';
+import { openDialog as localGitOpenDialog, openRepo as localGitOpenRepo, getRepoMeta as localGitGetRepoMeta, checkGitInstalled as localGitCheckInstalled } from '../integrations/localGit/service';
 import { getCommits as localGitGetCommits } from '../integrations/localGit/graph';
 import { watchRepo as localGitWatchRepo, unwatchRepo as localGitUnwatchRepo, setChangeListener as localGitSetChangeListener } from '../integrations/localGit/watcher';
 
@@ -188,6 +188,7 @@ export function registerIpcHandlers(): void {
     localGitWatchRepo(repoId, absPath);
   });
   ipcMain.handle('localGit:unwatch', (_, repoId: string) => localGitUnwatchRepo(repoId));
+  ipcMain.handle('localGit:checkInstalled', () => localGitCheckInstalled());
 
   // Watcher broadcast — repo가 변경되면 모든 BrowserWindow에 알림.
   // 동일 repoId에 대한 debounce는 renderer 측 LocalRepoProvider가 처리.

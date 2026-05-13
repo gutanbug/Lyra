@@ -41,12 +41,34 @@ const GitWorkspacePage = () => {
     isOpening,
     errorCode,
     errorMessage,
+    gitInstalled,
     openWithDialog,
     switchRepo,
     closeRepo,
     refresh,
     clearError,
   } = useLocalRepo();
+
+  // M8: 시스템 git이 PATH에 없으면 onboarding 안내 — 저장소 열기 자체가 불가하므로 우선 표시.
+  if (gitInstalled === false) {
+    return (
+      <Page>
+        <Helmet><title>Git - Workspace</title></Helmet>
+        <Empty>
+          <EmptyTitle>Git이 설치되어 있지 않습니다</EmptyTitle>
+          <EmptyHint>
+            Lyra는 시스템 PATH에 등록된 <code>git</code> CLI를 사용해 로컬 저장소를 읽습니다.<br />
+            아래 경로에서 OS에 맞는 git을 설치한 뒤 Lyra를 다시 실행해주세요.
+          </EmptyHint>
+          <GitInstallList>
+            <li><strong>macOS</strong>: Xcode Command Line Tools (<code>xcode-select --install</code>) 또는 Homebrew (<code>brew install git</code>)</li>
+            <li><strong>Windows</strong>: <a href="https://git-scm.com/download/win" onClick={(e) => { e.preventDefault(); window.electronAPI?.openExternal('https://git-scm.com/download/win'); }}>git-scm.com/download/win</a></li>
+            <li><strong>Linux</strong>: <code>sudo apt install git</code> / <code>sudo dnf install git</code> / 패키지 매니저 사용</li>
+          </GitInstallList>
+        </Empty>
+      </Page>
+    );
+  }
 
   if (openedRepos.length === 0) {
     return (
@@ -722,6 +744,41 @@ const EmptyTitle = styled.h2`
 const EmptyHint = styled.div`
   font-size: 0.875rem;
   color: ${theme.textMuted};
+  line-height: 1.5;
+  text-align: center;
+`;
+
+const GitInstallList = styled.ul`
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: ${theme.textPrimary};
+  max-width: 560px;
+
+  & > li {
+    padding: 0.6rem 0.9rem;
+    background: ${theme.bgSecondary};
+    border: 1px solid ${theme.border};
+    border-radius: 6px;
+  }
+
+  code {
+    font-family: 'SFMono-Regular', Menlo, monospace;
+    font-size: 0.78rem;
+    background: ${theme.bgTertiary};
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+  }
+
+  a {
+    color: ${theme.blue};
+    cursor: pointer;
+    text-decoration: underline;
+  }
 `;
 
 const PrimaryButton = styled.button`

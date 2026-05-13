@@ -26,9 +26,17 @@ export interface BeginOAuthParams {
 }
 
 export interface PollOAuthParams {
+  /** API baseUrl (BeginOAuthParams.baseUrl과 동일 값). 파생된 oauthBaseUrl이 아님. */
   baseUrl?: string;
   clientId?: string;
   deviceCode: string;
+}
+
+/** beginOAuth 반환 타입. 핸들러/프리로드/렌더러가 공유한다. */
+export interface BeginOAuthResult extends DeviceCodeResponse {
+  oauthBaseUrl: string;
+  clientId: string;
+  scopes: string[];
 }
 
 export class GitHubAdapter implements IntegrationAdapter<GitHostCredentials> {
@@ -66,10 +74,8 @@ export class GitHubAdapter implements IntegrationAdapter<GitHostCredentials> {
    * OAuth 시작은 account 컨텍스트가 없으므로 IPC handlers에서 직접 호출.
    * 응답은 device_code / user_code / verification_uri 등.
    */
-  static async beginOAuth(params: BeginOAuthParams): Promise<DeviceCodeResponse & { oauthBaseUrl: string; clientId: string; scopes: string[] }> {
-    const apiBaseUrl = params.baseUrl?.trim() || '';
-    const oauthBaseUrl = apiBaseUrl ? deriveOAuthBaseUrl(apiBaseUrl) : DEFAULT_OAUTH_BASE_URL;
-    const clientId = params.clientId?.trim() || DEFAULT_CLIENT_ID;
+  static async beginOAuth(params: BeginOAuthParams): Promise<BeginOAuthResult> {
+    const { oauthBaseUrl, clientId } = GitHubAdapter.resolveOAuthDefaults(params.baseUrl, params.clientId);
     const scopes = params.scopes && params.scopes.length > 0 ? params.scopes : DEFAULT_SCOPES;
     const result = await beginDeviceFlow(oauthBaseUrl, clientId, scopes);
     return { ...result, oauthBaseUrl, clientId, scopes };
@@ -77,9 +83,19 @@ export class GitHubAdapter implements IntegrationAdapter<GitHostCredentials> {
 
   /** OAuth polling. 호출자는 interval/slow_down에 따라 setTimeout으로 재호출. */
   static async pollOAuth(params: PollOAuthParams): Promise<AccessTokenResult> {
-    const oauthBaseUrl = params.baseUrl ? deriveOAuthBaseUrl(params.baseUrl) : DEFAULT_OAUTH_BASE_URL;
-    const clientId = params.clientId?.trim() || DEFAULT_CLIENT_ID;
+    const { oauthBaseUrl, clientId } = GitHubAdapter.resolveOAuthDefaults(params.baseUrl, params.clientId);
     return pollAccessToken(oauthBaseUrl, clientId, params.deviceCode);
+  }
+
+  /** baseUrl/clientId 입력을 oauthBaseUrl+clientId로 정규화 — beginOAuth/pollOAuth 공통. */
+  private static resolveOAuthDefaults(
+    baseUrl: string | undefined,
+    clientId: string | undefined,
+  ): { oauthBaseUrl: string; clientId: string } {
+    const apiBaseUrl = baseUrl?.trim() || '';
+    const oauthBaseUrl = apiBaseUrl ? deriveOAuthBaseUrl(apiBaseUrl) : DEFAULT_OAUTH_BASE_URL;
+    const resolvedClientId = clientId?.trim() || DEFAULT_CLIENT_ID;
+    return { oauthBaseUrl, clientId: resolvedClientId };
   }
 
   private async getCurrentUser(params?: unknown): Promise<unknown> {

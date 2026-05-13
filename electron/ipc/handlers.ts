@@ -12,6 +12,24 @@ import type { PermissionRequest, PermissionResponse } from '../integrations/agen
 import { BrowserWindow } from 'electron';
 import { GitHubAdapter } from '../integrations/github/adapter';
 import type { BeginOAuthParams, PollOAuthParams } from '../integrations/github/adapter';
+import { OAuthFlowError } from '../integrations/github/oauth';
+
+/**
+ * OAuthFlowError를 IPC 경로에서 안전한 모양(plain Error + 명시적 code 속성)으로 재포장.
+ * Electron 구조적 복제(structured clone)가 사용자 정의 Error 서브클래스의 인스턴스 메서드를
+ * 잃을 수 있어, 렌더러에서 `error.code` 접근이 끊기는 회귀를 방지한다.
+ */
+function rethrowOAuth<T>(fn: () => Promise<T>): Promise<T> {
+  return fn().catch((e: unknown) => {
+    if (e instanceof OAuthFlowError) {
+      const err = new Error(e.message) as Error & { code: string; name: string };
+      err.code = e.code;
+      err.name = 'OAuthFlowError';
+      throw err;
+    }
+    throw e;
+  });
+}
 
 export interface InvokePayload {
   accountId: string;
@@ -121,11 +139,13 @@ export function registerIpcHandlers(): void {
   // === OAuth (계정 없이 호출 가능) ===
   ipcMain.handle(
     'github:beginOAuth',
-    async (_, params: BeginOAuthParams) => GitHubAdapter.beginOAuth(params || {}),
+    async (_, params: BeginOAuthParams) =>
+      rethrowOAuth(() => GitHubAdapter.beginOAuth(params || {})),
   );
   ipcMain.handle(
     'github:pollOAuth',
-    async (_, params: PollOAuthParams) => GitHubAdapter.pollOAuth(params),
+    async (_, params: PollOAuthParams) =>
+      rethrowOAuth(() => GitHubAdapter.pollOAuth(params)),
   );
 
   // === AI Agent CLI 관리 ===

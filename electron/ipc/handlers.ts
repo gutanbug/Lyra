@@ -10,6 +10,8 @@ import { discoverCommands } from '../integrations/agents/discovery';
 import { permissionBridge } from '../integrations/agents/permission-bridge';
 import type { PermissionRequest, PermissionResponse } from '../integrations/agents/permission-bridge';
 import { BrowserWindow } from 'electron';
+import { GitHubAdapter } from '../integrations/github/adapter';
+import type { BeginOAuthParams, PollOAuthParams } from '../integrations/github/adapter';
 
 export interface InvokePayload {
   accountId: string;
@@ -114,6 +116,16 @@ export function registerIpcHandlers(): void {
 
       return handler(invokeParams);
     }
+  );
+
+  // === OAuth (계정 없이 호출 가능) ===
+  ipcMain.handle(
+    'github:beginOAuth',
+    async (_, params: BeginOAuthParams) => GitHubAdapter.beginOAuth(params || {}),
+  );
+  ipcMain.handle(
+    'github:pollOAuth',
+    async (_, params: PollOAuthParams) => GitHubAdapter.pollOAuth(params),
   );
 
   // === AI Agent CLI 관리 ===

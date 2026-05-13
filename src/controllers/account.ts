@@ -22,6 +22,23 @@ declare const window: Window & {
         params?: Record<string, unknown>;
       }) => Promise<unknown>;
     };
+    github: {
+      beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) => Promise<{
+        deviceCode: string;
+        userCode: string;
+        verificationUri: string;
+        expiresIn: number;
+        interval: number;
+        oauthBaseUrl: string;
+        clientId: string;
+        scopes: string[];
+      }>;
+      pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) => Promise<
+        | { status: 'pending' }
+        | { status: 'slow_down'; intervalIncrease: number }
+        | { status: 'success'; accessToken: string; scope: string; tokenType: string }
+      >;
+    };
   };
 };
 
@@ -64,5 +81,14 @@ export const integrationController = {
       publishApiError({ serviceType: payload.serviceType, action: payload.action, error });
       throw error;
     });
+  },
+};
+
+export const gitHostOAuthController = {
+  github: {
+    begin: (params: { baseUrl?: string; clientId?: string; scopes?: string[] } = {}) =>
+      api()?.github.beginOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
+    poll: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      api()?.github.pollOAuth(params) ?? Promise.reject(new Error('workspaceAPI not available')),
   },
 };

@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       params?: Record<string, unknown>;
     }) => ipcRenderer.invoke('integration:invoke', payload),
   },
+  github: {
+    beginOAuth: (params: { baseUrl?: string; clientId?: string; scopes?: string[] }) =>
+      ipcRenderer.invoke('github:beginOAuth', params),
+    pollOAuth: (params: { baseUrl?: string; clientId?: string; deviceCode: string }) =>
+      ipcRenderer.invoke('github:pollOAuth', params),
+  },
   agents: {
     getAllStatus: () => ipcRenderer.invoke('agents:getAllStatus'),
     getStatus: (id: string) => ipcRenderer.invoke('agents:getStatus', id),

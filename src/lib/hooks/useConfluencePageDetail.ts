@@ -18,6 +18,8 @@ import type { MediaInfo } from 'lib/utils/adfUtils';
 import { resolveLinkMetaFromAdf } from 'lib/utils/linkMetaResolver';
 import { normalizePageDetail, normalizeComment } from 'lib/utils/confluenceNormalizers';
 import { renderMermaidDiagrams } from 'lib/utils/mermaidLoader';
+import { buildInlineThreads, type InlineThread } from 'lib/utils/inlineThreadBuilder';
+import { collectInlineCommentMarkerIds } from 'lib/utils/adfAnnotationIds';
 
 /** 자기 자신 포함 모든 스크롤 가능한 부모 요소의 scrollTop을 0으로 설정 */
 function scrollToTop(el: HTMLElement | null) {
@@ -76,6 +78,9 @@ export function useConfluencePageDetail(pageId: string) {
   const [jiraIssueMap, setJiraIssueMap] = useState<Record<string, JiraIssueInfo>>({});
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [linkMetaMap, setLinkMetaMap] = useState<Record<string, LinkMeta>>({});
+  const [inlineThreads, setInlineThreads] = useState<InlineThread[]>([]);
+  const [inlineThreadsByMarkerRef, setInlineThreadsByMarkerRef] = useState<Record<string, InlineThread>>({});
+  const [activeMarkerIds, setActiveMarkerIds] = useState<Set<string>>(new Set());
 
   // ESC 키로 라이트박스 닫기
   useEffect(() => {
@@ -132,7 +137,11 @@ export function useConfluencePageDetail(pageId: string) {
         // 댓글 파싱
         const rawComments = Array.isArray(commentsResult) ? commentsResult : [];
         const normalizedComments = rawComments.map((c) => normalizeComment(c as Record<string, unknown>));
-        setComments(normalizedComments);
+        const footerOnly = normalizedComments.filter((c) => c.location === 'footer');
+        const { threads: newThreads, byMarkerRef: newByMarker } = buildInlineThreads(normalizedComments);
+        setComments(footerOnly);
+        setInlineThreads(newThreads);
+        setInlineThreadsByMarkerRef(newByMarker);
 
         // 첨부파일 파싱 (페이지 레벨)
         const rawAttachments = Array.isArray(attachmentsResult) ? attachmentsResult : [];
@@ -338,6 +347,16 @@ export function useConfluencePageDetail(pageId: string) {
           };
         }
 
+        // 본문 ADF 에 실제 존재하는 annotation 과 thread 의 교집합만 활성 marker
+        const presentInBody = detail.bodyAdf
+          ? collectInlineCommentMarkerIds(detail.bodyAdf)
+          : new Set<string>();
+        const active = new Set<string>();
+        for (const key of Object.keys(newByMarker)) {
+          if (presentInBody.has(key)) active.add(key);
+        }
+        setActiveMarkerIds(active);
+
         // 모든 데이터 한번에 반영 → URL 깜빡임 없이 렌더링
         setLinkMetaMap({ ...resolvedLinks, ...htmlIssueLinkMetas });
         setJiraIssueMap(resolvedJiraMap);
@@ -368,6 +387,9 @@ export function useConfluencePageDetail(pageId: string) {
     setLinkMetaMap({});
     setJiraIssueMap({});
     setLightboxSrc(null);
+    setInlineThreads([]);
+    setInlineThreadsByMarkerRef({});
+    setActiveMarkerIds(new Set());
   }, [pageId]);
 
   // Mermaid 다이어그램 렌더링
@@ -377,6 +399,29 @@ export function useConfluencePageDetail(pageId: string) {
     if (!container) return;
     renderMermaidDiagrams(container, pageId).catch(() => { /* ignore */ });
   }, [page?.bodyHtml, pageId, attachmentUrlMap]);
+
+  const reloadComments = useCallback(async () => {
+    const acc = activeAccountRef.current;
+    if (!acc || !pageId) return;
+    try {
+      const result = await integrationController.invoke({
+        accountId: acc.id,
+        serviceType: 'confluence',
+        action: 'getPageComments',
+        params: { pageId },
+      });
+      const rawList = Array.isArray(result) ? result : [];
+      const normalized = rawList.map((c) => normalizeComment(c as Record<string, unknown>));
+      const footerOnly = normalized.filter((c) => c.location === 'footer');
+      const { threads, byMarkerRef } = buildInlineThreads(normalized);
+      setComments(footerOnly);
+      setInlineThreads(threads);
+      setInlineThreadsByMarkerRef(byMarkerRef);
+      // activeMarkerIds 는 body 가 바뀌지 않았다는 가정하에 유지
+    } catch (err) {
+      console.warn('[ConfluencePageDetail] reload comments failed:', err);
+    }
+  }, [pageId]);
 
   return {
     activeAccount,
@@ -394,5 +439,10 @@ export function useConfluencePageDetail(pageId: string) {
     setLightboxSrc,
     linkMetaMap,
     setPage,
+    // 신규
+    inlineThreads,
+    inlineThreadsByMarkerRef,
+    activeMarkerIds,
+    reloadComments,
   };
 }

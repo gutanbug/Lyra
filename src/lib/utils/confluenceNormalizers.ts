@@ -10,6 +10,8 @@ import type {
   ConfluenceSpaceGroup,
   ConfluencePageDetail,
   ConfluenceComment,
+  ConfluenceCommentLocation,
+  ConfluenceInlineProperties,
   ConfluenceAncestor,
 } from 'types/confluence';
 
@@ -191,5 +193,29 @@ export function normalizeComment(raw: Record<string, unknown>): ConfluenceCommen
   const storage = obj(body?.storage);
   const bodyHtml = confluenceToHtml(str(storage?.value));
 
-  return { id, author, bodyHtml, bodyAdf, created };
+  // ── 인라인 댓글 분류 ──
+  const extensions = obj(raw.extensions);
+  const locationRaw = str(extensions?.location);
+  const location: ConfluenceCommentLocation = locationRaw === 'inline' ? 'inline' : 'footer';
+
+  let inlineProperties: ConfluenceInlineProperties | undefined;
+  const ipRaw = obj(extensions?.inlineProperties);
+  if (ipRaw) {
+    const markerRef = str(ipRaw.markerRef);
+    const originalSelection = str(ipRaw.originalSelection);
+    if (markerRef) inlineProperties = { markerRef, originalSelection };
+  }
+
+  // ── parentId (ancestors 의 가장 가까운 comment) ──
+  const ancestorsArr = Array.isArray(raw.ancestors) ? (raw.ancestors as unknown[]) : [];
+  let parentId: string | undefined;
+  for (let i = ancestorsArr.length - 1; i >= 0; i--) {
+    const a = obj(ancestorsArr[i]);
+    if (str(a?.type) === 'comment') {
+      parentId = str(a?.id) || undefined;
+      break;
+    }
+  }
+
+  return { id, author, bodyHtml, bodyAdf, created, location, inlineProperties, parentId };
 }

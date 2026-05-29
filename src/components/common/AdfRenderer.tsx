@@ -87,6 +87,12 @@ interface AdfRendererProps {
   fileMetaMap?: Record<string, FileMeta>;
   /** 파일 카드 클릭 핸들러 */
   onFileClick?: (fileMeta: FileMeta) => void;
+  /** 본문 내 inline comment marker id 들 — 이 ID 만 하이라이트 처리 */
+  inlineCommentMarkerIds?: Set<string>;
+  /** 현재 활성(선택된) marker — .is-active 클래스 부여 */
+  activeInlineCommentMarkerId?: string | null;
+  /** 하이라이트 클릭 시 호출 — markerId + 클릭 위치의 DOMRect */
+  onInlineCommentClick?: (markerId: string, anchorRect: DOMRect) => void;
 }
 
 /** ADF document 유효성 간단 체크 */
@@ -466,7 +472,19 @@ function getStatusBadgeColor(meta: LinkMeta): { bg: string; color: string } {
   return { bg: '#F4F5F7', color: '#42526E' };
 }
 
-const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', className, mediaUrlMap, linkMetaMap, fileMetaMap, onFileClick }: AdfRendererProps) => {
+const AdfRenderer = ({
+  document: adfDoc,
+  onLinkClick,
+  appearance = 'comment',
+  className,
+  mediaUrlMap,
+  linkMetaMap,
+  fileMetaMap,
+  onFileClick,
+  inlineCommentMarkerIds,
+  activeInlineCommentMarkerId,
+  onInlineCommentClick,
+}: AdfRendererProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const handleLinkClick = useCallback(
@@ -639,14 +657,57 @@ const AdfRenderer = ({ document: adfDoc, onLinkClick, appearance = 'comment', cl
       });
     };
 
+    // inline comment annotation 하이라이트 + 클릭 핸들러
+    const applyInlineCommentMarks = () => {
+      if (!inlineCommentMarkerIds || inlineCommentMarkerIds.size === 0) return;
+      const selectors = [
+        '[data-mark-type="annotation"][data-id]',
+        '[data-annotation-id]',
+        'mark[data-mark-annotation-id]',
+      ].join(',');
+      const annos = el.querySelectorAll<HTMLElement>(selectors);
+      let matched = 0;
+      annos.forEach((span) => {
+        const id =
+          span.getAttribute('data-id') ||
+          span.getAttribute('data-annotation-id') ||
+          span.getAttribute('data-mark-annotation-id') ||
+          '';
+        if (!id || !inlineCommentMarkerIds.has(id)) return;
+        matched++;
+        if (span.dataset.inlineComment !== 'true') {
+          span.dataset.inlineComment = 'true';
+          // data-id 는 atlaskit 출력이 보장하지 않을 수 있으므로 명시 부여 (네비게이션 scrollIntoView 용)
+          if (!span.getAttribute('data-id')) span.setAttribute('data-id', id);
+          span.classList.add('inline-comment-marker');
+          span.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInlineCommentClick?.(id, span.getBoundingClientRect());
+          });
+        }
+        span.classList.toggle('is-active', id === activeInlineCommentMarkerId);
+      });
+      if (matched === 0) {
+        console.warn('[AdfRenderer] inline-comment marker DOM selector matched 0 nodes');
+      }
+    };
+
     // 즉시 실행 + ReactRenderer의 비동기 DOM 업데이트 대응
     applyRichCards();
     applyFileCards();
     applyHeadingIds();
     fixCodeBlockGutters();
-    const timer = setTimeout(() => { applyRichCards(); applyFileCards(); applyHeadingIds(); fixCodeBlockGutters(); }, 100);
+    applyInlineCommentMarks();
+    const timer = setTimeout(() => {
+      applyRichCards();
+      applyFileCards();
+      applyHeadingIds();
+      fixCodeBlockGutters();
+      applyInlineCommentMarks();
+    }, 100);
     return () => clearTimeout(timer);
-  }, [processedDoc, linkMetaMap, fileMetaMap]);
+  }, [processedDoc, linkMetaMap, fileMetaMap, inlineCommentMarkerIds, activeInlineCommentMarkerId, onInlineCommentClick]);
 
   if (!processedDoc) {
     return null;
@@ -1038,6 +1099,19 @@ const Wrapper = styled.div`
     font-size: 0.8125rem;
     font-weight: 500;
     white-space: nowrap;
+  }
+
+  /* ── 인라인 댓글 하이라이트 ── */
+  .inline-comment-marker {
+    background: #FFF0B3;
+    cursor: pointer;
+    border-bottom: 2px solid #FFAB00;
+    transition: background 0.12s;
+    border-radius: 2px;
+  }
+  .inline-comment-marker:hover { background: #FFE380; }
+  .inline-comment-marker.is-active {
+    background: #FFC400;
   }
 `;
 

@@ -19,6 +19,8 @@ interface InvokeParams {
   title?: string;
   body?: unknown;
   version?: number;
+  parentCommentId?: string;
+  bodyAdf?: unknown;
 }
 
 export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
@@ -66,6 +68,7 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
       resolveTinyLink: (params: unknown) => this.resolveTinyLink(params),
       resolveTinyLinks: (params: unknown) => this.resolveTinyLinks(params),
       updatePageBody: (params: unknown) => this.updatePageBody(params),
+      addCommentReply: (params: unknown) => this.addCommentReply(params),
     };
   }
 
@@ -174,5 +177,13 @@ export class ConfluenceAdapter implements IntegrationAdapter<JiraCredentials> {
     if (version == null) throw new Error('version is required');
     const client = new ConfluenceClient(credentials);
     return client.updatePageBody(pageId, title, body, version);
+  }
+
+  private async addCommentReply(params?: unknown): Promise<unknown> {
+    const { credentials, parentCommentId, bodyAdf } = (params || {}) as InvokeParams;
+    if (!parentCommentId) throw new Error('parentCommentId is required');
+    if (bodyAdf === undefined) throw new Error('bodyAdf is required');
+    const client = new ConfluenceClient(credentials);
+    return client.addCommentReply(parentCommentId, bodyAdf);
   }
 }

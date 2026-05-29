@@ -216,20 +216,42 @@ export class ConfluenceClient {
 
   /**
    * 페이지 댓글 조회
-   * GET /wiki/rest/api/content/:pageId/child/comment?expand=body.storage,version,history
+   * GET /wiki/rest/api/content/:pageId/child/comment?expand=body.storage,version,history,...
    */
   async getPageComments(pageId: string): Promise<unknown[]> {
     const { data } = await withRetry429(() =>
       this.v1.get(`/content/${pageId}/child/comment`, {
         params: {
-          expand: 'body.storage,body.atlas_doc_format,version,history',
-          limit: 100,
+          expand: 'body.storage,body.atlas_doc_format,version,history,ancestors,extensions.inlineProperties,extensions.location',
+          depth: 'all',
+          limit: 200,
         },
       })
     );
     const r = data as Record<string, unknown>;
     const results = (r.results ?? []) as unknown[];
     return Array.isArray(results) ? results : [];
+  }
+
+  /**
+   * 댓글에 답글 등록 (footer/inline 공통).
+   * POST /wiki/rest/api/content with type='comment' + container/ancestors=parent
+   */
+  async addCommentReply(parentCommentId: string, bodyAdf: unknown): Promise<unknown> {
+    const { data } = await withRetry429(() =>
+      this.v1.post('/content', {
+        type: 'comment',
+        container: { id: parentCommentId, type: 'comment' },
+        body: {
+          atlas_doc_format: {
+            value: typeof bodyAdf === 'string' ? bodyAdf : JSON.stringify(bodyAdf),
+            representation: 'atlas_doc_format',
+          },
+        },
+        ancestors: [{ id: parentCommentId }],
+      })
+    );
+    return data as Record<string, unknown>;
   }
 
   /**

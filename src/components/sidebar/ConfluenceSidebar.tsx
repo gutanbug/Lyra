@@ -517,7 +517,7 @@ const SpaceRow = styled.div<{ $active: boolean }>`
   padding: 11px 13px;
   cursor: pointer;
   color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
-  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
   border-radius: ${theme.radius.ctl};
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
   font-size: 13px;
@@ -538,7 +538,7 @@ const SpaceRow = styled.div<{ $active: boolean }>`
   `}
 
   &:hover {
-    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
+    background: ${({ $active }) => ($active ? theme.color.accentSoft : theme.color.hairline)};
   }
 `;
 
@@ -566,11 +566,11 @@ const TreeRow = styled.div<{ $depth: number; $active?: boolean }>`
   padding: 6px 10px 6px ${({ $depth }) => 12 + $depth * 16}px;
   min-height: 32px;
   border-radius: 8px;
-  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
   transition: background ${theme.motion.fast};
 
   &:hover {
-    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
+    background: ${({ $active }) => ($active ? theme.color.accentSoft : theme.color.hairline)};
   }
 `;
 

@@ -345,7 +345,7 @@ const ProjectList = styled.div`
 const ProjectCard = styled.div<{ $active: boolean }>`
   position: relative;
   border-radius: ${theme.radius.ctl};
-  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
   overflow: hidden;
   transition: background ${theme.motion.fast};
 
@@ -364,7 +364,7 @@ const ProjectCard = styled.div<{ $active: boolean }>`
   `}
 
   &:hover {
-    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
+    background: ${({ $active }) => ($active ? theme.color.accentSoft : theme.color.hairline)};
   }
 `;
 

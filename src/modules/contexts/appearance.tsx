@@ -107,6 +107,11 @@ interface PaletteVars {
   dangerInk: string;
   dangerSoft: string;
 
+  // Git PR merged (purple) + graph lane purple
+  mergedBg: string;
+  mergedInk: string;
+  lanePurple: string;
+
   // 그림자
   shadowCard: string;
   shadowCardHover: string;
@@ -153,6 +158,10 @@ const lightPalette = (pageBg: string): PaletteVars => ({
   dangerInk: palette.red6,
   dangerSoft: palette.red0,
 
+  mergedBg: '#f1ecfd',
+  mergedInk: '#6b3fd4',
+  lanePurple: '#7a5af0',
+
   shadowCard: '0 1px 2px rgba(28,27,26,.06), 0 6px 16px rgba(28,27,26,.06)',
   shadowCardHover: '0 12px 30px rgba(28,27,26,.10)',
   shadowBtnAccent: '0 6px 18px rgba(0,123,255,0.32)',
@@ -198,6 +207,10 @@ const darkPalette = (): PaletteVars => ({
   danger: '#e07a86',
   dangerInk: '#f0a3ad',
   dangerSoft: 'rgba(224, 122, 134, 0.2)',
+
+  mergedBg: 'rgba(149, 108, 225, 0.22)',
+  mergedInk: '#c4afe8',
+  lanePurple: '#a98ff0',
 
   // 그림자 + 살짝 inset highlight 로 카드 elevation 강조
   shadowCard: 'inset 0 1px 0 rgba(255,255,255,.04), 0 1px 2px rgba(0,0,0,.45), 0 6px 16px rgba(0,0,0,.4)',
@@ -249,6 +262,10 @@ const applyPalette = (mode: ThemeMode, pageBg: string) => {
   set('danger', p.danger);
   set('danger-ink', p.dangerInk);
   set('danger-soft', p.dangerSoft);
+
+  set('merged-bg', p.mergedBg);
+  set('merged-ink', p.mergedInk);
+  set('lane-purple', p.lanePurple);
 
   set('shadow-card', p.shadowCard);
   set('shadow-card-hover', p.shadowCardHover);

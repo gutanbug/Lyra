@@ -435,7 +435,7 @@ const RepoTab = styled.div<{ $active: boolean }>`
   padding: 9px 13px;
   border: 1px solid ${({ $active }) => ($active ? theme.color.borderStrong : 'transparent')};
   border-radius: 10px;
-  background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
   color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray5)};
   box-shadow: ${({ $active }) => ($active ? theme.shadow.tabActive : 'none')};
   font-family: ${theme.font.body};
@@ -650,7 +650,7 @@ const SectionHeader = styled.button`
   text-align: left;
   transition: background ${theme.motion.fast};
 
-  &:hover { background: rgba(0,0,0,.03); }
+  &:hover { background: ${theme.color.hairline}; }
 `;
 
 const SectionChevron = styled.span`
@@ -700,7 +700,7 @@ const Item = styled.li<{ $active?: boolean }>`
   gap: 8px;
   padding: 10px 11px;
   border-radius: 11px;
-  background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
   font-family: ${theme.font.body};
   font-size: 13px;
   color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
@@ -709,7 +709,7 @@ const Item = styled.li<{ $active?: boolean }>`
   transition: background ${theme.motion.fast}, color ${theme.motion.fast};
 
   & svg { color: ${({ $active }) => ($active ? theme.color.accent : theme.color.gray5)}; }
-  &:hover { background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'rgba(0,0,0,.03)')}; color: ${theme.color.gray8}; }
+  &:hover { background: ${({ $active }) => ($active ? theme.color.accentSoft : theme.color.hairline)}; color: ${theme.color.gray8}; }
 `;
 
 const ItemLabel = styled.span`

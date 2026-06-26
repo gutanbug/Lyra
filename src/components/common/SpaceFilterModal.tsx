@@ -267,10 +267,10 @@ const Item = styled.div<{ $theme: ServiceTheme; $active: boolean }>`
   padding: 10px 24px;
   cursor: pointer;
   transition: background 0.12s ease;
-  background: ${({ $theme, $active }) => ($active ? 'rgba(0,123,255,.07)' : 'transparent')};
+  background: ${({ $theme, $active }) => ($active ? 'var(--lyra-c-accent-soft, rgba(0,123,255,.07))' : 'transparent')};
 
   &:hover {
-    background: ${({ $theme, $active }) => ($active ? 'rgba(0,123,255,.09)' : '#faf9f7')};
+    background: ${({ $theme, $active }) => ($active ? 'var(--lyra-c-accent-soft, rgba(0,123,255,.09))' : 'var(--lyra-c-hairline, #faf9f7)')};
   }
 `;
 

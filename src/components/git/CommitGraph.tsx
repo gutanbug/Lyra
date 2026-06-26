@@ -278,7 +278,7 @@ const CommitRow = styled.div<{ $selected?: boolean }>`
   color: ${theme.color.gray8};
   cursor: pointer;
   border-left: 3px solid transparent;
-  background: ${({ $selected }) => ($selected ? 'rgba(0,123,255,.07)' : 'transparent')};
+  background: ${({ $selected }) => ($selected ? theme.color.accentSoft : 'transparent')};
   transition: background ${theme.motion.fast};
 
   ${({ $selected }) =>
@@ -287,7 +287,7 @@ const CommitRow = styled.div<{ $selected?: boolean }>`
       border-left-color: ${theme.color.accent};
     `}
 
-  &:hover { background: ${({ $selected }) => ($selected ? 'rgba(0,123,255,.09)' : '#faf9f7')}; }
+  &:hover { background: ${({ $selected }) => ($selected ? theme.color.accentSoft : theme.color.hairline)}; }
 `;
 
 const Subject = styled.div`

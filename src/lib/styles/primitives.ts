@@ -88,7 +88,7 @@ export const GhostButton = styled.button<{ $size?: ButtonSize }>`
   font-size: ${({ $size = 'M' }) => sizeMap[$size].font};
 
   &:hover:not(:disabled) {
-    background: rgba(0, 123, 255, 0.09);
+    background: ${t.color.accentSoft};
   }
 `;
 

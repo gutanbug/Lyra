@@ -369,25 +369,26 @@ export default JiraProjectFieldSettingsModal;
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(12, 12, 16, 0.5);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: ${zIndex.modal};
-  /* 위/아래 시각적 여백 — Panel max-height와 함께 동작 */
   padding: 6vh 1rem;
 `;
 
 const Panel = styled.div`
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
-  border-radius: 6px;
+  border-radius: 22px;
   width: 640px;
   max-width: 100%;
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 `;
 
 const Header = styled.div`

@@ -84,7 +84,7 @@ const IconBox = styled.div<{ $bgColor: string; $size: number }>`
   justify-content: center;
   width: ${({ $size }) => $size}px;
   height: ${({ $size }) => $size}px;
-  border-radius: 3px;
+  border-radius: 5px;
   background: ${({ $bgColor }) => $bgColor};
   flex-shrink: 0;
 `;

@@ -1,34 +1,50 @@
 /**
- * Confluence 스타일 컬러 (Atlassian Design)
+ * Confluence 테마 — Lyra Design System (warm gray + #007bff) 정합
+ * Source: design_handoff_lyra_ui_system/README.md
  */
-export const confluenceTheme = {
-  primary: '#0052CC',
-  primaryHover: '#0747A6',
-  primaryLight: '#DEEBFF',
+import { theme } from './theme';
 
-  accent: '#2684FF',
-  accentLight: '#B3D4FF',
+export const confluenceTheme = {
+  primary: theme.color.accent,
+  primaryHover: theme.color.accentStrong,
+  primaryLight: theme.color.accentSoft,
+
+  accent: theme.color.accent,
+  accentLight: theme.color.accentSoft,
 
   bg: {
-    default: '#FFFFFF',
-    subtle: '#F4F5F7',
-    hover: '#EBECF0',
+    default: theme.color.surface,
+    subtle: theme.color.pageBg,          // var(--lyra-page-bg) — 사용자 설정 색
+    hover: 'var(--lyra-page-hover, #f4f8fd)',
+    tile: theme.color.hairline,
   },
 
-  border: '#DFE1E6',
+  border: theme.color.borderDefault,
+  borderStrong: theme.color.borderStrong,
+  hairline: theme.color.hairline,
+
   text: {
-    primary: '#172B4D',
-    secondary: '#5E6C84',
-    muted: '#97A0AF',
+    primary: theme.color.gray8,
+    secondary: theme.color.gray6,
+    muted: theme.color.gray5,
   },
 
+  // 스페이스/페이지 태그용 컬러 (soft chip 모델)
   space: {
-    color: '#0065FF',
-    bg: '#E6F0FF',
+    color: theme.color.accentStrong, // #005cbf
+    bg: theme.color.accentSoft,      // #e6f2ff
+    ink: theme.color.accentStrong,
   },
 
   page: {
-    color: '#36B37E',
-    bg: '#E3FCEF',
+    color: theme.color.successInk,   // #0d815e
+    bg: theme.color.successSoft,     // #e7f8f3
+    ink: theme.color.successInk,
   },
+
+  radius: theme.radius,
+  shadow: theme.shadow,
+  motion: theme.motion,
+  typo: theme.typo,
+  font: theme.font,
 };

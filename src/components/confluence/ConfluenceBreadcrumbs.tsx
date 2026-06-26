@@ -43,28 +43,29 @@ export default ConfluenceBreadcrumbs;
 const Breadcrumbs = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 4px;
   min-width: 0;
   overflow: hidden;
   flex-wrap: wrap;
+  font-family: ${confluenceTheme.font.body};
 `;
 
 const BreadcrumbSep = styled.span`
-  color: ${confluenceTheme.text.muted};
-  font-size: 0.8125rem;
+  color: #cbc5c2;
+  font-size: 13px;
   flex-shrink: 0;
 `;
 
 const BreadcrumbLabel = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  padding: 4px 8px;
   background: transparent;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 20px;
+  border-radius: 6px;
   color: ${confluenceTheme.text.secondary};
-  font-size: 0.75rem;
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   flex-shrink: 0;
 `;
@@ -72,33 +73,35 @@ const BreadcrumbLabel = styled.span`
 const BreadcrumbLink = styled.button`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  padding: 4px 8px;
   background: transparent;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 20px;
-  color: ${confluenceTheme.primary};
-  font-size: 0.75rem;
+  border: none;
+  border-radius: 6px;
+  color: ${confluenceTheme.text.secondary};
+  font-family: ${confluenceTheme.font.body};
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   flex-shrink: 0;
   cursor: pointer;
-  transition: all 0.15s ${transition};
+  transition: background ${confluenceTheme.motion.fast}, color ${confluenceTheme.motion.fast};
 
   &:hover {
-    background: ${confluenceTheme.primaryLight};
-    border-color: ${confluenceTheme.primary};
+    background: ${confluenceTheme.hairline};
+    color: ${confluenceTheme.text.primary};
   }
 `;
 
 const BreadcrumbCurrent = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 4px 8px;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
-  background: ${confluenceTheme.bg.subtle};
-  border-radius: 3px;
+  border-radius: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -191,7 +191,8 @@ export default JiraFieldEditModal;
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(12, 12, 16, 0.5);
+  backdrop-filter: blur(2px);
   z-index: ${zIndex.modal};
   display: flex;
   align-items: center;
@@ -200,14 +201,15 @@ const Overlay = styled.div`
 
 const Dialog = styled.div`
   background: ${jiraTheme.bg.default};
-  border-radius: 6px;
+  border-radius: 22px;
   border: 1px solid ${jiraTheme.border};
-  width: 460px;
+  width: 480px;
   max-width: calc(100vw - 32px);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 `;
 
 const Header = styled.div`

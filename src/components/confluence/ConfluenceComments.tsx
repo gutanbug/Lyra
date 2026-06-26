@@ -62,24 +62,27 @@ export default ConfluenceComments;
 // ── Styled Components ──
 
 const Section = styled.div`
-  padding: 1.5rem;
+  padding: 26px 28px;
   background: ${confluenceTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${confluenceTheme.radius.card};
   border: 1px solid ${confluenceTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${confluenceTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const SectionTitle = styled.h2`
-  margin: 0 0 1rem 0;
-  font-size: 1rem;
+  margin: 0 0 16px 0;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
 `;
 
 const SectionToggleHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
 
@@ -93,23 +96,23 @@ const SectionToggleHeader = styled.div`
 `;
 
 const SectionToggleArrow = styled.span`
-  font-size: 0.7rem;
+  font-size: 10px;
   color: ${confluenceTheme.text.muted};
-  width: 1rem;
+  width: 16px;
   flex-shrink: 0;
 `;
 
 const CommentList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: 14px;
+  margin-top: 16px;
 `;
 
 const CommentItem = styled.div`
-  padding: 0.75rem;
-  background: ${confluenceTheme.bg.subtle};
-  border-radius: 3px;
+  padding: 18px 20px;
+  background: ${confluenceTheme.bg.default};
+  border-radius: ${confluenceTheme.radius.ctl};
   border: 1px solid ${confluenceTheme.border};
 `;
 
@@ -117,27 +120,31 @@ const CommentHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  margin-bottom: 10px;
 `;
 
 const CommentAuthor = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
 `;
 
 const CommentDate = styled.span`
-  font-size: 0.75rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 12px;
   color: ${confluenceTheme.text.muted};
   flex-shrink: 0;
 `;
 
 const CommentBody = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 14px;
   color: ${confluenceTheme.text.primary};
   line-height: 1.6;
 
-  p { margin: 0 0 0.5rem 0; }
+  p { margin: 0 0 8px 0; }
   p:last-child { margin-bottom: 0; }
 
   a {
@@ -148,12 +155,13 @@ const CommentBody = styled.div`
 
   img {
     max-width: 100%;
-    border-radius: 3px;
+    border-radius: 12px;
   }
 `;
 
 const EmptyComments = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 13.5px;
   color: ${confluenceTheme.text.muted};
-  margin-top: 1rem;
+  margin-top: 16px;
 `;

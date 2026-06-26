@@ -243,11 +243,12 @@ const spin = keyframes`
 `;
 
 const SectionCard = styled.div`
-  background: ${theme.bgPrimary};
-  border: 1px solid ${theme.border};
-  border-radius: 8px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  background: ${theme.color.surface};
+  border: 1px solid ${theme.color.borderDefault};
+  border-radius: ${theme.radius.card};
+  box-shadow: ${theme.shadow.card};
+  padding: 22px 24px;
+  margin-bottom: 18px;
 `;
 
 const SectionHeader = styled.div`

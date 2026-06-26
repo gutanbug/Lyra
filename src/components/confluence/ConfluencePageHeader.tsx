@@ -75,40 +75,43 @@ export default ConfluencePageHeader;
 // ── Styled Components ──
 
 const HeaderCard = styled.div`
-  padding: 1.5rem;
+  padding: 28px 32px;
   background: ${confluenceTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${confluenceTheme.radius.card};
   border: 1px solid ${confluenceTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${confluenceTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const HeaderTopRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 14px;
+  margin-bottom: 18px;
 `;
 
 const PageIcon = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 3px;
-  background: ${confluenceTheme.primary};
-  color: white;
-  font-size: 0.875rem;
+  width: 36px;
+  height: 36px;
+  border-radius: ${confluenceTheme.radius.chip};
+  background: ${confluenceTheme.page.bg};
+  color: ${confluenceTheme.page.ink};
+  font-size: 16px;
   font-weight: 700;
   flex-shrink: 0;
 `;
 
 const Title = styled.h1`
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
-  line-height: 1.4;
+  line-height: 1.3;
   flex: 1;
   min-width: 0;
 `;
@@ -117,16 +120,16 @@ const OpenInBrowserBtn = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: transparent;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 50%;
+  border: 1px solid ${confluenceTheme.borderStrong};
+  border-radius: ${confluenceTheme.radius.ctl};
   color: ${confluenceTheme.text.muted};
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s ${transition};
+  transition: background ${confluenceTheme.motion.fast}, border-color ${confluenceTheme.motion.fast}, color ${confluenceTheme.motion.fast};
 
   &:hover {
     background: ${confluenceTheme.primaryLight};
@@ -137,23 +140,29 @@ const OpenInBrowserBtn = styled.button`
 
 const MetaGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid ${confluenceTheme.border};
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 18px;
+  padding-top: 18px;
+  border-top: 1px solid ${confluenceTheme.hairline};
 `;
 
 const MetaItem = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 13.5px;
 `;
 
 const MetaLabel = styled.span`
   display: block;
   color: ${confluenceTheme.text.muted};
-  margin-bottom: 0.25rem;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 `;
 
 const MetaValue = styled.span<{ $isMe?: boolean }>`
   color: ${({ $isMe }) => ($isMe ? confluenceTheme.primary : confluenceTheme.text.primary)};
-  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 500)};
+  font-size: 14px;
 `;

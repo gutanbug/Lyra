@@ -54,60 +54,72 @@ const JiraLinkedIssues = ({
 export default JiraLinkedIssues;
 
 const Section = styled.div`
-  padding: 1.5rem;
+  padding: 26px 28px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.card};
   border: 1px solid ${jiraTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${jiraTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const SectionTitle = styled.h2`
-  margin: 0 0 1rem 0;
-  font-size: 1rem;
+  margin: 0 0 16px 0;
+  font-family: ${jiraTheme.font.body};
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
 `;
 
 const LinkedIssueList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0;
+  border: 1px solid ${jiraTheme.border};
+  border-radius: ${jiraTheme.radius.ctl};
+  overflow: hidden;
 `;
 
 const LinkedIssueRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.625rem 0.75rem;
-  background: ${jiraTheme.bg.subtle};
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 3px;
+  gap: 14px;
+  padding: 14px 16px;
+  background: ${jiraTheme.bg.default};
+  border-bottom: 1px solid ${jiraTheme.hairline};
   cursor: pointer;
-  transition: background 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover {
-    background: ${jiraTheme.bg.hover};
-  }
+  &:last-child { border-bottom: none; }
+  &:hover { background: ${jiraTheme.bg.hover}; }
 `;
 
 const LinkedIssueLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 `;
 
 const LinkedIssueKey = styled.span`
+  font-family: ${jiraTheme.font.brand};
   font-weight: 600;
-  font-size: 0.8125rem;
-  color: ${jiraTheme.primary};
+  font-size: 12.5px;
+  letter-spacing: 0;
+  color: ${jiraTheme.text.muted};
   flex-shrink: 0;
+  transition: color ${jiraTheme.motion.fast};
+
+  &:hover { color: ${jiraTheme.primary}; }
 `;
 
 const LinkedIssueSummary = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -117,15 +129,19 @@ const LinkedIssueSummary = styled.span`
 const LinkedIssueRight = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   flex-shrink: 0;
 `;
 
 const LinkTypeBadge = styled.span`
-  font-size: 0.6875rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: ${jiraTheme.text.muted};
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 3px;
-  padding: 0.125rem 0.375rem;
+  background: ${jiraTheme.hairline};
+  border-radius: ${jiraTheme.radius.chipSmall};
+  padding: 4px 8px;
   white-space: nowrap;
 `;

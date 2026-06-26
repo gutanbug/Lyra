@@ -12,23 +12,30 @@ const CloseBtn = ({ ModalOff }: CloseBtnProps) => {
 
 const Content = styled.div`
 	position: relative;
-	width: 160px;
+	width: 180px;
 	margin: 5rem auto 0 auto;
+	padding: 13px 22px;
 	text-align: center;
-	font-size: 14px;
-	line-height: 32px;
-	background-color: ${palette.teal4};
-	border: 1.8px solid ${palette.teal4};
-	border-radius: 2rem;
+	font-size: 15px;
 	font-weight: 600;
-	text-align: center;
-	color: #fefefe;
+	letter-spacing: -0.01em;
+	line-height: 1;
+	background-color: ${palette.blue4};
+	border: none;
+	border-radius: 12px;
+	color: #fff;
 	cursor: pointer;
+	box-shadow: 0 6px 18px rgba(0,123,255,0.32);
+	transition: filter .12s ease, transform .12s ease;
 	${styles.noselect}
 
 	&:hover {
-		background-color: ${palette.teal3};
-		border: 1.8px solid ${palette.teal3};
+		filter: brightness(1.07);
+		transform: translateY(-1px);
+	}
+
+	&:active {
+		transform: scale(.98);
 	}
 `;
 

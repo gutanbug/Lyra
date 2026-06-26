@@ -60,27 +60,29 @@ const Dropdown = styled.div`
   transform: translateX(-50%);
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: ${jiraTheme.radius.ctl};
+  box-shadow: ${jiraTheme.shadow.cardHover};
   z-index: 10000;
-  min-width: 160px;
-  max-height: 240px;
+  min-width: 180px;
+  max-height: 280px;
   overflow-y: auto;
+  padding: 4px 0;
 `;
 
 const Item = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
+  gap: 8px;
+  padding: 9px 14px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13px;
+  font-weight: 500;
   color: ${jiraTheme.text.primary};
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s;
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
-  &:not(:last-child) { border-bottom: 1px solid ${jiraTheme.border}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const Dot = styled.span<{ $color?: string }>`

@@ -596,26 +596,31 @@ const SectionHeader = styled.div`
 
 const SectionTitle = styled.h2`
   margin: 0;
-  font-size: 1rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
 `;
 
 const ToggleAllButtons = styled.div`
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
 `;
 
 const SmallBtn = styled.button`
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  background: transparent;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 20px;
+  padding: 6px 12px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
+  font-weight: 600;
+  background: ${jiraTheme.bg.default};
+  border: 1px solid ${jiraTheme.borderStrong};
+  border-radius: 99px;
   color: ${jiraTheme.text.secondary};
   cursor: pointer;
+  transition: background ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
 
-  &:hover { background: ${jiraTheme.bg.hover}; color: ${jiraTheme.text.primary}; }
+  &:hover { background: ${jiraTheme.hairline}; color: ${jiraTheme.text.primary}; }
 `;
 
 const spin = keyframes`
@@ -667,29 +672,31 @@ const BrowseLoadMore = styled.div`
 `;
 
 const EpicCard = styled.div`
-  border-radius: 6px;
+  border-radius: ${jiraTheme.radius.card};
   border: 1px solid ${jiraTheme.border};
+  background: ${jiraTheme.bg.default};
+  box-shadow: ${jiraTheme.shadow.card};
   overflow: hidden;
 `;
 
 const EpicHeader = styled.div`
   display: grid;
   grid-template-columns: 1fr 24px 5rem minmax(80px, 140px) auto;
-  gap: 0.75rem;
+  gap: 14px;
   align-items: center;
-  padding: 0.625rem 1rem 0.625rem 2.25rem;
-  background: #F8F9FB;
+  padding: 16px 22px 16px 32px;
+  background: ${jiraTheme.bg.default};
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast};
   min-width: 0;
   border-left: 3px solid ${jiraTheme.issueType.epic};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 
   @media (max-width: 900px) {
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem 0.5rem 1.25rem;
+    gap: 10px;
+    padding: 14px 18px 14px 22px;
   }
 `;
 
@@ -708,9 +715,11 @@ const EpicToggle = styled.span`
 `;
 
 const EpicKey = styled.span`
-  font-weight: 600;
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.brand};
+  font-weight: 700;
+  font-size: 12.5px;
   color: ${jiraTheme.issueType.epic};
+  letter-spacing: 0;
   flex-shrink: 0;
   cursor: pointer;
 
@@ -718,8 +727,10 @@ const EpicKey = styled.span`
 `;
 
 const EpicSummary = styled.span`
-  font-size: 0.875rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -731,49 +742,49 @@ const EpicPriority = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 24px;
-  width: 24px;
+  height: 28px;
+  width: 28px;
   cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.15s, box-shadow 0.15s;
+  border-radius: ${jiraTheme.radius.chip};
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover {
-    background: #fff;
-    box-shadow: 0 0 0 1px ${jiraTheme.border};
-  }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const EpicAssignee = styled.span<{ $clickable?: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 24px;
-  font-size: 0.75rem;
+  height: 28px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
+  font-weight: 500;
   line-height: 1;
   color: ${jiraTheme.text.secondary};
   white-space: nowrap;
   cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
-  border-radius: 4px;
-  padding: 0 0.375rem;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  border-radius: 8px;
+  padding: 0 8px;
+  transition: background ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
 
   &:hover {
     ${({ $clickable }) => $clickable && `
-      background: #fff;
+      background: ${jiraTheme.hairline};
       color: ${jiraTheme.text.primary};
-      box-shadow: 0 0 0 1px ${jiraTheme.border};
     `}
   }
 `;
 
 const EpicCount = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 600;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12px;
+  font-weight: 700;
   color: ${jiraTheme.issueType.epic};
-  background: #EDE8F5;
-  border-radius: 10px;
-  padding: 0.125rem 0.5rem;
+  background: rgba(122, 90, 240, 0.1);
+  border-radius: 99px;
+  padding: 4px 10px;
   flex-shrink: 0;
+  line-height: 1;
 `;
 
 const IssueTable = styled.div``;
@@ -783,30 +794,31 @@ const GRID_COLS = 'minmax(140px, 220px) 1fr 24px 5rem minmax(80px, 140px)';
 const TableHeader = styled.div`
   display: grid;
   grid-template-columns: ${GRID_COLS};
-  gap: 0.75rem;
-  padding: 0.4rem 1rem 0.4rem 2.25rem;
-  background: #ECEEF2;
+  gap: 14px;
+  padding: 12px 22px 12px 32px;
+  background: ${jiraTheme.hairline};
   border-top: 1px solid ${jiraTheme.border};
-  font-size: 0.6875rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 11px;
   font-weight: 700;
   color: ${jiraTheme.text.muted};
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   text-align: left;
   white-space: nowrap;
 
   @media (max-width: 900px) {
     grid-template-columns: minmax(80px, 120px) 1fr 24px minmax(70px, 120px);
-    gap: 0.5rem;
-    padding-left: 1.25rem;
+    gap: 10px;
+    padding-left: 22px;
 
     span:nth-child(4) { display: none; }
   }
 
   @media (max-width: 600px) {
     grid-template-columns: minmax(70px, 100px) 1fr;
-    gap: 0.375rem;
-    padding-left: 1rem;
+    gap: 8px;
+    padding-left: 18px;
 
     span:nth-child(3),
     span:nth-child(4),
@@ -817,57 +829,69 @@ const TableHeader = styled.div`
 const IssueRow = styled.div`
   display: grid;
   grid-template-columns: ${GRID_COLS};
-  gap: 0.75rem;
-  padding: 0.5rem 1rem 0.5rem 2.25rem;
+  gap: 14px;
+  padding: 16px 22px 16px 32px;
   background: ${jiraTheme.bg.default};
-  border-top: 1px solid #F0F1F3;
+  border-top: 1px solid ${jiraTheme.hairline};
   cursor: pointer;
-  transition: background 0.12s ${transition};
+  transition: background ${jiraTheme.motion.fast};
   align-items: center;
 
   &:first-of-type { border-top: none; }
-  &:hover { background: #F5F7FA; }
+  &:hover { background: ${jiraTheme.bg.hover}; }
 
   @media (max-width: 900px) {
     grid-template-columns: minmax(80px, 120px) 1fr 24px minmax(70px, 120px);
-    gap: 0.5rem;
-    padding-left: 1.25rem;
+    gap: 10px;
+    padding-left: 22px;
   }
 
   @media (max-width: 600px) {
     grid-template-columns: minmax(70px, 100px) 1fr;
-    gap: 0.375rem;
-    padding-left: 1rem;
+    gap: 8px;
+    padding-left: 18px;
   }
 `;
 
 const IssueKeyCell = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 8px;
+  min-width: 0;
 `;
 
 const IssueKey = styled.span`
+  font-family: ${jiraTheme.font.brand};
   font-weight: 600;
-  color: ${jiraTheme.primary};
-  font-size: 0.8125rem;
+  color: ${jiraTheme.text.muted};
+  font-size: 12.5px;
+  letter-spacing: 0;
   cursor: pointer;
+  transition: color ${jiraTheme.motion.fast};
+  flex-shrink: 0;
 
   &:hover {
+    color: ${jiraTheme.primary};
     text-decoration: underline;
   }
 `;
 
 const IssueTypeLabel = styled.span<{ $color: string }>`
+  font-family: ${jiraTheme.font.body};
   font-weight: 700;
-  font-size: 0.6875rem;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: ${({ $color }) => $color};
   white-space: nowrap;
   flex-shrink: 0;
 `;
 
 const IssueSummary = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -879,55 +903,69 @@ const PriorityCell = styled.span`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 3px;
-  padding: 0.125rem;
+  border-radius: 6px;
+  padding: 2px;
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const StatusBadgeBtn = styled.button<{ $color?: string }>`
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.1rem 0.375rem;
-  font-size: 0.625rem;
+  gap: 4px;
+  padding: 5px 11px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12px;
   font-weight: 600;
-  border-radius: 20px;
-  background: ${({ $color }) => $color || jiraTheme.status.default};
-  color: white;
+  letter-spacing: -0.01em;
+  border-radius: ${jiraTheme.radius.chipSmall};
+  background: ${({ $color }) =>
+    $color ? `color-mix(in srgb, ${$color} 16%, var(--lyra-c-surface, white))` : jiraTheme.status.todoSoft};
+  color: ${({ $color }) => $color || jiraTheme.status.todo};
   text-align: center;
-  letter-spacing: 0.01em;
   border: none;
   cursor: pointer;
   justify-self: start;
   white-space: nowrap;
-  transition: filter 0.15s;
+  line-height: 1.2;
+  transition: filter ${jiraTheme.motion.fast};
 
-  &:hover { filter: brightness(0.9); }
+  &:hover { filter: brightness(0.96); }
 
   @media (max-width: 600px) { display: none; }
 `;
 
 const ChevronIcon = styled.span`
-  font-size: 0.625rem;
+  font-size: 9px;
   line-height: 1;
-  opacity: 0.8;
+  opacity: 0.7;
+  margin-left: 2px;
 `;
 
 const AssigneeText = styled.span<{ $isMe?: boolean; $clickable?: boolean }>`
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 500)};
+  letter-spacing: -0.01em;
   color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : jiraTheme.text.secondary)};
-  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
+  text-align: center;
+  cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
+  border-radius: 6px;
+  padding: 2px 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center;
-  cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
-  border-radius: 3px;
-  padding: 0.125rem 0.25rem;
+  transition: background ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
 
   &:hover {
-    ${({ $clickable }) => $clickable && `background: ${jiraTheme.bg.hover};`}
+    ${({ $clickable }) => $clickable && `
+      background: ${jiraTheme.hairline};
+      color: ${jiraTheme.text.primary};
+    `}
   }
 
   @media (max-width: 900px) { display: none; }

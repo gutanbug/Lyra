@@ -131,38 +131,44 @@ const JiraChildIssues = ({
 export default React.memo(JiraChildIssues);
 
 const Section = styled.div`
-  padding: 1.5rem;
+  padding: 26px 28px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.card};
   border: 1px solid ${jiraTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${jiraTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const SectionTitle = styled.h2`
-  margin: 0 0 1rem 0;
-  font-size: 1rem;
+  margin: 0 0 16px 0;
+  font-family: ${jiraTheme.font.body};
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
 `;
 
 const ChildIssueList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0;
+  border: 1px solid ${jiraTheme.border};
+  border-radius: ${jiraTheme.radius.ctl};
+  overflow: hidden;
 `;
 
 const ChildIssueRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background: ${jiraTheme.bg.subtle};
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 3px;
+  gap: 14px;
+  padding: 14px 16px;
+  background: ${jiraTheme.bg.default};
+  border-bottom: 1px solid ${jiraTheme.hairline};
   cursor: pointer;
-  transition: background 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast};
 
+  &:last-child { border-bottom: none; }
   &:hover { background: ${jiraTheme.bg.hover}; }
 `;
 
@@ -175,19 +181,26 @@ const ChildIssueLeft = styled.div`
 `;
 
 const ChildIssueKey = styled.span`
+  font-family: ${jiraTheme.font.brand};
   font-weight: 600;
-  font-size: 0.8125rem;
-  color: ${jiraTheme.primary};
+  font-size: 12.5px;
+  letter-spacing: 0;
+  color: ${jiraTheme.text.muted};
   flex-shrink: 0;
   cursor: pointer;
+  transition: color ${jiraTheme.motion.fast};
 
   &:hover {
+    color: ${jiraTheme.primary};
     text-decoration: underline;
   }
 `;
 
 const ChildIssueSummary = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -208,37 +221,39 @@ const PriorityBtn = styled.span`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 3px;
-  padding: 0.125rem;
+  border-radius: 6px;
+  padding: 2px;
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const ChildAssignee = styled.span<{ $isMe?: boolean }>`
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : '#6b778c')};
-  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
+  gap: 6px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
+  color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : jiraTheme.text.secondary)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 500)};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   justify-content: flex-end;
   cursor: pointer;
-  border-radius: 3px;
-  padding: 0.125rem 0.25rem;
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover {
-    background: ${jiraTheme.bg.hover};
-  }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const AssigneeAvatar = styled.img`
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   flex-shrink: 0;
+  object-fit: cover;
 `;
 
 const GrandchildToggle = styled.span<{ $visible?: boolean }>`
@@ -259,25 +274,23 @@ const GrandchildToggle = styled.span<{ $visible?: boolean }>`
 const GrandchildList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
-  padding-left: 1.5rem;
-  margin-top: 0.375rem;
-  margin-bottom: 0.375rem;
+  gap: 0;
+  padding-left: 24px;
+  margin: 6px 0 10px;
+  border-left: 2px solid ${jiraTheme.hairline};
 `;
 
 const GrandchildRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 3px;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: ${jiraTheme.radius.ctl};
   cursor: pointer;
-  transition: background 0.12s;
-  background: ${jiraTheme.bg.subtle};
-  border: 1px solid ${jiraTheme.border};
+  transition: background ${jiraTheme.motion.fast};
+  background: transparent;
+  margin-left: 8px;
 
-  &:hover {
-    background: ${jiraTheme.bg.hover};
-  }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;

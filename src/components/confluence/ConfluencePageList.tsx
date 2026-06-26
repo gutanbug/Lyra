@@ -159,25 +159,31 @@ const SectionHeader = styled.div`
 
 const SectionTitle = styled.h2`
   margin: 0;
-  font-size: 1rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
 `;
 
 const ToggleAllButtons = styled.div`
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
 `;
 
 const SmallBtn = styled.button`
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  background: transparent;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 20px;
+  padding: 6px 12px;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 12.5px;
+  font-weight: 600;
+  background: ${confluenceTheme.bg.default};
+  border: 1px solid ${confluenceTheme.borderStrong};
+  border-radius: 99px;
   color: ${confluenceTheme.text.secondary};
   cursor: pointer;
-  &:hover { background: ${confluenceTheme.bg.hover}; color: ${confluenceTheme.text.primary}; }
+  transition: background ${confluenceTheme.motion.fast}, color ${confluenceTheme.motion.fast};
+
+  &:hover { background: ${confluenceTheme.hairline}; color: ${confluenceTheme.text.primary}; }
 `;
 
 const spin = keyframes`
@@ -215,33 +221,36 @@ const Empty = styled.div`
 const SpaceList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 14px;
 `;
 
 const SpaceCard = styled.div`
-  border-radius: 6px;
+  border-radius: ${confluenceTheme.radius.card};
   border: 1px solid ${confluenceTheme.border};
+  background: ${confluenceTheme.bg.default};
+  box-shadow: ${confluenceTheme.shadow.card};
   overflow: hidden;
 `;
 
 const SpaceHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.625rem 1rem;
-  background: #F8F9FB;
+  gap: 12px;
+  padding: 16px 22px;
+  background: ${confluenceTheme.bg.default};
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s ${transition};
+  transition: background ${confluenceTheme.motion.fast};
   min-width: 0;
   border-left: 3px solid ${confluenceTheme.space.color};
-  &:hover { background: ${confluenceTheme.bg.hover}; }
+
+  &:hover { background: ${confluenceTheme.hairline}; }
 `;
 
 const SpaceToggle = styled.span`
-  font-size: 0.625rem;
+  font-size: 10px;
   color: ${confluenceTheme.text.muted};
-  width: 0.875rem;
+  width: 14px;
   flex-shrink: 0;
 `;
 
@@ -252,8 +261,10 @@ const SpaceIconWrap = styled.span`
 `;
 
 const SpaceName = styled.span`
-  font-size: 0.875rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -262,20 +273,28 @@ const SpaceName = styled.span`
 `;
 
 const SpaceKey = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: ${confluenceTheme.space.color};
+  font-family: ${confluenceTheme.font.body};
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: ${confluenceTheme.text.muted};
+  background: ${confluenceTheme.hairline};
+  padding: 4px 8px;
+  border-radius: 6px;
   flex-shrink: 0;
 `;
 
 const SpacePageCount = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: ${confluenceTheme.space.color};
+  font-family: ${confluenceTheme.font.body};
+  font-size: 12px;
+  font-weight: 700;
+  color: ${confluenceTheme.space.ink};
   background: ${confluenceTheme.space.bg};
-  border-radius: 10px;
-  padding: 0.125rem 0.5rem;
+  border-radius: 99px;
+  padding: 4px 10px;
   flex-shrink: 0;
+  line-height: 1;
 `;
 
 const PageTable = styled.div``;
@@ -283,22 +302,23 @@ const PageTable = styled.div``;
 const TableHeader = styled.div`
   display: grid;
   grid-template-columns: 1fr minmax(70px, 90px) minmax(70px, 110px) minmax(70px, 100px);
-  gap: 0.75rem;
-  padding: 0.4rem 1rem 0.4rem 2.25rem;
-  background: #ECEEF2;
+  gap: 14px;
+  padding: 12px 22px 12px 32px;
+  background: ${confluenceTheme.hairline};
   border-top: 1px solid ${confluenceTheme.border};
-  font-size: 0.6875rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 11px;
   font-weight: 700;
   color: ${confluenceTheme.text.muted};
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   text-align: center;
 
   & > span:first-of-type { text-align: left; }
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr;
-    padding-left: 1rem;
+    padding-left: 22px;
     span:nth-child(2),
     span:nth-child(3),
     span:nth-child(4) { display: none; }
@@ -308,32 +328,35 @@ const TableHeader = styled.div`
 const PageRow = styled.div`
   display: grid;
   grid-template-columns: 1fr minmax(70px, 90px) minmax(70px, 110px) minmax(70px, 100px);
-  gap: 0.75rem;
-  padding: 0.5rem 1rem 0.5rem 2.25rem;
+  gap: 14px;
+  padding: 16px 22px 16px 32px;
   background: ${confluenceTheme.bg.default};
-  border-top: 1px solid #F0F1F3;
+  border-top: 1px solid ${confluenceTheme.hairline};
   align-items: center;
   cursor: pointer;
-  transition: background 0.12s ${transition};
+  transition: background ${confluenceTheme.motion.fast};
 
   &:first-of-type { border-top: none; }
-  &:hover { background: #F5F7FA; }
+  &:hover { background: ${confluenceTheme.bg.hover}; }
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr;
-    padding-left: 1rem;
+    padding-left: 22px;
   }
 `;
 
 const PageTitleCell = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 8px;
   min-width: 0;
 `;
 
 const PageTitle = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -341,8 +364,9 @@ const PageTitle = styled.span`
 `;
 
 const PageStatus = styled.span`
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 11.5px;
+  font-weight: 600;
   color: ${confluenceTheme.text.secondary};
   text-align: center;
   text-transform: capitalize;
@@ -351,9 +375,10 @@ const PageStatus = styled.span`
 `;
 
 const AuthorText = styled.span<{ $isMe?: boolean }>`
-  font-size: 0.75rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 12.5px;
   color: ${({ $isMe }) => ($isMe ? confluenceTheme.primary : confluenceTheme.text.secondary)};
-  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 500)};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -363,7 +388,8 @@ const AuthorText = styled.span<{ $isMe?: boolean }>`
 `;
 
 const DateText = styled.span`
-  font-size: 0.75rem;
+  font-family: ${confluenceTheme.font.body};
+  font-size: 12.5px;
   color: ${confluenceTheme.text.muted};
   text-align: center;
   white-space: nowrap;

@@ -47,12 +47,13 @@ const Container = styled.div`
 	height: 100%;
 	max-height: 400px;
 	background-color: white;
-	border-radius: 4px;
-	box-shadow: ${styles.boxShadow.regular};
+	border-radius: 22px;
+	box-shadow: 0 30px 70px rgba(0,0,0,.45);
 	animation: ${animations.fadeInBottom} .6s;
 
 	${media.small} {
 		max-height: 100%;
+		border-radius: 18px;
 	}
 `;
 

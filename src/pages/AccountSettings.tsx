@@ -6,17 +6,19 @@ import { ArrowLeft } from 'lucide-react';
 import AddAccountForm from 'components/account/AddAccountForm';
 import AccountList from 'components/account/AccountList';
 import AgentSettings from 'components/account/AgentSettings';
+import AppearanceSettings from 'components/account/AppearanceSettings';
 import { useAccount } from 'modules/contexts/account';
 import { isAtlassianAccount } from 'types/account';
 import { theme } from 'lib/styles/theme';
 import { transition } from 'lib/styles/styles';
 import type { Account } from 'types/account';
 
-type SettingsTab = 'account' | 'agents' | 'shortcuts';
+type SettingsTab = 'account' | 'agents' | 'appearance' | 'shortcuts';
 
 const SIDEBAR_MENUS: { id: SettingsTab; label: string }[] = [
   { id: 'account', label: '계정 설정' },
   { id: 'agents', label: 'AI Agent' },
+  { id: 'appearance', label: '외형' },
   { id: 'shortcuts', label: '단축키 관리' },
 ];
 
@@ -200,13 +202,13 @@ const AccountSettings = () => {
   const location = useLocation();
   const initialTab = ((): SettingsTab => {
     const t = new URLSearchParams(location.search).get('tab');
-    return (t === 'agents' || t === 'shortcuts' || t === 'account') ? t : 'account';
+    return (t === 'agents' || t === 'shortcuts' || t === 'account' || t === 'appearance') ? t : 'account';
   })();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   useEffect(() => {
     const t = new URLSearchParams(location.search).get('tab');
-    if (t && (t === 'agents' || t === 'shortcuts' || t === 'account') && t !== activeTab) {
+    if (t && (t === 'agents' || t === 'shortcuts' || t === 'account' || t === 'appearance') && t !== activeTab) {
       setActiveTab(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,6 +247,14 @@ const AccountSettings = () => {
                 <PanelTitle>AI Agent</PanelTitle>
               </PanelHeader>
               <AgentSettings />
+            </>
+          )}
+          {activeTab === 'appearance' && (
+            <>
+              <PanelHeader>
+                <PanelTitle>외형</PanelTitle>
+              </PanelHeader>
+              <AppearanceSettings />
             </>
           )}
           {activeTab === 'shortcuts' && <ShortcutsPanel />}

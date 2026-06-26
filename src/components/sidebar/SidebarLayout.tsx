@@ -146,11 +146,13 @@ const SidebarPanel = styled.div<{ $open: boolean; $width: number }>`
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: ${theme.bgSecondary};
-  border-right: 1px solid ${theme.border};
+  background: ${theme.color.surface};
+  border-right: 1px solid ${theme.color.borderStrong};
+  box-shadow: ${theme.shadow.card};
   transition: margin-left 0.2s ease;
   margin-left: ${({ $open, $width }) => ($open ? '0' : `-${$width}px`)};
   flex-shrink: 0;
+  z-index: 1;
 `;
 
 const SidebarHeader = styled.div`
@@ -174,11 +176,11 @@ const ResizeHandle = styled.div`
   position: relative;
   z-index: 10;
   background: transparent;
-  transition: background 0.15s ease;
+  transition: background ${theme.motion.fast};
 
   &:hover,
   &:active {
-    background: ${theme.blue};
+    background: ${theme.color.accent};
   }
 `;
 
@@ -186,18 +188,20 @@ const CloseBtn = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: ${theme.textMuted};
+  border: 1px solid transparent;
+  border-radius: ${theme.radius.ctl};
+  color: ${theme.color.gray5};
   cursor: pointer;
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
 
   &:hover {
-    background: ${theme.bgTertiary};
-    color: ${theme.textPrimary};
+    background: ${theme.color.hairline};
+    color: ${theme.color.gray8};
+    border-color: ${theme.color.borderStrong};
   }
 `;
 

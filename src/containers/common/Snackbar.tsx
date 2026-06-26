@@ -34,19 +34,23 @@ const SnackbarWrapper = ()=> {
 
 const Container = styled.div`
 	position: fixed;
-	top: 40px;
-	right: 30px;
-	width: 320px;
-	height: auto;
+	top: 32px;
+	right: 32px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 10px;
 	z-index: ${zIndex.snackbar};
+	pointer-events: none;
+
+	& > * { pointer-events: auto; }
 
 	${media.small} {
-		width: 100%;
 		top: initial;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		margin: auto;
+		bottom: 16px;
+		left: 16px;
+		right: 16px;
+		align-items: stretch;
 	}
 `;
 

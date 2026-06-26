@@ -366,75 +366,90 @@ const UserMultiPicker = ({ accountId, value, onChange }: UserMultiPickerProps) =
 
 const TextInput = styled.input`
   width: 100%;
-  height: 32px;
-  padding: 0 0.5rem;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 4px;
-  font-size: 0.8125rem;
+  height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid ${jiraTheme.borderStrong};
+  border-radius: ${jiraTheme.radius.ctl};
+  font-family: ${jiraTheme.font.body};
+  font-size: 14px;
   background: ${jiraTheme.bg.default};
   color: ${jiraTheme.text.primary};
-  &:focus { outline: none; border-color: ${jiraTheme.primary}; }
+  transition: border-color ${jiraTheme.motion.fast}, box-shadow ${jiraTheme.motion.fast};
+  &:focus { outline: none; border-color: ${jiraTheme.primary}; box-shadow: ${jiraTheme.shadow.focusRing}; }
 `;
 
 const Select = styled.select`
   width: 100%;
-  height: 32px;
-  padding: 0 0.5rem;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 4px;
-  font-size: 0.8125rem;
+  height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid ${jiraTheme.borderStrong};
+  border-radius: ${jiraTheme.radius.ctl};
+  font-family: ${jiraTheme.font.body};
+  font-size: 14px;
   background: ${jiraTheme.bg.default};
   color: ${jiraTheme.text.primary};
-  &:focus { outline: none; border-color: ${jiraTheme.primary}; }
+  transition: border-color ${jiraTheme.motion.fast}, box-shadow ${jiraTheme.motion.fast};
+  &:focus { outline: none; border-color: ${jiraTheme.primary}; box-shadow: ${jiraTheme.shadow.focusRing}; }
 `;
 
 const ListBox = styled.div`
-  max-height: 200px;
+  max-height: 220px;
   overflow-y: auto;
   border: 1px solid ${jiraTheme.border};
-  border-radius: 4px;
-  padding: 0.375rem;
+  border-radius: ${jiraTheme.radius.ctl};
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 4px;
 `;
 
 const CheckRow = styled.label`
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
+  gap: 8px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13.5px;
   color: ${jiraTheme.text.primary};
   cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background ${jiraTheme.motion.fast};
+
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const Empty = styled.div`
-  padding: 0.5rem;
-  font-size: 0.75rem;
+  padding: 12px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
   color: ${jiraTheme.text.muted};
 `;
 
 const ErrorText = styled.div`
-  font-size: 0.75rem;
-  color: ${jiraTheme.priority.high};
+  margin-top: 6px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12px;
+  color: #dc3545;
 `;
 
 const ChipRow = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-bottom: 0.375rem;
+  gap: 6px;
+  margin-bottom: 8px;
 `;
 
 const Chip = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.5rem;
+  gap: 6px;
+  padding: 5px 11px;
   background: ${jiraTheme.primaryLight};
-  color: ${jiraTheme.primary};
-  border-radius: 12px;
-  font-size: 0.75rem;
+  color: ${jiraTheme.primaryHover};
+  border-radius: 99px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 12.5px;
+  font-weight: 600;
 `;
 
 const ChipX = styled.button`
@@ -442,38 +457,45 @@ const ChipX = styled.button`
   border: none;
   color: inherit;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 14px;
   line-height: 1;
   padding: 0;
+  opacity: 0.7;
+  transition: opacity ${jiraTheme.motion.fast};
+
+  &:hover { opacity: 1; }
 `;
 
 const SuggestList = styled.div`
-  margin-top: 0.25rem;
-  max-height: 180px;
+  margin-top: 6px;
+  max-height: 200px;
   overflow-y: auto;
   border: 1px solid ${jiraTheme.border};
-  border-radius: 4px;
+  border-radius: ${jiraTheme.radius.ctl};
+  box-shadow: ${jiraTheme.shadow.cardHover};
 `;
 
 const SuggestRow = styled.button`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
   width: 100%;
-  padding: 0.375rem 0.5rem;
+  padding: 10px 14px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid ${jiraTheme.border};
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13.5px;
   text-align: left;
   color: ${jiraTheme.text.primary};
-  &:last-child { border-bottom: none; }
-  &:hover { background: ${jiraTheme.bg.hover}; }
+  transition: background ${jiraTheme.motion.fast};
+
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const Avatar = styled.img`
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
+  object-fit: cover;
 `;

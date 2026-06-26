@@ -60,27 +60,28 @@ const Dropdown = styled.div`
   transform: translateX(-50%);
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: ${jiraTheme.radius.ctl};
+  box-shadow: ${jiraTheme.shadow.cardHover};
   z-index: 10000;
-  min-width: 140px;
-  padding: 0.25rem 0;
+  min-width: 160px;
+  padding: 4px 0;
 `;
 
 const Item = styled.div<{ $active: boolean }>`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4375rem 0.75rem;
+  gap: 8px;
+  padding: 9px 14px;
   cursor: pointer;
-  transition: background 0.1s;
-  background: ${({ $active }) => ($active ? jiraTheme.bg.hover : 'transparent')};
-  font-weight: ${({ $active }) => ($active ? 600 : 400)};
+  transition: background ${jiraTheme.motion.fast};
+  background: ${({ $active }) => ($active ? jiraTheme.hairline : 'transparent')};
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const Label = styled.span`
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13px;
   color: ${jiraTheme.text.primary};
 `;

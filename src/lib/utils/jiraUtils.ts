@@ -56,14 +56,15 @@ export function escapeJql(value: string): string {
 
 export function getStatusCategoryColor(category: string): string {
   const c = category.toLowerCase().trim();
-  if (c === 'done' || c === 'green') return '#36B37E';
-  if (c === 'indeterminate' || c === 'yellow' || c === 'blue-gray') return '#0052CC';
-  if (c === 'new') return '#42526E';
+  // 새 디자인 시스템 — palette.ts 정합 (teal4/blue4/gray6/gray5)
+  if (c === 'done' || c === 'green') return '#12b886';
+  if (c === 'indeterminate' || c === 'yellow' || c === 'blue-gray') return '#007bff';
+  if (c === 'new') return '#5d5957';
   // 키워드 폴백 (진행을 완료보다 먼저 검사 — "수정완료" 등 오분류 방지)
-  if (c.includes('progress') || c.includes('진행') || c.includes('indeterminate')) return '#0052CC';
-  if (c.includes('done') || c.includes('완료')) return '#36B37E';
-  if (c.includes('to do') || c.includes('todo') || c.includes('해야') || c.includes('할 일')) return '#42526E';
-  return '#6B778C';
+  if (c.includes('progress') || c.includes('진행') || c.includes('indeterminate')) return '#007bff';
+  if (c.includes('done') || c.includes('완료')) return '#12b886';
+  if (c.includes('to do') || c.includes('todo') || c.includes('해야') || c.includes('할 일')) return '#5d5957';
+  return '#8c8582';
 }
 
 export const KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/i;

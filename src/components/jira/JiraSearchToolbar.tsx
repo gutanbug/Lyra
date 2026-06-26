@@ -152,25 +152,31 @@ export default JiraSearchToolbar;
 const Toolbar = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  gap: 14px;
+  padding: 14px 18px;
+  margin: 18px 22px 0;
   background: ${jiraTheme.bg.default};
-  border-bottom: 1px solid ${jiraTheme.border};
+  border: 1px solid ${jiraTheme.border};
+  border-radius: ${jiraTheme.radius.card};
+  box-shadow: ${jiraTheme.shadow.card};
   flex-wrap: wrap;
   flex-shrink: 0;
 
   @media (max-width: 900px) {
-    padding: 0.75rem 1rem;
-    gap: 0.5rem;
+    padding: 12px 14px;
+    gap: 10px;
+    margin: 14px 16px 0;
   }
 `;
 
 const Logo = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 1.125rem;
+  gap: 8px;
+  font-family: ${jiraTheme.font.body};
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
   flex-shrink: 0;
 `;
@@ -257,12 +263,15 @@ const SearchInputWrapper = styled.div`
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2rem;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 20px;
-  font-size: 0.875rem;
-  background: ${jiraTheme.bg.subtle} url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2397A0AF' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 0.5rem center;
+  padding: 13px 15px 13px 36px;
+  border: 1.5px solid ${jiraTheme.borderStrong};
+  border-radius: ${jiraTheme.radius.ctl};
+  font-family: ${jiraTheme.font.body};
+  font-size: 14px;
+  color: ${jiraTheme.text.primary};
+  background: var(--lyra-c-gray0, #f7f6f3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 24 24' fill='none' stroke='%23a39d96' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 12px center;
   box-sizing: border-box;
+  transition: border-color ${jiraTheme.motion.fast}, background ${jiraTheme.motion.fast};
 
   &::placeholder { color: ${jiraTheme.text.muted}; }
   &:focus {
@@ -274,13 +283,13 @@ const SearchInput = styled.input`
 
 const SuggestDropdown = styled.div`
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
-  border-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: ${jiraTheme.radius.ctl};
+  box-shadow: ${jiraTheme.shadow.cardHover};
   z-index: 200;
   max-height: 360px;
   overflow-y: auto;

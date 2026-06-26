@@ -3,6 +3,7 @@ import styled, { css } from 'styled-components';
 import type { Commit, GraphNode } from 'types/git';
 import { layoutGraph, maxLaneCount } from 'lib/utils/gitGraphLayout';
 import { theme } from 'lib/styles/theme';
+import { gitTheme } from 'lib/styles/gitTheme';
 
 interface Props {
   commits: Commit[];
@@ -270,17 +271,23 @@ const CommitList = styled.div`
 const CommitRow = styled.div<{ $selected?: boolean }>`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 0.5rem;
-  font-size: 0.8125rem;
-  color: ${theme.textPrimary};
+  gap: 8px;
+  padding: 6px 12px;
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${theme.color.gray8};
   cursor: pointer;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
+  background: ${({ $selected }) => ($selected ? 'rgba(0,123,255,.07)' : 'transparent')};
+  transition: background ${theme.motion.fast};
+
   ${({ $selected }) =>
     $selected &&
     css`
-      border-left-color: ${theme.blue};
+      border-left-color: ${theme.color.accent};
     `}
+
+  &:hover { background: ${({ $selected }) => ($selected ? 'rgba(0,123,255,.09)' : '#faf9f7')}; }
 `;
 
 const Subject = styled.div`
@@ -306,40 +313,47 @@ const RefList = styled.span`
 `;
 
 const Ref = styled.span<{ $remote?: boolean }>`
-  font-size: 0.6875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: ${gitTheme.mono};
+  font-size: 11px;
   font-weight: 600;
-  padding: 0.05rem 0.4rem;
-  border-radius: 10px;
-  background: ${({ $remote }) => ($remote ? theme.bgTertiary : theme.blueLight)};
-  color: ${({ $remote }) => ($remote ? theme.textSecondary : theme.blueDarker)};
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: ${({ $remote }) => ($remote ? gitTheme.ref.remote.bg : gitTheme.ref.head.bg)};
+  color: ${({ $remote }) => ($remote ? gitTheme.ref.remote.ink : gitTheme.ref.head.ink)};
   white-space: nowrap;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-shadow: 0 1px 3px rgba(28,27,26,.06);
 `;
 
 const Author = styled.span`
-  width: 110px;
+  width: 120px;
   flex-shrink: 0;
-  font-size: 0.75rem;
-  color: ${theme.textMuted};
+  font-family: ${theme.font.body};
+  font-size: 12.5px;
+  color: ${theme.color.gray6};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
 const CommitDate = styled.span`
-  width: 116px;
+  width: 120px;
   flex-shrink: 0;
-  font-family: 'SFMono-Regular', Menlo, monospace;
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
+  font-family: ${gitTheme.mono};
+  font-size: 11px;
+  color: ${gitTheme.text.faint};
   text-align: right;
 `;
 
 const Empty = styled.div`
-  padding: 2rem;
+  padding: 48px;
   text-align: center;
-  color: ${theme.textMuted};
-  font-size: 0.875rem;
+  color: ${theme.color.gray5};
+  font-family: ${theme.font.body};
+  font-size: 14px;
 `;

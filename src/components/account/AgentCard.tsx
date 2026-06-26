@@ -184,13 +184,17 @@ export default AgentCard;
 // ─── Styled Components ─────────────────────────
 
 const Card = styled.div`
-  border: 1px solid ${theme.border};
-  border-radius: 10px;
-  background: ${theme.bgPrimary};
-  padding: 1rem 1.25rem;
+  border: 1px solid ${theme.color.borderDefault};
+  border-radius: ${theme.radius.card};
+  background: ${theme.color.surface};
+  box-shadow: ${theme.shadow.card};
+  padding: 22px 24px;
   display: flex;
   flex-direction: column;
-  gap: 0.625rem;
+  gap: 12px;
+  transition: box-shadow ${theme.motion.fast}, transform ${theme.motion.fast};
+
+  &:hover { box-shadow: ${theme.shadow.cardHover}; }
 `;
 
 const CardHeader = styled.div`
@@ -222,14 +226,19 @@ const VersionTag = styled.span`
 `;
 
 const Badge = styled.span<{ $tone: 'ok' | 'warn' | 'muted' }>`
-  font-size: 0.6875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ${theme.font.body};
+  font-size: 12px;
   font-weight: 600;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  letter-spacing: -0.01em;
+  padding: 5px 11px;
+  border-radius: 99px;
   ${({ $tone }) => {
-    if ($tone === 'ok') return `background: #e6f4ea; color: #137333;`;
-    if ($tone === 'warn') return `background: #fef7e0; color: #b06000;`;
-    return `background: #f1f3f4; color: #5f6368;`;
+    if ($tone === 'ok') return `background: ${theme.color.successSoft}; color: ${theme.color.successInk};`;
+    if ($tone === 'warn') return `background: ${theme.color.warningSoft}; color: ${theme.color.warningInk};`;
+    return `background: ${theme.color.gray1}; color: ${theme.color.gray6};`;
   }}
 `;
 

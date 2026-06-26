@@ -216,10 +216,13 @@ export default ConfluenceSearchToolbar;
 const Toolbar = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  gap: 14px;
+  padding: 14px 18px;
+  margin: 18px 22px 0;
   background: ${confluenceTheme.bg.default};
-  border-bottom: 1px solid ${confluenceTheme.border};
+  border: 1px solid ${confluenceTheme.border};
+  border-radius: ${confluenceTheme.radius.card};
+  box-shadow: ${confluenceTheme.shadow.card};
   flex-wrap: wrap;
   flex-shrink: 0;
 `;
@@ -227,9 +230,11 @@ const Toolbar = styled.div`
 const Logo = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 1.125rem;
+  gap: 8px;
+  font-family: ${confluenceTheme.font.body};
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
   color: ${confluenceTheme.text.primary};
   flex-shrink: 0;
 `;
@@ -276,18 +281,21 @@ const SearchWrapper = styled.div`
 const SpaceFilterBtn = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 20px;
-  font-size: 0.8125rem;
-  background: ${confluenceTheme.bg.subtle};
+  gap: 6px;
+  padding: 9px 13px;
+  border: 1px solid ${confluenceTheme.borderStrong};
+  border-radius: ${confluenceTheme.radius.ctl};
+  font-family: ${confluenceTheme.font.body};
+  font-size: 13px;
+  font-weight: 500;
+  background: ${confluenceTheme.bg.default};
   color: ${confluenceTheme.text.primary};
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s ${transition};
+  transition: background ${confluenceTheme.motion.fast}, border-color ${confluenceTheme.motion.fast};
+
   &:hover {
-    background: ${confluenceTheme.bg.hover};
+    background: ${confluenceTheme.hairline};
     border-color: ${confluenceTheme.primary};
   }
 `;
@@ -296,30 +304,34 @@ const SpaceCount = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 0.25rem;
-  border-radius: 9px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 99px;
   background: ${confluenceTheme.primary};
   color: white;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
 `;
 
 const SearchInputWrapper = styled.div`
   flex: 1;
   position: relative;
-  min-width: 120px;
+  min-width: 160px;
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2rem;
-  border: 1px solid ${confluenceTheme.border};
-  border-radius: 20px;
-  font-size: 0.875rem;
-  background: ${confluenceTheme.bg.subtle} url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2397A0AF' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 0.5rem center;
+  padding: 13px 15px 13px 36px;
+  border: 1.5px solid ${confluenceTheme.borderStrong};
+  border-radius: ${confluenceTheme.radius.ctl};
+  font-family: ${confluenceTheme.font.body};
+  font-size: 14px;
+  color: ${confluenceTheme.text.primary};
+  background: var(--lyra-c-gray0, #f7f6f3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='17' height='17' viewBox='0 0 24 24' fill='none' stroke='%23a39d96' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 12px center;
   box-sizing: border-box;
+  transition: border-color ${confluenceTheme.motion.fast}, background ${confluenceTheme.motion.fast};
+
   &::placeholder { color: ${confluenceTheme.text.muted}; }
   &:focus {
     outline: none;

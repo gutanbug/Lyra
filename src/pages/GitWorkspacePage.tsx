@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { theme } from 'lib/styles/theme';
+import { gitTheme } from 'lib/styles/gitTheme';
 import { transition } from 'lib/styles/styles';
 import { useLocalRepo } from 'modules/contexts/localRepo';
 import { localGitController } from 'controllers/account';
@@ -411,16 +412,16 @@ const Page = styled.div`
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: ${theme.bgPrimary};
+  background: ${theme.color.pageBg};
 `;
 
 const RepoTabBar = styled.div`
   display: flex;
-  align-items: stretch;
-  gap: 0.25rem;
-  padding: 0.4rem 0.6rem 0;
-  background: ${theme.bgSecondary};
-  border-bottom: 1px solid ${theme.border};
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: ${theme.color.pageBg};
+  border-bottom: 1px solid ${gitTheme.divider};
   overflow-x: auto;
   flex-shrink: 0;
 
@@ -430,22 +431,22 @@ const RepoTabBar = styled.div`
 const RepoTab = styled.div<{ $active: boolean }>`
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid ${({ $active }) => ($active ? theme.border : 'transparent')};
-  border-bottom: ${({ $active }) => ($active ? `1px solid ${theme.bgPrimary}` : `1px solid ${theme.border}`)};
-  border-radius: 6px 6px 0 0;
-  background: ${({ $active }) => ($active ? theme.bgPrimary : 'transparent')};
-  color: ${({ $active }) => ($active ? theme.textPrimary : theme.textSecondary)};
-  font-size: 0.8125rem;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid ${({ $active }) => ($active ? theme.color.borderStrong : 'transparent')};
+  border-radius: 10px;
+  background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'transparent')};
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray5)};
+  box-shadow: ${({ $active }) => ($active ? theme.shadow.tabActive : 'none')};
+  font-family: ${theme.font.body};
+  font-size: 13px;
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  letter-spacing: -0.01em;
   cursor: pointer;
   flex-shrink: 0;
-  margin-bottom: -1px;
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast};
 
-  &:hover {
-    color: ${theme.textPrimary};
-  }
+  &:hover { color: ${theme.color.gray8}; }
 `;
 
 const RepoTabName = styled.span`
@@ -459,31 +460,34 @@ const RepoTabClose = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
-  height: 1rem;
+  width: 18px;
+  height: 18px;
   border: none;
   background: transparent;
-  color: ${theme.textMuted};
-  border-radius: 3px;
+  color: ${theme.color.gray5};
+  border-radius: 6px;
   cursor: pointer;
   padding: 0;
-  &:hover { background: rgba(0,0,0,0.08); color: ${theme.textPrimary}; }
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast};
+
+  &:hover { background: ${theme.color.hairline}; color: ${theme.color.gray8}; }
 `;
 
 const NewRepoTab = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0.5rem;
-  border: 1px dashed ${theme.border};
-  border-bottom: 1px solid ${theme.border};
-  border-radius: 6px 6px 0 0;
+  width: 34px;
+  height: 34px;
+  border: 1px dashed ${theme.color.borderStrong};
+  border-radius: 10px;
   background: transparent;
-  color: ${theme.textMuted};
+  color: ${theme.color.gray5};
   cursor: pointer;
-  margin-bottom: -1px;
-  &:hover { color: ${theme.blue}; border-color: ${theme.blue}; }
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  transition: color ${theme.motion.fast}, border-color ${theme.motion.fast}, background ${theme.motion.fast};
+
+  &:hover { color: ${theme.color.accent}; border-color: ${theme.color.accent}; background: ${theme.color.accentSoft}; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 `;
 
 const Workspace = styled.div`
@@ -493,10 +497,10 @@ const Workspace = styled.div`
 `;
 
 const LeftSidebar = styled.aside`
-  width: 260px;
+  width: 230px;
   flex-shrink: 0;
-  border-right: 1px solid ${theme.border};
-  background: ${theme.bgSecondary};
+  border-right: 1px solid ${gitTheme.divider};
+  background: ${gitTheme.bg.pane};
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -506,16 +510,16 @@ const LeftSidebarHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid ${theme.border};
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid ${gitTheme.divider};
 `;
 
 const LeftSidebarBody = styled.div`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.4rem 0.4rem 1rem;
+  padding: 8px 8px 18px;
 `;
 
 const Center = styled.section`
@@ -523,18 +527,19 @@ const Center = styled.section`
   min-width: 0;
   display: flex;
   flex-direction: column;
+  background: ${theme.color.surface};
 `;
 
 const CenterHeader = styled.div`
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid ${theme.border};
-  background: ${theme.bgPrimary};
+  padding: 12px 18px;
+  border-bottom: 1px solid ${gitTheme.divider};
+  background: ${theme.color.surface};
 `;
 
 const CenterRepoPath = styled.span`
-  font-family: 'SFMono-Regular', Menlo, monospace;
-  font-size: 0.8125rem;
-  color: ${theme.textMuted};
+  font-family: ${gitTheme.mono};
+  font-size: 12.5px;
+  color: ${theme.color.gray5};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -545,56 +550,60 @@ const CenterBody = styled.div`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 14px 18px;
 `;
 
 const RightSidebar = styled.aside`
-  width: 280px;
+  width: 240px;
   flex-shrink: 0;
-  border-left: 1px solid ${theme.border};
-  background: ${theme.bgSecondary};
+  border-left: 1px solid ${gitTheme.divider};
+  background: ${gitTheme.bg.pane};
   display: flex;
   flex-direction: column;
   min-height: 0;
 `;
 
 const RightSidebarHeader = styled.div`
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: ${theme.textMuted};
+  padding: 12px 14px;
+  font-family: ${theme.font.body};
+  font-size: 11px;
+  font-weight: 700;
+  color: ${theme.color.gray5};
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid ${theme.border};
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid ${gitTheme.divider};
 `;
 
 const RightSidebarBody = styled.div`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.4rem 0.4rem 1rem;
+  padding: 8px 8px 18px;
 `;
 
 const CommitComposerPlaceholder = styled.div`
-  margin: 0.5rem 0.5rem 0;
-  padding: 0.75rem;
-  border: 1px dashed ${theme.border};
-  border-radius: 6px;
-  color: ${theme.textMuted};
-  font-size: 0.75rem;
+  margin: 12px;
+  padding: 14px 16px;
+  border: 1.5px dashed ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  color: ${theme.color.gray5};
+  font-family: ${theme.font.body};
+  font-size: 12.5px;
   text-align: center;
 `;
 
 const HeadBadge = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 12px;
-  background: ${theme.blueLight};
-  color: ${theme.blueDarker};
-  font-size: 0.75rem;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  background: ${gitTheme.ref.head.bg};
+  color: ${gitTheme.ref.head.ink};
+  font-family: ${theme.font.body};
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   min-width: 0;
   overflow: hidden;
 
@@ -602,6 +611,7 @@ const HeadBadge = styled.span`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: ${gitTheme.mono};
   }
 `;
 
@@ -609,64 +619,69 @@ const IconAction = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 1px solid ${theme.border};
-  border-radius: 50%;
-  background: ${theme.bgPrimary};
-  color: ${theme.textSecondary};
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: ${theme.radius.ctl};
+  background: transparent;
+  color: ${theme.color.gray5};
   cursor: pointer;
-  &:hover { color: ${theme.blue}; border-color: ${theme.blue}; }
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
+
+  &:hover { color: ${theme.color.accent}; background: ${theme.color.surface}; border-color: ${theme.color.borderStrong}; }
 `;
 
 // ── Section internals ──
 
 const SectionWrap = styled.div`
-  margin-bottom: 0.4rem;
+  margin-bottom: 8px;
 `;
 
 const SectionHeader = styled.button`
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.5rem;
+  gap: 6px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
   cursor: pointer;
-  color: ${theme.textMuted};
-  border-radius: 4px;
+  border-radius: 8px;
   text-align: left;
+  transition: background ${theme.motion.fast};
 
-  &:hover { background: ${theme.bgTertiary}; }
+  &:hover { background: rgba(0,0,0,.03); }
 `;
 
 const SectionChevron = styled.span`
   display: inline-flex;
   align-items: center;
-  color: ${theme.textMuted};
+  color: ${gitTheme.text.faint};
 `;
 
 const SectionTitle = styled.span`
-  font-size: 0.6875rem;
+  font-family: ${theme.font.body};
+  font-size: 11px;
   font-weight: 700;
-  color: ${theme.textPrimary};
-  letter-spacing: 0.04em;
+  color: ${gitTheme.text.faint};
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   flex: 1;
 `;
 
 const SectionCount = styled.span`
-  font-size: 0.6875rem;
+  font-family: ${theme.font.body};
+  font-size: 11px;
   font-weight: 600;
-  color: ${theme.textMuted};
-  padding: 0.05rem 0.4rem;
-  background: ${theme.bgTertiary};
-  border-radius: 8px;
+  color: ${theme.color.gray5};
+  padding: 2px 8px;
+  background: ${theme.color.gray1};
+  border-radius: 99px;
+  line-height: 1;
 `;
 
 const SectionBody = styled.div`
-  padding: 0.1rem 0.3rem 0.4rem 1rem;
+  padding: 4px 4px 8px;
 `;
 
 const ItemList = styled.ul`
@@ -675,23 +690,26 @@ const ItemList = styled.ul`
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 2px;
 `;
 
 const Item = styled.li<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  background: ${({ $active }) => ($active ? theme.blueLight : 'transparent')};
-  border: 1px solid ${({ $active }) => ($active ? theme.blueLighter : 'transparent')};
-  font-size: 0.8rem;
-  color: ${theme.textPrimary};
+  gap: 8px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'transparent')};
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
   cursor: default;
-  transition: background 0.1s ${transition};
-  &:hover { background: ${({ $active }) => ($active ? theme.blueLight : theme.bgTertiary)}; }
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast};
+
+  & svg { color: ${({ $active }) => ($active ? theme.color.accent : theme.color.gray5)}; }
+  &:hover { background: ${({ $active }) => ($active ? 'rgba(0,123,255,.09)' : 'rgba(0,0,0,.03)')}; color: ${theme.color.gray8}; }
 `;
 
 const ItemLabel = styled.span`
@@ -700,19 +718,20 @@ const ItemLabel = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: ${gitTheme.mono};
 `;
 
 const ItemSha = styled.span`
-  font-family: 'SFMono-Regular', Menlo, monospace;
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
+  font-family: ${gitTheme.mono};
+  font-size: 11.5px;
+  color: ${gitTheme.text.faint};
   flex-shrink: 0;
 `;
 
 const ItemUrl = styled.span`
-  font-family: 'SFMono-Regular', Menlo, monospace;
-  font-size: 0.65rem;
-  color: ${theme.textMuted};
+  font-family: ${gitTheme.mono};
+  font-size: 11px;
+  color: ${gitTheme.text.faint};
   max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -720,9 +739,10 @@ const ItemUrl = styled.span`
 `;
 
 const PlaceholderHint = styled.div`
-  font-size: 0.75rem;
-  color: ${theme.textMuted};
-  padding: 0.25rem 0.5rem;
+  font-family: ${theme.font.body};
+  font-size: 12px;
+  color: ${theme.color.gray5};
+  padding: 6px 10px;
 `;
 
 const Empty = styled.div`
@@ -731,51 +751,57 @@ const Empty = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 2rem;
+  gap: 14px;
+  padding: 48px;
 `;
 
 const EmptyTitle = styled.h2`
   margin: 0;
-  font-size: 1.125rem;
-  color: ${theme.textPrimary};
+  font-family: ${theme.font.body};
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: ${theme.color.gray8};
 `;
 
 const EmptyHint = styled.div`
-  font-size: 0.875rem;
-  color: ${theme.textMuted};
+  font-family: ${theme.font.body};
+  font-size: 14px;
+  color: ${theme.color.gray6};
   line-height: 1.5;
   text-align: center;
 `;
 
 const GitInstallList = styled.ul`
-  margin: 0.75rem 0 0;
+  margin: 14px 0 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: ${theme.textPrimary};
+  gap: 8px;
+  font-family: ${theme.font.body};
+  font-size: 13.5px;
+  color: ${theme.color.gray7};
   max-width: 560px;
 
   & > li {
-    padding: 0.6rem 0.9rem;
-    background: ${theme.bgSecondary};
-    border: 1px solid ${theme.border};
-    border-radius: 6px;
+    padding: 12px 14px;
+    background: ${theme.color.surface};
+    border: 1px solid ${theme.color.borderDefault};
+    border-radius: ${theme.radius.ctl};
   }
 
   code {
-    font-family: 'SFMono-Regular', Menlo, monospace;
-    font-size: 0.78rem;
-    background: ${theme.bgTertiary};
-    padding: 0.05rem 0.35rem;
-    border-radius: 3px;
+    font-family: ${gitTheme.mono};
+    font-size: 12.5px;
+    background: ${theme.color.hairline};
+    color: ${theme.color.gray8};
+    padding: 2px 8px;
+    border-radius: 6px;
   }
 
   a {
-    color: ${theme.blue};
+    color: ${theme.color.accent};
     cursor: pointer;
     text-decoration: underline;
   }
@@ -784,49 +810,63 @@ const GitInstallList = styled.ul`
 const PrimaryButton = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: ${theme.radius.ctl};
+  font-family: ${theme.font.body};
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  background: ${theme.blue};
+  background: ${theme.color.accent};
   color: #fff;
-  border: 1px solid ${theme.blue};
-  &:hover { background: ${theme.blueDark}; border-color: ${theme.blueDark}; }
-  &:disabled { opacity: 0.6; cursor: not-allowed; }
+  border: none;
+  box-shadow: ${theme.shadow.btnAccent};
+  transition: filter ${theme.motion.fast}, transform ${theme.motion.fast};
+
+  &:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+  &:active:not(:disabled) { transform: scale(0.98); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 `;
 
 const ErrorBlock = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  border: 1px solid ${theme.border};
-  border-left: 3px solid #d92d20;
-  border-radius: 8px;
-  background: ${theme.bgSecondary};
-  margin-top: 0.5rem;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border: 1px solid ${theme.color.borderDefault};
+  border-left: 3px solid ${theme.color.danger};
+  border-radius: ${theme.radius.ctl};
+  background: ${theme.color.surface};
+  margin-top: 8px;
 `;
 
 const ErrorTitle = styled.div`
-  font-size: 0.95rem;
+  font-family: ${theme.font.body};
+  font-size: 14.5px;
   font-weight: 600;
-  color: ${theme.textPrimary};
+  letter-spacing: -0.01em;
+  color: ${theme.color.gray8};
 `;
 
 const ErrorMessage = styled.div`
-  font-size: 0.85rem;
-  color: ${theme.textMuted};
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${theme.color.gray6};
 `;
 
 const SecondaryAction = styled.button`
-  padding: 0.4rem 0.8rem;
-  background: transparent;
-  color: ${theme.textPrimary};
-  border: 1px solid ${theme.border};
-  border-radius: 16px;
-  font-size: 0.8rem;
+  padding: 10px 18px;
+  background: ${theme.color.hairline};
+  color: ${theme.color.gray7};
+  border: 1px solid ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  font-family: ${theme.font.body};
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background ${theme.motion.fast};
+
+  &:hover { background: ${theme.color.gray1}; }
 `;

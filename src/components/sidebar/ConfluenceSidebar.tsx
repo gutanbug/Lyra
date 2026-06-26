@@ -448,7 +448,8 @@ export default ConfluenceSidebar;
 // ── Styled Components ──
 
 const Container = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${theme.font.body};
+  font-size: 13px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -457,71 +458,87 @@ const Container = styled.div`
 const SidebarHeader = styled.div`
   display: flex;
   align-items: center;
-  padding: 8px 12px 4px;
+  padding: 6px 14px 4px;
 `;
 
 const SidebarTitle = styled.div`
-  font-weight: 600;
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
+  font-weight: 700;
+  font-size: 11px;
+  color: ${theme.color.gray5};
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 `;
 
 const SearchBox = styled.div`
   position: relative;
-  margin: 4px 10px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 12px 10px;
+  padding: 10px 12px;
+  background: ${theme.color.gray0};
+  border: 1.5px solid ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  transition: border-color ${theme.motion.fast}, background ${theme.motion.fast};
+
+  &:focus-within { border-color: ${theme.color.accent}; background: ${theme.color.surface}; }
 `;
 
 const SearchIconWrap = styled.span`
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: ${theme.textMuted};
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  color: #a39d96;
+  flex-shrink: 0;
 `;
 
 const SearchInput = styled.input`
-  width: 100%;
-  padding: 6px 8px 6px 28px;
-  border: 1px solid ${theme.border};
-  border-radius: 6px;
-  background: ${theme.bgPrimary};
-  color: ${theme.textPrimary};
-  font-size: 0.8125rem;
+  flex: 1;
+  background: transparent;
+  border: none;
   outline: none;
-  box-sizing: border-box;
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${theme.color.gray8};
 
-  &:focus {
-    border-color: ${theme.blue};
-  }
-
-  &::placeholder {
-    color: ${theme.textMuted};
-  }
+  &::placeholder { color: ${theme.color.gray5}; }
 `;
 
 const TreeContainer = styled.div`
   flex: 1;
   overflow-y: auto;
+  padding: 0 8px 12px;
 `;
 
 const SpaceRow = styled.div<{ $active: boolean }>`
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
+  gap: 8px;
+  padding: 11px 13px;
   cursor: pointer;
-  color: ${({ $active }) => ($active ? theme.blue : theme.textPrimary)};
-  background: ${({ $active }) => ($active ? theme.blueLight : 'transparent')};
-  font-weight: 600;
-  font-size: 0.8125rem;
-  transition: background 0.1s ease;
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
+  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
+  border-radius: ${theme.radius.ctl};
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  font-size: 13px;
+  transition: background ${theme.motion.fast};
+
+  ${({ $active }) => $active && `
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      background: ${theme.color.accent};
+      border-radius: 0 3px 3px 0;
+    }
+  `}
 
   &:hover {
-    background: ${({ $active }) => ($active ? theme.blueLight : theme.bgTertiary)};
+    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
   }
 `;
 
@@ -545,13 +562,15 @@ const SpaceChildren = styled.div``;
 const TreeRow = styled.div<{ $depth: number; $active?: boolean }>`
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 8px 5px ${({ $depth }) => 12 + $depth * 16}px;
+  gap: 6px;
+  padding: 6px 10px 6px ${({ $depth }) => 12 + $depth * 16}px;
   min-height: 32px;
-  background: ${({ $active }) => ($active ? theme.bgTertiary : 'transparent')};
+  border-radius: 8px;
+  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
+  transition: background ${theme.motion.fast};
 
   &:hover {
-    background: ${theme.bgTertiary};
+    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
   }
 `;
 
@@ -586,14 +605,14 @@ const PageTitle = styled.span<{ $active?: boolean }>`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: ${({ $active }) => ($active ? theme.blue : theme.textSecondary)};
-  font-weight: ${({ $active }) => ($active ? 600 : 400)};
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  letter-spacing: -0.01em;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 13.5px;
+  transition: color ${theme.motion.fast};
 
-  &:hover {
-    color: ${theme.blue};
-  }
+  &:hover { color: ${theme.color.gray8}; }
 `;
 
 const LoadingRow = styled.div<{ $indent?: boolean }>`

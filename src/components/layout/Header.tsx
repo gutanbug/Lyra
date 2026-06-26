@@ -459,11 +459,10 @@ const Nav = styled.nav`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2rem;
-  height: 3rem;
-  background: ${theme.bgPrimary};
-  border-bottom: 1px solid ${theme.border};
-  zoom: 1.2;
+  padding: 0 1.5rem;
+  height: 3.25rem;
+  background: ${theme.color.surface};
+  border-bottom: 1px solid ${theme.color.borderDefault};
 `;
 
 const NavLeft = styled.div`
@@ -485,30 +484,36 @@ const NavIconButton = styled.div`
 `;
 
 const AppTitle = styled.span`
-  font-size: 1.05rem;
+  font-family: ${theme.font.brand};
+  font-size: 1.15rem;
   font-weight: 700;
-  color: ${theme.blue};
-  letter-spacing: -0.01em;
+  color: ${theme.color.gray8};
+  letter-spacing: -0.02em;
 `;
 
 const NavDivider = styled.div`
   width: 1px;
   height: 1.125rem;
-  background: ${theme.border};
+  background: ${theme.color.borderStrong};
 `;
 
 const StyledLink = styled(Link)<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: ${({ $active }) => ($active ? theme.blue : theme.textSecondary)};
+  padding: 0.4rem 0.7rem;
+  border-radius: ${theme.radius.ctl};
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
+  background: ${({ $active }) => ($active ? theme.color.hairline : 'transparent')};
   text-decoration: none;
   font-size: 0.875rem;
-  font-weight: 500;
-  transition: color 0.2s ${transition};
+  font-weight: ${({ $active }) => ($active ? 600 : 500)};
+  letter-spacing: -0.01em;
+  transition: color ${theme.motion.fast}, background ${theme.motion.fast};
 
   &:hover {
-    color: ${theme.blue};
+    color: ${theme.color.gray8};
+    background: ${theme.color.hairline};
   }
 `;
 
@@ -527,19 +532,18 @@ const IconButton = styled.button<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 1.5px solid ${({ $active }) => ($active ? theme.blue : theme.border)};
-  background: ${({ $active }) => ($active ? theme.blueLight : theme.bgSecondary)};
-  color: ${({ $active }) => ($active ? theme.blue : theme.textSecondary)};
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: ${theme.radius.ctl};
+  border: 1px solid ${({ $active }) => ($active ? theme.color.accent : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.accentSoft : 'transparent')};
+  color: ${({ $active }) => ($active ? theme.color.accent : theme.color.gray6)};
   cursor: pointer;
-  transition: all 0.15s ${transition};
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
 
   &:hover {
-    border-color: ${theme.blue};
-    color: ${theme.blue};
-    background: ${theme.blueLight};
+    background: ${({ $active }) => ($active ? theme.color.accentSoft : theme.color.hairline)};
+    color: ${theme.color.gray8};
   }
 
   &[data-tooltip]::after {
@@ -548,17 +552,18 @@ const IconButton = styled.button<{ $active?: boolean }>`
     top: calc(100% + 8px);
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(33, 33, 33, 0.92);
+    background: ${theme.color.gray8};
     color: #fff;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 5px 9px;
+    border-radius: 6px;
     font-size: 0.6875rem;
     font-weight: 500;
+    letter-spacing: -0.01em;
     line-height: 1.2;
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.12s ${transition};
+    transition: opacity ${theme.motion.fast};
     z-index: 500;
   }
 
@@ -577,13 +582,11 @@ const IconSvg = styled.svg`
 
 const TabBar = styled.div`
   display: flex;
-  align-items: flex-end;
-  gap: 0;
-  padding: 0 2rem;
-  background: ${theme.bgSecondary};
-  border-bottom: 1px solid ${theme.border};
-  height: 2.25rem;
-  zoom: 1.2;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 1.5rem;
+  background: ${theme.color.pageBg};
+  border-bottom: 1px solid ${theme.color.borderDefault};
   overflow-x: auto;
 
   &::-webkit-scrollbar { display: none; }
@@ -592,36 +595,37 @@ const TabBar = styled.div`
 const TabItem = styled.div<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  height: 100%;
-  padding: 0 0.75rem;
-  font-size: 0.75rem;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid ${({ $active }) => ($active ? theme.color.borderStrong : 'transparent')};
+  background: ${({ $active }) => ($active ? theme.color.surface : 'transparent')};
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray5)};
+  box-shadow: ${({ $active }) => ($active ? theme.shadow.tabActive : 'none')};
+  font-family: ${theme.font.body};
+  font-size: 13px;
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
-  color: ${({ $active }) => ($active ? theme.textPrimary : theme.textSecondary)};
-  background: ${({ $active }) => ($active ? theme.bgPrimary : 'transparent')};
-  border-left: 1px solid ${({ $active }) => ($active ? theme.border : 'transparent')};
-  border-right: 1px solid ${({ $active }) => ($active ? theme.border : 'transparent')};
-  border-top: ${({ $active }) => ($active ? `2px solid ${theme.blue}` : '2px solid transparent')};
-  border-bottom: ${({ $active }) => ($active ? 'none' : `1px solid ${theme.border}`)};
-  margin-bottom: ${({ $active }) => ($active ? '-1px' : '0')};
+  letter-spacing: -0.01em;
+  line-height: 1;
   cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  max-width: 190px;
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
-  min-width: 0;
-  max-width: 180px;
-  position: relative;
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
 
   &:hover {
-    background: ${({ $active }) => ($active ? theme.bgPrimary : theme.bgTertiary)};
-    color: ${theme.textPrimary};
+    color: ${theme.color.gray8};
+    background: ${({ $active }) => ($active ? theme.color.surface : 'rgba(255,255,255,.6)')};
   }
 `;
 
 const TabIconWrap = styled.span`
   display: inline-flex;
   align-items: center;
-  width: 0.8125rem;
-  height: 0.8125rem;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 
   & > svg { width: 100%; height: 100%; }
@@ -631,16 +635,19 @@ const TabLabel = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: ${theme.font.body};
 `;
 
 const TabInput = styled.input`
-  width: 80px;
-  border: 1px solid ${theme.blue};
-  border-radius: 3px;
-  background: ${theme.bgPrimary};
-  color: ${theme.textPrimary};
-  font-size: 0.75rem;
-  padding: 0.1rem 0.25rem;
+  width: 110px;
+  border: 1.5px solid ${theme.color.accent};
+  border-radius: 6px;
+  background: ${theme.color.surface};
+  color: ${theme.color.gray8};
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  font-weight: 500;
+  padding: 3px 6px;
   outline: none;
 `;
 
@@ -648,17 +655,18 @@ const TabClose = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  font-size: 0.875rem;
+  width: 18px;
+  height: 18px;
+  font-size: 13px;
   line-height: 1;
-  border-radius: 3px;
-  color: ${theme.textMuted};
+  border-radius: 6px;
+  color: ${theme.color.gray5};
   flex-shrink: 0;
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast};
 
   &:hover {
-    background: rgba(0, 0, 0, 0.08);
-    color: ${theme.textPrimary};
+    background: ${theme.color.hairline};
+    color: ${theme.color.gray8};
   }
 `;
 
@@ -668,35 +676,37 @@ const ProfileDropdown = styled.div`
   position: absolute;
   top: calc(100% + 0.5rem);
   right: 0;
-  background: ${theme.bgPrimary};
-  border: 1px solid ${theme.border};
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  background: ${theme.color.surface};
+  border: 1px solid ${theme.color.borderDefault};
+  border-radius: ${theme.radius.ctl};
+  box-shadow: ${theme.shadow.cardHover};
   z-index: 200;
   overflow: hidden;
-  width: 220px;
-  padding: 0.5rem 0;
-  max-height: 320px;
+  width: 240px;
+  padding: 6px 0;
+  max-height: 360px;
   overflow-y: auto;
 `;
 
 const PanelTitle = styled.div`
-  padding: 0.25rem 0.875rem 0.5rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: ${theme.textMuted};
+  padding: 8px 14px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: ${theme.color.gray5};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 `;
 
 const AccountGroupLabel = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.875rem 0.125rem;
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: ${theme.textMuted};
+  gap: 6px;
+  padding: 6px 14px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: ${theme.color.gray5};
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 `;
 
 const SectionIconWrap = styled.span`
@@ -711,9 +721,9 @@ const SectionIconWrap = styled.span`
 
 const ReadOnlyHint = styled.span`
   margin-left: 0.35rem;
-  font-size: 0.55rem;
+  font-size: 9px;
   font-weight: 500;
-  color: ${theme.textMuted};
+  color: ${theme.color.gray5};
   text-transform: none;
   letter-spacing: 0;
 `;
@@ -721,8 +731,8 @@ const ReadOnlyHint = styled.span`
 const ReadOnlyAccountItem = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.875rem;
+  gap: 8px;
+  padding: 8px 14px;
   cursor: default;
   opacity: 0.85;
 `;
@@ -731,14 +741,14 @@ const AccountItem = styled.div<{ $active?: boolean; $highlighted?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.375rem 0.875rem;
+  gap: 8px;
+  padding: 8px 14px;
   cursor: pointer;
-  transition: background 0.1s;
-  background: ${({ $highlighted }) => ($highlighted ? theme.blueLight : 'transparent')};
+  transition: background ${theme.motion.fast};
+  background: ${({ $highlighted }) => ($highlighted ? theme.color.accentSoft : 'transparent')};
 
   &:hover {
-    background: ${theme.blueLight};
+    background: ${({ $highlighted }) => ($highlighted ? theme.color.accentSoft : theme.color.hairline)};
   }
 `;
 
@@ -749,17 +759,18 @@ const AccountInfo = styled.div`
 `;
 
 const AccountName = styled.span`
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: ${theme.textPrimary};
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: ${theme.color.gray8};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
 const AccountMeta = styled.span`
-  font-size: 0.6875rem;
-  color: ${theme.textMuted};
+  font-size: 11.5px;
+  color: ${theme.color.gray5};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -772,7 +783,7 @@ const ActiveBadge = styled.span`
   justify-content: center;
   width: 1rem;
   height: 1rem;
-  color: ${theme.blue};
+  color: ${theme.color.accent};
 `;
 
 const CheckSvg = styled.svg`
@@ -790,29 +801,29 @@ const ContextOverlay = styled.div`
 
 const ContextMenuBox = styled.div`
   position: fixed;
-  background: ${theme.bgPrimary};
-  border: 1px solid ${theme.border};
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  min-width: 160px;
-  padding: 0.25rem 0;
+  background: ${theme.color.surface};
+  border: 1px solid ${theme.color.borderDefault};
+  border-radius: ${theme.radius.ctl};
+  box-shadow: ${theme.shadow.cardHover};
+  min-width: 180px;
+  padding: 6px 0;
   z-index: 501;
 `;
 
 const ContextMenuItem = styled.div`
-  padding: 0.5rem 0.875rem;
-  font-size: 0.8125rem;
-  color: ${theme.textPrimary};
+  padding: 9px 14px;
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  font-weight: 500;
+  color: ${theme.color.gray8};
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background ${theme.motion.fast};
 
-  &:hover {
-    background: ${theme.bgTertiary};
-  }
+  &:hover { background: ${theme.color.hairline}; }
 `;
 
 const ContextMenuDivider = styled.div`
   height: 1px;
-  background: ${theme.border};
-  margin: 0.25rem 0;
+  background: ${theme.color.borderDefault};
+  margin: 6px 0;
 `;

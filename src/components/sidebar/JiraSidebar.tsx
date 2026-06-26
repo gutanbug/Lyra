@@ -249,7 +249,8 @@ export default JiraSidebar;
 // ── Styled Components ──
 
 const Container = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${theme.font.body};
+  font-size: 13px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -257,111 +258,123 @@ const Container = styled.div`
 
 const SearchBox = styled.div`
   position: relative;
-  margin: 0 10px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 10px 12px;
+  background: ${theme.color.gray0};
+  border: 1.5px solid ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  transition: border-color ${theme.motion.fast}, background ${theme.motion.fast};
+
+  &:focus-within {
+    border-color: ${theme.color.accent};
+    background: ${theme.color.surface};
+  }
 `;
 
 const SearchIconWrap = styled.span`
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: ${theme.textMuted};
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  color: #a39d96;
+  flex-shrink: 0;
 `;
 
 const SearchInput = styled.input`
-  width: 100%;
-  padding: 6px 8px 6px 28px;
-  border: 1px solid ${theme.border};
-  border-radius: 6px;
-  background: ${theme.bgPrimary};
-  color: ${theme.textPrimary};
-  font-size: 0.8125rem;
+  flex: 1;
+  background: transparent;
+  border: none;
   outline: none;
-  box-sizing: border-box;
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${theme.color.gray8};
 
-  &:focus {
-    border-color: ${theme.blue};
-  }
-
-  &::placeholder {
-    color: ${theme.textMuted};
-  }
+  &::placeholder { color: ${theme.color.gray5}; }
 `;
 
 const TitleRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: 6px 14px;
   margin-bottom: 4px;
 `;
 
 const SidebarTitle = styled.div`
-  font-weight: 600;
-  /* 0.6875rem * 1.2 ≈ 0.825rem */
-  font-size: 0.825rem;
-  color: ${theme.textMuted};
+  font-weight: 700;
+  font-size: 11px;
+  color: ${theme.color.gray5};
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 `;
 
 const ClearBtn = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  /* 기존 3px/8px 대비 약 20% 증가 */
-  padding: 4px 10px;
-  border: 1px solid ${theme.border};
-  border-radius: 14px;
-  background: transparent;
-  color: ${theme.textSecondary};
-  /* 0.6875rem * 1.2 ≈ 0.825rem */
-  font-size: 0.825rem;
+  padding: 5px 11px;
+  border: 1px solid ${theme.color.borderStrong};
+  border-radius: 99px;
+  background: ${theme.color.surface};
+  color: ${theme.color.gray6};
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
   line-height: 1;
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
 
-  & svg {
-    /* lucide 사이즈는 inline prop이라 아이콘 자체는 그대로 두되, 텍스트 비례 유지 */
-    flex-shrink: 0;
-  }
+  & svg { flex-shrink: 0; }
 
   &:hover {
-    background: ${theme.bgTertiary};
-    color: ${theme.textPrimary};
-    border-color: ${theme.textMuted};
+    background: ${theme.color.hairline};
+    color: ${theme.color.gray8};
+    border-color: ${theme.color.gray5};
   }
 `;
 
 const ProjectList = styled.div`
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px 8px;
+  padding: 0 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 `;
 
 const ProjectCard = styled.div<{ $active: boolean }>`
-  border: 1px solid ${({ $active }) => ($active ? theme.blue : theme.border)};
-  border-radius: 8px;
-  background: ${({ $active }) => ($active ? theme.blueLight : theme.bgPrimary)};
+  position: relative;
+  border-radius: ${theme.radius.ctl};
+  background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : 'transparent')};
   overflow: hidden;
-  transition: all 0.15s ease;
+  transition: background ${theme.motion.fast};
+
+  ${({ $active }) => $active && `
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      background: ${theme.color.accent};
+      border-radius: 0 3px 3px 0;
+    }
+  `}
 
   &:hover {
-    border-color: ${({ $active }) => ($active ? theme.blue : theme.textMuted)};
+    background: ${({ $active }) => ($active ? 'rgba(0, 123, 255, 0.09)' : theme.color.hairline)};
   }
 `;
 
 const ProjectHeader = styled.div<{ $active: boolean }>`
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 11px;
+  padding: 11px 13px;
   cursor: pointer;
-  color: ${({ $active }) => ($active ? theme.blue : theme.textPrimary)};
+  color: ${({ $active }) => ($active ? theme.color.gray8 : theme.color.gray6)};
   font-weight: ${({ $active }) => ($active ? 600 : 500)};
 `;
 

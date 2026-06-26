@@ -131,7 +131,8 @@ export default SpaceFilterModal;
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(12, 12, 16, 0.5);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,65 +141,71 @@ const Overlay = styled.div`
 
 const Panel = styled.div<{ $theme: ServiceTheme }>`
   background: ${({ $theme }) => $theme.bg.default};
-  border-radius: 6px;
+  border-radius: 22px;
   border: 1px solid ${({ $theme }) => $theme.border};
-  width: 420px;
-  max-height: 70vh;
+  width: 460px;
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 `;
 
 const Header = styled.div<{ $theme: ServiceTheme }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid ${({ $theme }) => $theme.border};
+  padding: 20px 24px 14px;
 `;
 
 const Title = styled.h3<{ $theme: ServiceTheme }>`
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: ${({ $theme }) => $theme.text.primary};
 `;
 
 const CloseBtn = styled.button<{ $theme: ServiceTheme }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   background: none;
   border: none;
-  font-size: 1rem;
+  border-radius: 8px;
+  font-size: 15px;
   color: ${({ $theme }) => $theme.text.muted};
   cursor: pointer;
-  padding: 0.25rem;
   line-height: 1;
+  transition: background 0.12s ease, color 0.12s ease;
 
-  &:hover { color: ${({ $theme }) => $theme.text.primary}; }
+  &:hover { background: rgba(0,0,0,.05); color: ${({ $theme }) => $theme.text.primary}; }
 `;
 
 const Desc = styled.div<{ $theme: ServiceTheme }>`
-  padding: 0.75rem 1.25rem;
-  font-size: 0.8125rem;
+  padding: 0 24px 14px;
+  font-size: 13.5px;
   color: ${({ $theme }) => $theme.text.secondary};
-  border-bottom: 1px solid ${({ $theme }) => $theme.border};
 `;
 
 const SearchRow = styled.div<{ $theme: ServiceTheme }>`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-bottom: 1px solid ${({ $theme }) => $theme.border};
+  gap: 8px;
+  padding: 0 24px 14px;
 `;
 
 const SearchInput = styled.input<{ $theme: ServiceTheme }>`
   flex: 1;
-  padding: 0.375rem 0.625rem;
-  border: 1px solid ${({ $theme }) => $theme.border};
-  border-radius: 20px;
-  font-size: 0.8125rem;
-  background: ${({ $theme }) => $theme.bg.subtle};
+  padding: 11px 14px;
+  border: 1.5px solid var(--lyra-c-border-strong, #c7d3e2);
+  border-radius: 12px;
+  font-size: 14px;
+  background: var(--lyra-c-gray0, #f7f6f3);
   color: ${({ $theme }) => $theme.text.primary};
+  transition: border-color 0.12s ease, background 0.12s ease;
 
   &::placeholder { color: ${({ $theme }) => $theme.text.muted}; }
   &:focus {
@@ -209,16 +216,18 @@ const SearchInput = styled.input<{ $theme: ServiceTheme }>`
 `;
 
 const SmallBtn = styled.button<{ $theme: ServiceTheme }>`
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
   background: transparent;
-  border: 1px solid ${({ $theme }) => $theme.border};
-  border-radius: 20px;
+  border: 1px solid #e6e3df;
+  border-radius: 99px;
   color: ${({ $theme }) => $theme.text.secondary};
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 
   &:hover {
-    background: ${({ $theme }) => $theme.bg.hover};
+    background: #f4f2ef;
     color: ${({ $theme }) => $theme.text.primary};
   }
 `;
@@ -226,45 +235,42 @@ const SmallBtn = styled.button<{ $theme: ServiceTheme }>`
 const List = styled.div`
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem 0;
-  max-height: 400px;
+  padding: 4px 0 8px;
+  max-height: 420px;
 `;
 
 const SectionLabel = styled.div<{ $theme: ServiceTheme }>`
-  padding: 0.375rem 1.25rem 0.25rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  padding: 14px 24px 6px;
+  font-size: 11px;
+  font-weight: 700;
   color: ${({ $theme }) => $theme.text.muted};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid ${({ $theme }) => $theme.border};
-  margin-bottom: 0.125rem;
+  letter-spacing: 0.08em;
 
   &:not(:first-of-type) {
-    margin-top: 0.375rem;
-    border-top: 1px solid ${({ $theme }) => $theme.border};
-    padding-top: 0.5rem;
+    margin-top: 4px;
+    border-top: 1px solid #f4f2ef;
   }
 `;
 
 const Empty = styled.div<{ $theme: ServiceTheme }>`
-  padding: 1.5rem;
+  padding: 28px;
   text-align: center;
-  font-size: 0.8125rem;
+  font-size: 13.5px;
   color: ${({ $theme }) => $theme.text.muted};
 `;
 
 const Item = styled.div<{ $theme: ServiceTheme; $active: boolean }>`
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.5rem 1.25rem;
+  gap: 11px;
+  padding: 10px 24px;
   cursor: pointer;
-  transition: background 0.1s;
-  background: ${({ $theme, $active }) => ($active ? $theme.primaryLight : 'transparent')};
+  transition: background 0.12s ease;
+  background: ${({ $theme, $active }) => ($active ? 'rgba(0,123,255,.07)' : 'transparent')};
 
   &:hover {
-    background: ${({ $theme, $active }) => ($active ? $theme.primaryLight : $theme.bg.hover)};
+    background: ${({ $theme, $active }) => ($active ? 'rgba(0,123,255,.09)' : '#faf9f7')};
   }
 `;
 
@@ -272,20 +278,21 @@ const Check = styled.span<{ $theme: ServiceTheme; $checked: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 20px;
-  border: 2px solid ${({ $theme, $checked }) => ($checked ? $theme.primary : $theme.border)};
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  border: 1.5px solid ${({ $theme, $checked }) => ($checked ? $theme.primary : '#d8d5d2')};
   background: ${({ $theme, $checked }) => ($checked ? $theme.primary : 'transparent')};
   color: white;
-  font-size: 0.6875rem;
+  font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
 `;
 
 const Name = styled.span<{ $theme: ServiceTheme }>`
-  font-size: 0.8125rem;
+  font-size: 14px;
   font-weight: 500;
+  letter-spacing: -0.01em;
   color: ${({ $theme }) => $theme.text.primary};
   overflow: hidden;
   text-overflow: ellipsis;
@@ -294,7 +301,8 @@ const Name = styled.span<{ $theme: ServiceTheme }>`
 `;
 
 const ItemKey = styled.span<{ $theme: ServiceTheme }>`
-  font-size: 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
   color: ${({ $theme }) => $theme.text.muted};
   flex-shrink: 0;
 `;
@@ -302,27 +310,29 @@ const ItemKey = styled.span<{ $theme: ServiceTheme }>`
 const ActionSlot = styled.span`
   display: inline-flex;
   align-items: center;
-  margin-left: 0.375rem;
+  margin-left: 6px;
   flex-shrink: 0;
 `;
 
 const Footer = styled.div<{ $theme: ServiceTheme }>`
   display: flex;
   justify-content: flex-end;
-  padding: 0.75rem 1.25rem;
-  border-top: 1px solid ${({ $theme }) => $theme.border};
+  padding: 14px 24px 20px;
 `;
 
 const SaveBtn = styled.button<{ $theme: ServiceTheme }>`
-  padding: 0.5rem 1.25rem;
+  padding: 13px 22px;
   background: ${({ $theme }) => $theme.primary};
   color: white;
   border: none;
-  border-radius: 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background 0.2s ${transition};
+  box-shadow: 0 6px 18px rgba(0,123,255,0.32);
+  transition: filter 0.12s ease, transform 0.12s ease;
 
-  &:hover { background: ${({ $theme }) => $theme.primaryHover}; }
+  &:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  &:active { transform: scale(0.98); }
 `;

@@ -108,67 +108,70 @@ const Dropdown = styled.div`
   transform: translateX(-50%);
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: ${jiraTheme.radius.ctl};
+  box-shadow: ${jiraTheme.shadow.cardHover};
   z-index: 10000;
-  min-width: 200px;
-  max-width: 280px;
+  min-width: 220px;
+  max-width: 300px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 `;
 
 const SearchInput = styled.input`
-  padding: 0.5rem 0.75rem;
+  padding: 12px 14px;
   border: none;
-  border-bottom: 1px solid ${jiraTheme.border};
-  font-size: 0.8125rem;
+  border-bottom: 1px solid ${jiraTheme.hairline};
+  font-family: ${jiraTheme.font.body};
+  font-size: 13.5px;
   color: ${jiraTheme.text.primary};
   background: transparent;
   outline: none;
 
-  &::placeholder {
-    color: ${jiraTheme.text.muted};
-  }
+  &::placeholder { color: ${jiraTheme.text.muted}; }
 `;
 
 const UserList = styled.div`
-  max-height: 240px;
+  max-height: 260px;
   overflow-y: auto;
+  padding: 4px 0;
 `;
 
 const Item = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4375rem 0.75rem;
-  font-size: 0.8125rem;
+  gap: 10px;
+  padding: 9px 14px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13.5px;
   color: ${jiraTheme.text.primary};
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s;
+  transition: background ${jiraTheme.motion.fast};
 
-  &:hover { background: ${jiraTheme.bg.hover}; }
-  &:not(:last-child) { border-bottom: 1px solid ${jiraTheme.border}; }
+  &:hover { background: ${jiraTheme.hairline}; }
 `;
 
 const Avatar = styled.img`
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   flex-shrink: 0;
+  object-fit: cover;
 `;
 
 const AvatarPlaceholder = styled.span`
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: ${jiraTheme.primary};
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.625rem;
-  font-weight: 600;
+  font-family: ${jiraTheme.font.body};
+  font-size: 10px;
+  font-weight: 700;
   flex-shrink: 0;
 `;
 

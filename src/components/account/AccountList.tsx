@@ -23,59 +23,74 @@ const Item = styled.li<{ $active?: boolean; $selected?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  margin-bottom: 0.5rem;
-  background: ${({ $active }) => ($active ? theme.blueLight : theme.bgSecondary)};
-  border: 2px solid ${({ $active, $selected }) => ($selected ? theme.blue : $active ? theme.blue : theme.border)};
-  border-radius: 8px;
+  gap: 14px;
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  background: ${theme.color.surface};
+  border: 1px solid ${({ $active, $selected }) =>
+    ($selected ? theme.color.accent : $active ? theme.color.accent : theme.color.borderDefault)};
+  border-radius: ${theme.radius.card};
+  box-shadow: ${({ $active, $selected }) => (($selected || $active) ? theme.shadow.cardHover : theme.shadow.card)};
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color ${theme.motion.fast}, box-shadow ${theme.motion.fast}, transform ${theme.motion.fast};
 
   ${({ $selected }) => !$selected && `
-    &:hover { border-color: ${theme.textMuted}; }
+    &:hover { transform: translateY(-2px); box-shadow: ${theme.shadow.cardHover}; }
   `}
 `;
 
 const Info = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 `;
 
 const Name = styled.span`
+  font-family: ${theme.font.body};
+  font-size: 15px;
   font-weight: 600;
-  color: ${theme.textPrimary};
+  letter-spacing: -0.01em;
+  color: ${theme.color.gray8};
 `;
 
 const Meta = styled.span`
-  font-size: 0.75rem;
-  color: ${theme.textSecondary};
+  font-family: ${theme.font.body};
+  font-size: 13px;
+  color: ${theme.color.gray5};
 `;
 
 const Actions = styled.div`
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
+  flex-shrink: 0;
 `;
 
 const Button = styled.button<{ $variant?: 'primary' | 'danger' }>`
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  border: none;
-  border-radius: 20px;
+  padding: 8px 14px;
+  font-family: ${theme.font.body};
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border: 1px solid transparent;
+  border-radius: ${theme.radius.ctl};
   cursor: pointer;
-  transition: all 0.2s ${transition};
+  transition: background ${theme.motion.fast}, color ${theme.motion.fast}, border-color ${theme.motion.fast};
 
   ${({ $variant }) =>
     $variant === 'danger'
       ? `
-    background: #fef2f2;
-    color: ${theme.error};
-    &:hover { background: #fee2e2; }
+    background: ${theme.color.dangerSoft};
+    color: ${theme.color.dangerInk};
+    border-color: ${theme.color.dangerSoft};
+    &:hover { background: #f9d6da; }
   `
       : `
-    background: ${theme.blueLight};
-    color: ${theme.blue};
-    &:hover { background: ${theme.blueLighter}; }
+    background: ${theme.color.accentSoft};
+    color: ${theme.color.accentStrong};
+    border-color: ${theme.color.accentSoft};
+    &:hover { background: #d8e9ff; }
   `}
 `;
 

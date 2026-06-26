@@ -216,39 +216,42 @@ const JiraIssueHeader = ({
 export default JiraIssueHeader;
 
 const HeaderCard = styled.div`
-  padding: 1.5rem;
+  padding: 28px 32px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.card};
   border: 1px solid ${jiraTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${jiraTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const HeaderTopRow = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 8px;
+  margin-bottom: 12px;
 `;
 
 const IssueKeyRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
 `;
 
 const IssueKeyLink = styled.span`
+  font-family: ${jiraTheme.font.brand};
   font-weight: 700;
-  font-size: 1.125rem;
-  color: ${jiraTheme.primary};
+  font-size: 16px;
+  letter-spacing: 0;
+  color: ${jiraTheme.text.muted};
 `;
 
 const TopRowActions = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 6px;
   flex-shrink: 0;
 `;
 
@@ -256,15 +259,15 @@ const CopyLinkBtn = styled.button<{ $copied: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: ${({ $copied }) => ($copied ? jiraTheme.primaryLight : 'transparent')};
-  border: 1px solid ${({ $copied }) => ($copied ? jiraTheme.primary : jiraTheme.border)};
-  border-radius: 50%;
+  border: 1px solid ${({ $copied }) => ($copied ? jiraTheme.primary : jiraTheme.borderStrong)};
+  border-radius: ${jiraTheme.radius.ctl};
   color: ${({ $copied }) => ($copied ? jiraTheme.primary : jiraTheme.text.muted)};
   cursor: pointer;
-  transition: all 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast}, border-color ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
 
   &:not(:disabled):hover {
     background: ${jiraTheme.primaryLight};
@@ -272,25 +275,22 @@ const CopyLinkBtn = styled.button<{ $copied: boolean }>`
     color: ${jiraTheme.primary};
   }
 
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 `;
 
 const OpenInBrowserBtn = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: transparent;
-  border: 1px solid ${jiraTheme.border};
-  border-radius: 50%;
+  border: 1px solid ${jiraTheme.borderStrong};
+  border-radius: ${jiraTheme.radius.ctl};
   color: ${jiraTheme.text.muted};
   cursor: pointer;
-  transition: all 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast}, border-color ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
 
   &:hover {
     background: ${jiraTheme.primaryLight};
@@ -300,64 +300,72 @@ const OpenInBrowserBtn = styled.button`
 `;
 
 const Title = styled.h1`
-  margin: 0.5rem 0 1rem 0;
-  font-size: 1.5rem;
-  font-weight: 600;
+  margin: 6px 0 14px 0;
+  font-family: ${jiraTheme.font.body};
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
-  line-height: 1.4;
+  line-height: 1.3;
 `;
 
 const Badges = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 8px;
+  margin-bottom: 18px;
 `;
 
 const PriorityBadgeBtn = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.625rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  border-radius: 3px;
-  border: 1px solid ${jiraTheme.border};
-  background: ${jiraTheme.bg.subtle};
+  gap: 6px;
+  padding: 7px 13px;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-radius: ${jiraTheme.radius.chip};
+  border: 1px solid ${jiraTheme.borderStrong};
+  background: ${jiraTheme.bg.default};
   color: ${jiraTheme.text.primary};
   cursor: pointer;
-  transition: all 0.15s ${transition};
+  transition: background ${jiraTheme.motion.fast}, border-color ${jiraTheme.motion.fast};
 
   &:hover {
-    background: ${jiraTheme.bg.hover};
+    background: ${jiraTheme.hairline};
     border-color: ${jiraTheme.text.muted};
   }
 `;
 
 const MetaGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid ${jiraTheme.border};
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
+  padding-top: 18px;
+  border-top: 1px solid ${jiraTheme.hairline};
 `;
 
 const MetaItem = styled.div`
-  font-size: 0.8125rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 13.5px;
 `;
 
 const MetaLabel = styled.span`
   display: block;
   color: ${jiraTheme.text.muted};
-  margin-bottom: 0.25rem;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 `;
 
 const MetaValueRow = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 6px;
 
-  /* hover 시에만 편집 트리거 노출 */
   &:hover button { opacity: 1; }
 `;
 
@@ -366,26 +374,29 @@ const EditTrigger = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   color: ${jiraTheme.text.muted};
   cursor: pointer;
-  transition: opacity 0.15s ${transition}, background 0.15s ${transition};
-  &:hover { background: ${jiraTheme.bg.hover}; color: ${jiraTheme.text.primary}; opacity: 1; }
+  transition: opacity ${jiraTheme.motion.fast}, background ${jiraTheme.motion.fast}, color ${jiraTheme.motion.fast};
+
+  &:hover { background: ${jiraTheme.hairline}; color: ${jiraTheme.text.primary}; opacity: 1; }
 `;
 
 const MetaValue = styled.span<{ $isMe?: boolean; $clickable?: boolean }>`
+  font-size: 14px;
+  font-weight: ${({ $isMe }) => ($isMe ? 600 : 500)};
   color: ${({ $isMe }) => ($isMe ? jiraTheme.primary : jiraTheme.text.primary)};
-  font-weight: ${({ $isMe }) => ($isMe ? 600 : 400)};
   cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
-  border-radius: 3px;
-  padding: 0.125rem 0.25rem;
+  border-radius: 6px;
+  padding: 2px 6px;
+  transition: background ${jiraTheme.motion.fast};
 
   &:hover {
-    ${({ $clickable }) => $clickable && `background: ${jiraTheme.bg.hover};`}
+    ${({ $clickable }) => $clickable && `background: ${jiraTheme.hairline};`}
   }
 `;

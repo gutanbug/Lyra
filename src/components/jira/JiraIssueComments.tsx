@@ -225,69 +225,70 @@ const JiraIssueComments = ({
 export default JiraIssueComments;
 
 const Section = styled.div`
-  padding: 1.5rem;
+  padding: 26px 28px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.card};
   border: 1px solid ${jiraTheme.border};
-  margin-bottom: 1rem;
+  box-shadow: ${jiraTheme.shadow.card};
+  margin-bottom: 18px;
 `;
 
 const CommentSectionTitle = styled.h2`
   margin: 0;
-  font-size: 1rem;
+  font-family: ${jiraTheme.font.body};
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: ${jiraTheme.text.primary};
 `;
 
 const SectionToggleHeader = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
 
-  &:hover ${CommentSectionTitle} {
-    color: ${jiraTheme.primary};
-  }
+  &:hover ${CommentSectionTitle} { color: ${jiraTheme.primary}; }
 `;
 
 const SectionToggleArrow = styled.span`
-  font-size: 0.7rem;
+  font-size: 10px;
   color: ${jiraTheme.text.muted};
-  width: 1rem;
+  width: 16px;
   flex-shrink: 0;
 `;
 
 const CommentList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: 14px;
+  margin-top: 16px;
 `;
 
 const ThreadGroup = styled.div``;
 
 const CommentItem = styled.div`
-  padding: 0.75rem;
+  padding: 18px 20px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.ctl};
   border: 1px solid ${jiraTheme.border};
 `;
 
 const ReplyList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  margin-left: 1.5rem;
-  padding-left: 0.75rem;
-  border-left: 2px solid ${jiraTheme.border};
+  gap: 8px;
+  margin-top: 10px;
+  margin-left: 22px;
+  padding-left: 14px;
+  border-left: 2px solid ${jiraTheme.hairline};
 `;
 
 const ReplyItem = styled.div`
-  padding: 0.625rem 0.75rem;
+  padding: 14px 16px;
   background: ${jiraTheme.bg.default};
-  border-radius: 3px;
+  border-radius: ${jiraTheme.radius.ctl};
   border: 1px solid ${jiraTheme.border};
 `;
 

@@ -175,33 +175,45 @@ const Label = styled.label`
   color: ${theme.textPrimary};
 `;
 const Input = styled.input`
-  padding: 0.5rem 0.75rem;
-  border: 1px solid ${theme.border};
-  border-radius: 4px;
-  font-size: 0.875rem;
-  background: ${theme.bgPrimary};
-  &:focus { outline: none; border-color: ${theme.borderFocus}; }
+  padding: 13px 14px;
+  border: 1.5px solid ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  font-family: ${theme.font.body};
+  font-size: 14px;
+  background: ${theme.color.surface};
+  transition: border-color ${theme.motion.fast}, box-shadow ${theme.motion.fast};
+  &:focus { outline: none; border-color: ${theme.color.accent}; box-shadow: ${theme.shadow.focusRing}; }
 `;
 const PrimaryButton = styled.button`
-  padding: 0.5rem 1rem;
-  background: ${theme.blue};
+  padding: 13px 22px;
+  background: ${theme.color.accent};
   color: white;
   border: none;
-  border-radius: 20px;
-  font-weight: 500;
+  border-radius: ${theme.radius.ctl};
+  font-family: ${theme.font.body};
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background 0.2s ${transition};
-  &:hover { background: ${theme.blueDark}; }
+  box-shadow: ${theme.shadow.btnAccent};
+  transition: filter ${theme.motion.fast}, transform ${theme.motion.fast};
+  &:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+  &:active:not(:disabled) { transform: scale(0.98); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 `;
 const SecondaryButton = styled.button`
   align-self: flex-start;
-  padding: 0.4rem 0.9rem;
-  background: transparent;
-  color: ${theme.textPrimary};
-  border: 1px solid ${theme.border};
-  border-radius: 20px;
-  font-size: 0.85rem;
+  padding: 10px 18px;
+  background: ${theme.color.hairline};
+  color: ${theme.color.gray7};
+  border: 1px solid ${theme.color.borderStrong};
+  border-radius: ${theme.radius.ctl};
+  font-family: ${theme.font.body};
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background ${theme.motion.fast};
+  &:hover { background: ${theme.color.gray1}; }
 `;
 const AdvancedToggle = styled.button`
   align-self: flex-start;

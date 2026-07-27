@@ -329,7 +329,58 @@ export function parseChildIssues(result: unknown): ChildIssue[] {
 
 // ── JiraDashboard 정규화 ──
 
-function normalizeIssue(raw: Record<string, unknown>): NormalizedIssue {
+/** parseIssues 옵션 — 프로젝트별 시작일 필드 매핑 등 정규화 시점에 필요한 컨텍스트. */
+export interface ParseIssuesOptions {
+  /** 프로젝트 키 → 시작일로 사용할 customfield ID 매핑. 예: { PROJ: 'customfield_10015' } */
+  startDateByProject?: Record<string, string>;
+}
+
+/**
+ * Ambient parse context — parseIssues 호출자가 options를 명시적으로 전달하지 않을 때 사용되는 fallback.
+ * useJiraSearch가 `setJiraParseContext`를 통해 startDateByProject 매핑을 셋업하면,
+ * 하위 훅(useJiraMyIssues 등)이 parseIssues를 옵션 없이 호출해도 자동으로 매핑이 적용된다.
+ *
+ * 렌더러는 단일 스레드이므로 race 없이 동작. 옵션 명시 전달 > ambient fallback.
+ */
+let ambientParseContext: ParseIssuesOptions = {};
+export function setJiraParseContext(ctx: ParseIssuesOptions): void {
+  ambientParseContext = ctx;
+}
+export function getJiraParseContext(): ParseIssuesOptions {
+  return ambientParseContext;
+}
+
+/** customfield 값에서 startDate 추출:
+ *  - 문자열: 그대로 반환 (YYYY-MM-DD 또는 ISO)
+ *  - 배열(스프린트류): 항목별 startDate / start 키 우선순위로 첫 유효값
+ *  - 객체: startDate / start 키
+ *  - 그 외: '' */
+function extractStartDateFromField(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        const sd = rec.startDate ?? rec.start;
+        if (typeof sd === 'string' && sd) return sd;
+      }
+    }
+    return '';
+  }
+  if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+    const sd = rec.startDate ?? rec.start;
+    if (typeof sd === 'string') return sd;
+  }
+  return '';
+}
+
+function deriveProjectKey(issueKey: string): string {
+  const dash = issueKey.indexOf('-');
+  return dash > 0 ? issueKey.slice(0, dash) : '';
+}
+
+function normalizeIssue(raw: Record<string, unknown>, options?: ParseIssuesOptions): NormalizedIssue {
   const key = str(raw.key) || str(raw.issueKey) || '';
   const id = str(raw.id) || '';
 
@@ -363,6 +414,15 @@ function normalizeIssue(raw: Record<string, unknown>): NormalizedIssue {
   const updated = str(f.updated) || '';
   const duedate = str(f.duedate) || str(f.dueDate) || str(f.due_date) || '';
 
+  // 타임라인 시작일 정규화: 사용자가 프로젝트별로 매핑한 customfield ID에서 값 추출.
+  // 우선순위: f.rawFields (electron 통과 경로) → f (raw fields 직접 경로).
+  let startDate = '';
+  const startDateFieldId = options?.startDateByProject?.[deriveProjectKey(key)];
+  if (startDateFieldId) {
+    const rawFieldsContainer = obj(f.rawFields) || f;
+    startDate = extractStartDateFromField(rawFieldsContainer[startDateFieldId]);
+  }
+
   const parentObj = obj(f.parent);
   const parentKey = str(parentObj?.key) || '';
   let parentSummary = str(parentObj?.summary) || '';
@@ -381,19 +441,20 @@ function normalizeIssue(raw: Record<string, unknown>): NormalizedIssue {
 
   return {
     id, key, summary, statusName, statusCategory, assigneeName,
-    issueTypeName, priorityName, created, updated, duedate,
+    issueTypeName, priorityName, created, updated, startDate, duedate,
     parentKey, parentSummary, subtaskCount,
   };
 }
 
-export function parseIssues(result: unknown): NormalizedIssue[] {
+export function parseIssues(result: unknown, options?: ParseIssuesOptions): NormalizedIssue[] {
   if (!result || typeof result !== 'object') return [];
   const r = result as Record<string, unknown>;
   const list = (r.issues ?? r.values ?? []) as Record<string, unknown>[];
   if (!Array.isArray(list)) return [];
+  const ctx = options ?? ambientParseContext;
   return list
     .filter((item) => item && typeof item === 'object')
-    .map(normalizeIssue)
+    .map((item) => normalizeIssue(item, ctx))
     .filter((issue) => issue.key || issue.id);
 }
 
@@ -427,7 +488,7 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
   for (const issue of issues) {
     if (isEpicType(issue.issueTypeName)) {
       if (!epicMap.has(issue.key)) {
-        epicMap.set(issue.key, { key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName, statusName: issue.statusName, statusCategory: issue.statusCategory, assigneeName: issue.assigneeName, priorityName: issue.priorityName, children: [] });
+        epicMap.set(issue.key, { key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName, statusName: issue.statusName, statusCategory: issue.statusCategory, assigneeName: issue.assigneeName, priorityName: issue.priorityName, startDate: issue.startDate, duedate: issue.duedate, children: [] });
       } else {
         const g = epicMap.get(issue.key)!;
         g.summary = issue.summary;
@@ -436,6 +497,8 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
         g.statusCategory = issue.statusCategory;
         g.assigneeName = issue.assigneeName;
         g.priorityName = issue.priorityName;
+        g.startDate = issue.startDate;
+        g.duedate = issue.duedate;
       }
       continue;
     }
@@ -457,6 +520,8 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
           statusCategory: '',
           assigneeName: '',
           priorityName: '',
+          startDate: parentIssue?.startDate || '',
+          duedate: parentIssue?.duedate || '',
           children: [],
         });
       }
@@ -475,6 +540,8 @@ export function groupByEpic(issues: NormalizedIssue[]): EpicGroup[] {
           statusCategory: '',
           assigneeName: '',
           priorityName: '',
+          startDate: parentIssue?.startDate || '',
+          duedate: parentIssue?.duedate || '',
           children: [],
         });
       }

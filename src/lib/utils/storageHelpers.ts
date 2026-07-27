@@ -106,6 +106,8 @@ export interface ProjectFieldEntry {
 
 export interface ProjectFieldConfig {
   fields: ProjectFieldEntry[];
+  /** 타임라인 뷰에서 시작일로 사용할 customfield ID (예: 'customfield_10015'). 미지정이면 undefined. */
+  startDateFieldId?: string;
 }
 
 /**

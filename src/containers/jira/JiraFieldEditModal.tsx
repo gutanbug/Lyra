@@ -203,9 +203,9 @@ const Dialog = styled.div`
   background: ${jiraTheme.bg.default};
   border-radius: 22px;
   border: 1px solid ${jiraTheme.border};
-  width: 480px;
+  width: 80vw;
   max-width: calc(100vw - 32px);
-  max-height: 80vh;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);

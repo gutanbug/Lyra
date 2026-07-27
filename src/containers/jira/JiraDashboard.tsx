@@ -19,6 +19,12 @@ import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
 import JiraSearchToolbar from 'components/jira/JiraSearchToolbar';
 import JiraStatusSummary from 'components/jira/JiraStatusSummary';
 import JiraIssueList from 'components/jira/JiraIssueList';
+import JiraIssueTimeline from 'components/jira/JiraIssueTimeline';
+import JiraTimelineToggle, { type JiraViewMode } from 'components/jira/JiraTimelineToggle';
+import JiraTimelineScaleToggle from 'components/jira/JiraTimelineScaleToggle';
+import type { TimelineScale } from 'lib/utils/jiraTimelineRange';
+import { Network as NetworkIcon } from 'lucide-react';
+import { integrationController } from 'controllers/account';
 import SpaceFilterModal from 'components/common/SpaceFilterModal';
 import ItemContextMenu from 'components/common/ItemContextMenu';
 import { isAtlassianAccount } from 'types/account';
@@ -38,6 +44,9 @@ const JiraDashboard = () => {
 
   // 프로젝트 필드 설정 모달 (스페이스 필터에서 톱니 클릭 시 진입)
   const [editingFieldsProjectKey, setEditingFieldsProjectKey] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<JiraViewMode>('list');
+  const [timelineScale, setTimelineScale] = useState<TimelineScale>('month');
+  const [showDependencies, setShowDependencies] = useState<boolean>(false);
 
   const handleItemContextMenu = useCallback((e: React.MouseEvent, path: string, label: string) => {
     e.preventDefault();
@@ -72,7 +81,8 @@ const JiraDashboard = () => {
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadMoreBrowseEpics, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
-    handleTransitioned, handleAssigned, saveSpaceSettings,
+    handleTransitioned, handleAssigned, handleDateChanged, saveSpaceSettings,
+    startDateByProject,
   } = search;
 
   const { target: transitionTarget, transitions, isLoading: isTransitionLoading, dropdownRef: transitionRef, open: openTransitionDropdown, execute: executeTransition, close: closeTransition, pending: pendingTransition, submitPending: submitPendingTransition, cancelPending: cancelPendingTransition } = useTransitionDropdown({
@@ -193,40 +203,107 @@ const JiraDashboard = () => {
         <JiraStatusSummary statusCounts={statusCounts} selectedStatuses={selectedStatuses} onToggleStatus={toggleStatus} />
       )}
 
-      <JiraIssueList
-        browseProjectKey={browseProjectKey}
-        browseBoardName={browseBoardName}
-        browseEpics={browseEpics}
-        browseChildrenMap={browseChildrenMap}
-        isBrowseLoading={isBrowseLoading}
-        isBrowseLoadingMore={isBrowseLoadingMore}
-        hasMoreBrowseEpics={hasMoreBrowseEpics}
-        onLoadMoreBrowseEpics={loadMoreBrowseEpics}
-        browseExpandedKeys={browseExpandedKeys}
-        epicGroups={epicGroups}
-        expandedEpics={expandedEpics}
-        defaultChildrenMap={defaultChildrenMap}
-        defaultExpandedChildren={defaultExpandedChildren}
-        defaultLoadingChildren={defaultLoadingChildren}
-        isLoading={isLoading}
-        isSearching={isSearching}
-        isSearchMode={isSearchMode}
-        myDisplayName={myDisplayName}
-        selectedStatuses={selectedStatuses}
-        onToggleEpic={toggleEpic}
-        onToggleBrowseEpic={toggleBrowseEpic}
-        onExpandAll={expandAll}
-        onCollapseAll={collapseAll}
-        onGoToIssue={goToIssue}
-        onLoadBrowseChildren={loadBrowseChildren}
-        onLoadDefaultChildren={loadDefaultChildren}
-        onSetBrowseExpandedKeys={setBrowseExpandedKeys}
-        onSetDefaultExpandedChildren={setDefaultExpandedChildren}
-        onOpenTransitionDropdown={openTransitionDropdown}
-        onOpenAssigneeDropdown={openAssigneeDropdown}
-        onOpenPriorityDropdown={openPriorityDropdown}
-        onItemContextMenu={handleItemContextMenu}
-      />
+      {(() => {
+        const viewToggle =
+          !isSearchMode && !browseProjectKey ? (
+            <JiraTimelineToggle value={viewMode} onChange={setViewMode} />
+          ) : null;
+        if (viewMode === 'list' || isSearchMode || browseProjectKey) {
+          return (
+            <JiraIssueList
+              browseProjectKey={browseProjectKey}
+              browseBoardName={browseBoardName}
+              browseEpics={browseEpics}
+              browseChildrenMap={browseChildrenMap}
+              isBrowseLoading={isBrowseLoading}
+              isBrowseLoadingMore={isBrowseLoadingMore}
+              hasMoreBrowseEpics={hasMoreBrowseEpics}
+              onLoadMoreBrowseEpics={loadMoreBrowseEpics}
+              browseExpandedKeys={browseExpandedKeys}
+              epicGroups={epicGroups}
+              expandedEpics={expandedEpics}
+              defaultChildrenMap={defaultChildrenMap}
+              defaultExpandedChildren={defaultExpandedChildren}
+              defaultLoadingChildren={defaultLoadingChildren}
+              isLoading={isLoading}
+              isSearching={isSearching}
+              isSearchMode={isSearchMode}
+              myDisplayName={myDisplayName}
+              selectedStatuses={selectedStatuses}
+              onToggleEpic={toggleEpic}
+              onToggleBrowseEpic={toggleBrowseEpic}
+              onExpandAll={expandAll}
+              onCollapseAll={collapseAll}
+              onGoToIssue={goToIssue}
+              onLoadBrowseChildren={loadBrowseChildren}
+              onLoadDefaultChildren={loadDefaultChildren}
+              onSetBrowseExpandedKeys={setBrowseExpandedKeys}
+              onSetDefaultExpandedChildren={setDefaultExpandedChildren}
+              onOpenTransitionDropdown={openTransitionDropdown}
+              onOpenAssigneeDropdown={openAssigneeDropdown}
+              onOpenPriorityDropdown={openPriorityDropdown}
+              onItemContextMenu={handleItemContextMenu}
+              headerActionSlot={viewToggle}
+            />
+          );
+        }
+        const handleIssueDateChange = (issueKey: string, next: { startDate: string; endDate: string }) => {
+          if (!activeAccount) return;
+          // 낙관적 로컬 캐시 패치 (먼저 적용 → API 실패 시 fetchMyIssues로 복구).
+          handleDateChanged(issueKey, { startDate: next.startDate, duedate: next.endDate });
+          const projectKey = issueKey.includes('-') ? issueKey.slice(0, issueKey.indexOf('-')) : '';
+          const startDateFieldId = projectKey ? startDateByProject[projectKey] : undefined;
+          const calls: Promise<unknown>[] = [];
+          calls.push(integrationController.invoke({
+            accountId: activeAccount.id,
+            serviceType: 'jira',
+            action: 'updateIssueField',
+            params: { issueKey, fieldId: 'duedate', fieldValue: next.endDate },
+          }));
+          if (startDateFieldId) {
+            calls.push(integrationController.invoke({
+              accountId: activeAccount.id,
+              serviceType: 'jira',
+              action: 'updateIssueField',
+              params: { issueKey, fieldId: startDateFieldId, fieldValue: next.startDate },
+            }));
+          }
+          Promise.all(calls).catch(() => {
+            // 실패 → 서버 진실로 복구.
+            fetchMyIssues();
+          });
+        };
+        const timelineToolbarSlot = (
+          <>
+            <JiraTimelineScaleToggle value={timelineScale} onChange={setTimelineScale} />
+            <DependencyToggle
+              type="button"
+              aria-pressed={showDependencies}
+              $active={showDependencies}
+              onClick={() => setShowDependencies((v) => !v)}
+              title="의존성 화살표 표시"
+            >
+              <NetworkIcon size={14} />
+              <span>의존성</span>
+            </DependencyToggle>
+          </>
+        );
+        return (
+          <JiraIssueTimeline
+            epicGroups={epicGroups}
+            expandedEpics={expandedEpics}
+            defaultChildrenMap={defaultChildrenMap}
+            onToggleEpic={toggleEpic}
+            onGoToIssue={goToIssue}
+            isLoading={isLoading}
+            headerActionSlot={viewToggle}
+            toolbarSlot={timelineToolbarSlot}
+            scale={timelineScale}
+            showDependencies={showDependencies}
+            onIssueDateChange={handleIssueDateChange}
+          />
+        );
+      })()}
 
       {showSpaceSettings && !editingFieldsProjectKey && (
         <SpaceFilterModal
@@ -363,6 +440,23 @@ const EmptyCenter = styled.div`
   text-align: center;
   color: ${jiraTheme.text.muted};
   font-size: 0.95rem;
+`;
+
+const DependencyToggle = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  background: ${({ $active }) => ($active ? jiraTheme.primaryLight : jiraTheme.bg.default)};
+  color: ${({ $active }) => ($active ? jiraTheme.primary : jiraTheme.text.secondary)};
+  border: 1px solid ${({ $active }) => ($active ? 'transparent' : jiraTheme.border)};
+  &:hover { color: ${jiraTheme.text.primary}; }
 `;
 
 const SpaceSettingsBtn = styled.button`

@@ -63,4 +63,19 @@ export const jiraTheme = {
   motion: theme.motion,
   typo: theme.typo,
   font: theme.font,
+
+  // 타임라인 전용 토큰 — light/dark 자동 전환 (AppearanceProvider가 CSS 변수 갱신)
+  // Source: design_handoff_jira_timeline/README.md
+  timeline: {
+    epic: 'var(--lyra-c-timeline-epic, #7a5af0)',
+    epicTrack: 'var(--lyra-c-timeline-epic-track, #efeafe)',
+    epicBd: 'var(--lyra-c-timeline-epic-bd, #dccff8)',
+    dep: 'var(--lyra-c-timeline-dep, #b0a8a3)',
+    today: 'var(--lyra-c-timeline-today, #dc3545)',
+    weekend: 'var(--lyra-c-timeline-weekend, #f4f2ef)',
+    statusProgress: 'var(--lyra-c-timeline-status-progress, #007bff)',
+    statusReview: 'var(--lyra-c-timeline-status-review, #ff9800)',
+    statusDone: 'var(--lyra-c-timeline-status-done, #12b886)',
+    statusTodoBd: 'var(--lyra-c-timeline-status-todo-bd, #cbc5c2)',
+  },
 };

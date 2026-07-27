@@ -94,6 +94,7 @@ const JiraProjectFieldSettingsModal = ({ accountId, projectKey, projectName, onB
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [startDateFieldId, setStartDateFieldId] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +115,7 @@ const JiraProjectFieldSettingsModal = ({ accountId, projectKey, projectName, onB
         const fields = Array.isArray(fieldsResult) ? fieldsResult : [];
         setMeta(fields);
         setRows(mergeFieldsWithConfig(fields, savedConfig));
+        setStartDateFieldId(savedConfig?.startDateFieldId ?? '');
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -174,13 +176,30 @@ const JiraProjectFieldSettingsModal = ({ accountId, projectKey, projectName, onB
   const handleReset = () => {
     setRows(mergeFieldsWithConfig(meta, null));
     setEditingLabelId(null);
+    setStartDateFieldId('');
   };
+
+  /** 타임라인 시작일로 사용 가능한 후보 필드:
+   *  - schema.type === 'date' / 'datetime'
+   *  - 이름/ID에 sprint/start/시작 키워드 포함 (커스텀필드 매핑)
+   */
+  const startDateCandidates = useMemo(
+    () =>
+      meta.filter((f) => {
+        const t = f.schema?.type;
+        if (t === 'date' || t === 'datetime') return true;
+        const hay = `${f.id} ${f.name}`.toLowerCase();
+        return /sprint|start|시작/.test(hay);
+      }),
+    [meta],
+  );
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     const config: ProjectFieldConfig = {
       fields: rows.map(({ id, enabled, label }) => ({ id, enabled, ...(label ? { label } : {}) })),
+      ...(startDateFieldId ? { startDateFieldId } : {}),
     };
     try {
       await saveProjectFieldConfig(accountId, projectKey, config);
@@ -276,6 +295,23 @@ const JiraProjectFieldSettingsModal = ({ accountId, projectKey, projectName, onB
             <RotateCcw size={12} /> 초기화
           </ResetBtn>
         </Toolbar>
+
+        <TimelineRow>
+          <TimelineLabel>타임라인 시작일 필드</TimelineLabel>
+          <TimelineSelect
+            value={startDateFieldId}
+            onChange={(e) => setStartDateFieldId(e.target.value)}
+            disabled={loading}
+          >
+            <option value="">사용 안 함</option>
+            {startDateCandidates.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.id})
+              </option>
+            ))}
+          </TimelineSelect>
+          <TimelineHint>타임라인 뷰에서 막대 시작점으로 사용할 customfield</TimelineHint>
+        </TimelineRow>
 
         <Body>
           {error && <ErrorMsg>{error}</ErrorMsg>}
@@ -384,9 +420,9 @@ const Panel = styled.div`
   background: ${jiraTheme.bg.default};
   border: 1px solid ${jiraTheme.border};
   border-radius: 22px;
-  width: 640px;
+  width: 80vw;
   max-width: 100%;
-  max-height: 100%;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
@@ -472,6 +508,38 @@ const ResetBtn = styled.button`
   cursor: pointer;
   &:not(:disabled):hover { background: ${jiraTheme.bg.hover}; color: ${jiraTheme.text.primary}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const TimelineRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid ${jiraTheme.border};
+  background: ${jiraTheme.bg.default};
+  flex-wrap: wrap;
+`;
+
+const TimelineLabel = styled.label`
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: ${jiraTheme.text.primary};
+`;
+
+const TimelineSelect = styled.select`
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid ${jiraTheme.border};
+  border-radius: 4px;
+  background: ${jiraTheme.bg.default};
+  color: ${jiraTheme.text.primary};
+  min-width: 200px;
+  &:disabled { opacity: 0.5; }
+`;
+
+const TimelineHint = styled.span`
+  font-size: 0.7rem;
+  color: ${jiraTheme.text.muted};
 `;
 
 const Body = styled.div`

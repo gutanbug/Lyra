@@ -112,6 +112,18 @@ interface PaletteVars {
   mergedInk: string;
   lanePurple: string;
 
+  // Jira 타임라인 (Gantt) 전용
+  timelineEpic: string;
+  timelineEpicTrack: string;
+  timelineEpicBd: string;
+  timelineDep: string;
+  timelineToday: string;
+  timelineWeekend: string;
+  timelineStatusProgress: string;
+  timelineStatusReview: string;
+  timelineStatusDone: string;
+  timelineStatusTodoBd: string;
+
   // 그림자
   shadowCard: string;
   shadowCardHover: string;
@@ -162,6 +174,17 @@ const lightPalette = (pageBg: string): PaletteVars => ({
   mergedInk: '#6b3fd4',
   lanePurple: '#7a5af0',
 
+  timelineEpic: '#7a5af0',
+  timelineEpicTrack: '#efeafe',
+  timelineEpicBd: '#dccff8',
+  timelineDep: '#b0a8a3',
+  timelineToday: '#dc3545',
+  timelineWeekend: '#f4f2ef',
+  timelineStatusProgress: '#007bff',
+  timelineStatusReview: '#ff9800',
+  timelineStatusDone: '#12b886',
+  timelineStatusTodoBd: '#cbc5c2',
+
   shadowCard: '0 1px 2px rgba(28,27,26,.06), 0 6px 16px rgba(28,27,26,.06)',
   shadowCardHover: '0 12px 30px rgba(28,27,26,.10)',
   shadowBtnAccent: '0 6px 18px rgba(0,123,255,0.32)',
@@ -211,6 +234,17 @@ const darkPalette = (): PaletteVars => ({
   mergedBg: 'rgba(149, 108, 225, 0.22)',
   mergedInk: '#c4afe8',
   lanePurple: '#a98ff0',
+
+  timelineEpic: '#9579f5',
+  timelineEpicTrack: '#2a2740',
+  timelineEpicBd: '#473f6b',
+  timelineDep: '#6b6562',
+  timelineToday: '#ff6b78',
+  timelineWeekend: '#211f1d',
+  timelineStatusProgress: '#4d9fff',
+  timelineStatusReview: '#ffa733',
+  timelineStatusDone: '#1ec99a',
+  timelineStatusTodoBd: '#4a4642',
 
   // 그림자 + 살짝 inset highlight 로 카드 elevation 강조
   shadowCard: 'inset 0 1px 0 rgba(255,255,255,.04), 0 1px 2px rgba(0,0,0,.45), 0 6px 16px rgba(0,0,0,.4)',
@@ -266,6 +300,17 @@ const applyPalette = (mode: ThemeMode, pageBg: string) => {
   set('merged-bg', p.mergedBg);
   set('merged-ink', p.mergedInk);
   set('lane-purple', p.lanePurple);
+
+  set('timeline-epic', p.timelineEpic);
+  set('timeline-epic-track', p.timelineEpicTrack);
+  set('timeline-epic-bd', p.timelineEpicBd);
+  set('timeline-dep', p.timelineDep);
+  set('timeline-today', p.timelineToday);
+  set('timeline-weekend', p.timelineWeekend);
+  set('timeline-status-progress', p.timelineStatusProgress);
+  set('timeline-status-review', p.timelineStatusReview);
+  set('timeline-status-done', p.timelineStatusDone);
+  set('timeline-status-todo-bd', p.timelineStatusTodoBd);
 
   set('shadow-card', p.shadowCard);
   set('shadow-card-hover', p.shadowCardHover);

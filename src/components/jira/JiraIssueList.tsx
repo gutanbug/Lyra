@@ -43,6 +43,8 @@ interface JiraIssueListProps {
   onOpenAssigneeDropdown: (issueKey: string, e: React.MouseEvent) => void;
   onOpenPriorityDropdown: (issueKey: string, priorityName: string, e: React.MouseEvent) => void;
   onItemContextMenu: (e: React.MouseEvent, path: string, label: string) => void;
+  /** SectionHeader 우측 액션 영역에 "모두 펼치기" 왼쪽으로 삽입되는 추가 슬롯. */
+  headerActionSlot?: React.ReactNode;
 }
 
 const JiraIssueList = ({
@@ -78,6 +80,7 @@ const JiraIssueList = ({
   onOpenAssigneeDropdown,
   onOpenPriorityDropdown,
   onItemContextMenu,
+  headerActionSlot,
 }: JiraIssueListProps) => {
   // 브라우즈 모드 무한 스크롤: sentinel이 viewport에 들어오면 다음 페이지 로드
   const browseSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -268,6 +271,7 @@ const JiraIssueList = ({
             </SectionTitle>
             {browseEpics.length > 0 && (
               <ToggleAllButtons>
+                {headerActionSlot}
                 <SmallBtn onClick={() => {
                   const allKeys = new Set<string>();
                   browseEpics.forEach((e) => allKeys.add(e.key));
@@ -423,10 +427,15 @@ const JiraIssueList = ({
                 ? `검색 결과 (${epicGroups.reduce((n, g) => n + g.children.length, 0)}건)`
                 : `내 담당 이슈 (${epicGroups.reduce((n, g) => n + g.children.length, 0)}건)`}
             </SectionTitle>
-            {epicGroups.length > 0 && (
+            {(epicGroups.length > 0 || headerActionSlot) && (
               <ToggleAllButtons>
-                <SmallBtn onClick={() => onExpandAll(epicGroups)}>모두 펼치기</SmallBtn>
-                <SmallBtn onClick={onCollapseAll}>모두 접기</SmallBtn>
+                {headerActionSlot}
+                {epicGroups.length > 0 && (
+                  <>
+                    <SmallBtn onClick={() => onExpandAll(epicGroups)}>모두 펼치기</SmallBtn>
+                    <SmallBtn onClick={onCollapseAll}>모두 접기</SmallBtn>
+                  </>
+                )}
               </ToggleAllButtons>
             )}
           </SectionHeader>

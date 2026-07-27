@@ -14,6 +14,7 @@ import { AGENT_IDS, AGENT_META } from 'types/agent';
 import type { AgentId, AgentStatus } from 'types/agent';
 import { BUILTIN_SLASH_COMMANDS, matchSlashQuery, mergeCommands } from 'lib/agentCommands';
 import type { SlashCommand } from 'lib/agentCommands';
+import { isImeComposing } from 'lib/utils/keyboard';
 
 type BlockKind = 'text' | 'thinking' | 'tool_use';
 
@@ -709,6 +710,7 @@ const AgentChatSidebar = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposing(e)) return;
     // streaming 중 cancel 단축키: Ctrl/Cmd+C(선택 영역 없을 때) 또는 Esc
     if (streamingTurnId) {
       const ta = e.currentTarget;
@@ -727,8 +729,6 @@ const AgentChatSidebar = () => {
     if (e.key === 'Enter') {
       // Shift+Enter는 줄바꿈 — 기본 동작 통과
       if (e.shiftKey) return;
-      // 한글/일본어 IME 조합 확정용 Enter는 무시 (중복 전송 방지)
-      if (e.nativeEvent.isComposing) return;
       // Slash 메뉴가 열려있으면 Enter는 커맨드 적용
       if (slashOpen) {
         e.preventDefault();

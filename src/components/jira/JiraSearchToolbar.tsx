@@ -4,6 +4,7 @@ import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { getStatusColor } from 'lib/utils/jiraUtils';
+import { isImeComposing } from 'lib/utils/keyboard';
 import JiraTaskIcon, { resolveTaskType } from 'components/jira/JiraTaskIcon';
 import { useSidebarToggle } from 'components/sidebar/SidebarLayout';
 import type { NormalizedIssue } from 'types/jira';
@@ -77,6 +78,7 @@ const JiraSearchToolbar = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Enter') {
                 if (showSuggestions && activeSuggestionIdx >= 0 && suggestions[activeSuggestionIdx]) {
                   onGoToIssue(suggestions[activeSuggestionIdx].key);

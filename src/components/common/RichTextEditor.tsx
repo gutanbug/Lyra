@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
+import { isImeComposing } from 'lib/utils/keyboard';
 
 /* ════════════════════════════════════════
    execCommand 기반 서식 헬퍼
@@ -476,6 +477,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (isImeComposing(e)) return;
         const mod = e.metaKey || e.ctrlKey;
 
         // 서식 단축키
@@ -618,6 +620,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isImeComposing(e)) return;
                     if (e.key === 'Enter') { e.preventDefault(); handleLinkSubmit(); }
                     if (e.key === 'Escape') { setShowLinkInput(false); editorRef.current?.focus(); }
                   }}

@@ -7,6 +7,7 @@ import AppearanceProvider from 'modules/contexts/appearance'
 import { TabProvider } from 'modules/contexts/tab'
 import { SplitViewProvider } from 'modules/contexts/splitView'
 import { AgentSidebarProvider } from 'modules/contexts/agentSidebar'
+import DocsProvider from 'modules/contexts/docs'
 
 /*
 	Combine Providers
@@ -42,6 +43,7 @@ const CombinedProvider = combineProvider([
 	TabProvider,
 	SplitViewProvider,
 	AgentSidebarProvider,
+	DocsProvider,
 	ModalProvider,
 	SnackbarProvider
 ]);

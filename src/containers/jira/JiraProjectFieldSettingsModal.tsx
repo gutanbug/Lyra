@@ -6,6 +6,7 @@ import { ArrowLeft, GripVertical, RotateCcw } from 'lucide-react';
 
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import zIndex from 'lib/styles/zIndex';
+import { isImeComposing } from 'lib/utils/keyboard';
 import { integrationController } from 'controllers/account';
 import {
   loadProjectFieldConfigAsync,
@@ -215,6 +216,7 @@ const JiraProjectFieldSettingsModal = ({ accountId, projectKey, projectName, onB
               setEditingLabelId(null);
             }}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Enter') {
                 setLabel(row.id, (e.target as HTMLInputElement).value);
                 setEditingLabelId(null);

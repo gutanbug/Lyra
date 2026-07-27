@@ -113,4 +113,19 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       message?: string;
     }) => ipcRenderer.invoke('agents:permissionResponse', response),
   },
+  docs: {
+    loadAll: () => ipcRenderer.invoke('docs:loadAll'),
+    saveMeta: (meta: unknown) => ipcRenderer.invoke('docs:saveMeta', meta),
+    savePage: (pageId: string, data: unknown) => ipcRenderer.invoke('docs:savePage', pageId, data),
+    deletePage: (pageId: string) => ipcRenderer.invoke('docs:deletePage', pageId),
+    getStoragePath: () => ipcRenderer.invoke('docs:getStoragePath'),
+    setStoragePath: (path: string) => ipcRenderer.invoke('docs:setStoragePath', path),
+    resetStoragePath: () => ipcRenderer.invoke('docs:resetStoragePath'),
+    selectFolder: () => ipcRenderer.invoke('docs:selectFolder'),
+    openFolder: () => ipcRenderer.invoke('docs:openFolder'),
+    readMedia: (mediaId: string) => ipcRenderer.invoke('docs:readMedia', mediaId),
+    writeMedia: (mediaId: string, data: ArrayBuffer, mime: string) =>
+      ipcRenderer.invoke('docs:writeMedia', mediaId, data, mime),
+    deleteMedia: (mediaId: string) => ipcRenderer.invoke('docs:deleteMedia', mediaId),
+  },
 });

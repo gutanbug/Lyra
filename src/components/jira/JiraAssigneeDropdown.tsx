@@ -19,12 +19,27 @@ interface Props {
 
 const JiraAssigneeDropdown = ({ target, users, isLoading, dropdownRef, myAccountId, myDisplayName, myAvatarUrl, onSearch, onSelect, onClose }: Props) => {
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 화살표 키/Enter가 대상으로 삼을 평탄화된 옵션 목록(렌더 순서와 동일).
+  const listUsers = users.filter((u) => u.accountId !== myAccountId);
+  const hasMe = Boolean(myAccountId && myDisplayName);
+  const options: { accountId: string | null; displayName: string }[] = [
+    { accountId: null, displayName: '' },
+    ...(hasMe ? [{ accountId: myAccountId as string, displayName: myDisplayName as string }] : []),
+    ...listUsers.map((u) => ({ accountId: u.accountId, displayName: u.displayName })),
+  ];
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // 검색 결과가 바뀌면 활성 항목을 첫 옵션으로 되돌린다.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [users, query]);
 
   const handleChange = useCallback((value: string) => {
     setQuery(value);
@@ -34,11 +49,30 @@ const JiraAssigneeDropdown = ({ target, users, isLoading, dropdownRef, myAccount
     }, 250);
   }, [onSearch]);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % options.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + options.length) % options.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const o = options[activeIndex];
+      if (o) onSelect(target.issueKey, o.accountId, o.displayName);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
+
+  const usersStart = 1 + (hasMe ? 1 : 0);
 
   return createPortal(
     <Overlay onClick={onClose}>
@@ -53,40 +87,68 @@ const JiraAssigneeDropdown = ({ target, users, isLoading, dropdownRef, myAccount
           placeholder="사용자 검색..."
           value={query}
           onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          role="combobox"
+          aria-expanded
+          aria-controls="assignee-listbox"
+          aria-activedescendant={`assignee-opt-${activeIndex}`}
+          aria-autocomplete="list"
         />
-        <UserList>
-          <Item onClick={() => onSelect(target.issueKey, null, '')}>
+        <UserList id="assignee-listbox" role="listbox" aria-label="담당자">
+          <Item
+            id="assignee-opt-0"
+            role="option"
+            aria-selected={activeIndex === 0}
+            $active={activeIndex === 0}
+            onMouseEnter={() => setActiveIndex(0)}
+            onClick={() => onSelect(target.issueKey, null, '')}
+          >
             <UnassignedIcon>—</UnassignedIcon>
             <UserName>담당자 없음</UserName>
           </Item>
-          {myAccountId && myDisplayName && (
-            <Item onClick={() => onSelect(target.issueKey, myAccountId, myDisplayName)}>
+          {hasMe && (
+            <Item
+              id="assignee-opt-1"
+              role="option"
+              aria-selected={activeIndex === 1}
+              $active={activeIndex === 1}
+              onMouseEnter={() => setActiveIndex(1)}
+              onClick={() => onSelect(target.issueKey, myAccountId as string, myDisplayName as string)}
+            >
               {myAvatarUrl ? (
                 <Avatar src={myAvatarUrl} alt={myDisplayName} />
               ) : (
-                <AvatarPlaceholder>{myDisplayName.charAt(0)}</AvatarPlaceholder>
+                <AvatarPlaceholder>{(myDisplayName as string).charAt(0)}</AvatarPlaceholder>
               )}
               <UserName>나에게 할당</UserName>
             </Item>
           )}
           {isLoading ? (
             <Message>검색 중...</Message>
-          ) : users.length === 0 ? (
+          ) : listUsers.length === 0 ? (
             <Message>검색 결과가 없습니다.</Message>
           ) : (
-            users.filter((u) => u.accountId !== myAccountId).map((u) => (
-              <Item
-                key={u.accountId}
-                onClick={() => onSelect(target.issueKey, u.accountId, u.displayName)}
-              >
-                {u.avatarUrl ? (
-                  <Avatar src={u.avatarUrl} alt={u.displayName} />
-                ) : (
-                  <AvatarPlaceholder>{u.displayName.charAt(0)}</AvatarPlaceholder>
-                )}
-                <UserName>{u.displayName}</UserName>
-              </Item>
-            ))
+            listUsers.map((u, i) => {
+              const idx = usersStart + i;
+              return (
+                <Item
+                  key={u.accountId}
+                  id={`assignee-opt-${idx}`}
+                  role="option"
+                  aria-selected={activeIndex === idx}
+                  $active={activeIndex === idx}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={() => onSelect(target.issueKey, u.accountId, u.displayName)}
+                >
+                  {u.avatarUrl ? (
+                    <Avatar src={u.avatarUrl} alt={u.displayName} />
+                  ) : (
+                    <AvatarPlaceholder>{u.displayName.charAt(0)}</AvatarPlaceholder>
+                  )}
+                  <UserName>{u.displayName}</UserName>
+                </Item>
+              );
+            })
           )}
         </UserList>
       </Dropdown>
@@ -137,7 +199,7 @@ const UserList = styled.div`
   padding: 4px 0;
 `;
 
-const Item = styled.div`
+const Item = styled.div<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 10px;
@@ -148,6 +210,7 @@ const Item = styled.div`
   cursor: pointer;
   white-space: nowrap;
   transition: background ${jiraTheme.motion.fast};
+  background: ${({ $active }) => ($active ? jiraTheme.hairline : 'transparent')};
 
   &:hover { background: ${jiraTheme.hairline}; }
 `;

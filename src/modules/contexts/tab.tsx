@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 // ─── Types ─────────────────────────────────
 
@@ -81,13 +81,16 @@ export const TabProvider = ({ children }: { children: React.ReactNode }) => {
     setActiveTabId(null);
   }, []);
 
+  const value = useMemo(
+    () => ({
+      tabs, activeTabId, setActiveTabId,
+      addTab, closeTab, activateTab, deactivateTab, renameTab, closeAllTabs,
+    }),
+    [tabs, activeTabId, setActiveTabId, addTab, closeTab, activateTab, deactivateTab, renameTab, closeAllTabs],
+  );
+
   return (
-    <TabContext.Provider
-      value={{
-        tabs, activeTabId, setActiveTabId,
-        addTab, closeTab, activateTab, deactivateTab, renameTab, closeAllTabs,
-      }}
-    >
+    <TabContext.Provider value={value}>
       {children}
     </TabContext.Provider>
   );

@@ -1,4 +1,5 @@
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
+import { RingSpinner } from 'lib/styles/primitives';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { formatDate } from 'lib/utils/jiraUtils';
 import { Send, Edit2, Trash2, CornerDownRight, X, Smile, Plus } from 'lucide-react';
@@ -552,16 +553,4 @@ const AddReactionChip = styled.button`
   }
 `;
 
-const spinAnimation = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-`;
-
-const CommentSpinner = styled.div`
-  width: 14px;
-  height: 14px;
-  border: 2px solid ${jiraTheme.border};
-  border-top-color: ${jiraTheme.primary};
-  border-radius: 50%;
-  animation: ${spinAnimation} 0.6s linear infinite;
-`;
+const CommentSpinner = styled(RingSpinner).attrs({ $size: 14, $thickness: 2 })``;

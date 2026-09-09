@@ -286,7 +286,7 @@ function useJiraIssue({
    * 서버 응답 형태와 약간 차이가 있을 수 있으므로 다음 fetch에서 정합화됨.
    */
   const updateRawField = useCallback((fieldId: string, rawValue: unknown) => {
-    setRawIssueData((prev) => {
+    setRawIssueData((prev: unknown) => {
       if (!prev || typeof prev !== 'object') return prev;
       const cur = prev as Record<string, unknown>;
       const prevRawFields = (cur.rawFields as Record<string, unknown> | undefined) ?? {};

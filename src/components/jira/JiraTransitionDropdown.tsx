@@ -1,4 +1,4 @@
-import { RefObject } from 'react';
+import { RefObject, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
@@ -15,24 +15,65 @@ interface Props {
 }
 
 const JiraTransitionDropdown = ({ target, transitions, isLoading, dropdownRef, onSelect, onClose }: Props) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  // 열릴 때 리스트로 포커스를 옮겨 키보드 조작을 즉시 가능하게 한다.
+  useEffect(() => {
+    dropdownRef.current?.focus();
+    setActiveIndex(0);
+  }, [dropdownRef, transitions.length]);
+
+  const selectAt = (index: number) => {
+    const t = transitions[index];
+    if (!t) return;
+    onSelect(target.issueKey, t.id, t.to?.name || t.name, t.to?.statusCategory?.name || '');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (transitions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % transitions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + transitions.length) % transitions.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      selectAt(activeIndex);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   return createPortal(
     <Overlay onClick={onClose}>
       <Dropdown
         ref={dropdownRef}
         style={{ top: target.top, left: target.left }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        role="listbox"
+        aria-label="상태 전환"
+        aria-activedescendant={transitions[activeIndex] ? `transition-opt-${transitions[activeIndex].id}` : undefined}
+        tabIndex={-1}
       >
         {isLoading ? (
           <Message>로딩 중...</Message>
         ) : transitions.length === 0 ? (
           <Message>전환 가능한 상태가 없습니다.</Message>
         ) : (
-          transitions.map((t) => {
+          transitions.map((t, i) => {
             const catName = t.to?.statusCategory?.name || '';
             const color = getStatusColor(t.to?.name || t.name, catName);
             return (
               <Item
                 key={t.id}
+                id={`transition-opt-${t.id}`}
+                role="option"
+                aria-selected={i === activeIndex}
+                $active={i === activeIndex}
+                onMouseEnter={() => setActiveIndex(i)}
                 onClick={() => onSelect(target.issueKey, t.id, t.to?.name || t.name, catName)}
               >
                 <Dot $color={color} />
@@ -69,7 +110,7 @@ const Dropdown = styled.div`
   padding: 4px 0;
 `;
 
-const Item = styled.div`
+const Item = styled.div<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -81,6 +122,7 @@ const Item = styled.div`
   cursor: pointer;
   white-space: nowrap;
   transition: background ${jiraTheme.motion.fast};
+  background: ${({ $active }) => ($active ? jiraTheme.hairline : 'transparent')};
 
   &:hover { background: ${jiraTheme.hairline}; }
 `;

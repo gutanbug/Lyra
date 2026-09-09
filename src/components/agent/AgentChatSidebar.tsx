@@ -1550,22 +1550,22 @@ const HeaderRight = styled.div`
 `;
 
 const toneFg = (tone: 'muted' | 'info' | 'success' | 'danger'): string => {
-  if (tone === 'info') return '#1d4ed8';
-  if (tone === 'success') return '#15803d';
-  if (tone === 'danger') return '#b91c1c';
-  return '#525252';
+  if (tone === 'info') return theme.color.accentStrong;
+  if (tone === 'success') return theme.color.successInk;
+  if (tone === 'danger') return theme.color.dangerInk;
+  return theme.color.gray6;
 };
 const toneBg = (tone: 'muted' | 'info' | 'success' | 'danger'): string => {
-  if (tone === 'info') return '#dbeafe';
-  if (tone === 'success') return '#dcfce7';
-  if (tone === 'danger') return '#fee2e2';
-  return '#f5f5f5';
+  if (tone === 'info') return theme.color.accentSoft;
+  if (tone === 'success') return theme.color.successSoft;
+  if (tone === 'danger') return theme.color.dangerSoft;
+  return theme.color.gray0;
 };
 const toneBorder = (tone: 'muted' | 'info' | 'success' | 'danger'): string => {
-  if (tone === 'info') return '#93c5fd';
-  if (tone === 'success') return '#86efac';
-  if (tone === 'danger') return '#fca5a5';
-  return '#e5e5e5';
+  if (tone === 'info') return theme.color.accent;
+  if (tone === 'success') return theme.color.success;
+  if (tone === 'danger') return theme.color.danger;
+  return theme.color.gray2;
 };
 
 const PermissionModeWrap = styled.div`
@@ -2316,7 +2316,7 @@ const PermissionInputBox = styled.pre`
   font-size: 0.7rem;
   line-height: 1.4;
   color: ${theme.textPrimary};
-  background: #fff;
+  background: ${theme.color.surface};
   border: 1px solid #fde68a;
   border-radius: 6px;
   padding: 0.5rem;

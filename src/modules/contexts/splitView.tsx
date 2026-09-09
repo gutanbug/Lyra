@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useTabs } from 'modules/contexts/tab';
 
 // ─── Types ─────────────────────────────────
@@ -41,10 +41,13 @@ export const SplitViewProvider = ({ children }: { children: React.ReactNode }) =
     setRightPanel(null);
   }, []);
 
+  const value = useMemo(
+    () => ({ isSplit, leftPanel, rightPanel, openSplit, closeSplit }),
+    [isSplit, leftPanel, rightPanel, openSplit, closeSplit],
+  );
+
   return (
-    <SplitViewContext.Provider
-      value={{ isSplit, leftPanel, rightPanel, openSplit, closeSplit }}
-    >
+    <SplitViewContext.Provider value={value}>
       {children}
     </SplitViewContext.Provider>
   );

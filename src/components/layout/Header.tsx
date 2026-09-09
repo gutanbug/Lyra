@@ -577,7 +577,7 @@ const IconButton = styled.button<{ $active?: boolean }>`
     left: 50%;
     transform: translateX(-50%);
     background: ${theme.color.gray8};
-    color: #fff;
+    color: ${theme.color.surface};
     padding: 5px 9px;
     border-radius: 6px;
     font-size: 0.6875rem;

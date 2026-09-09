@@ -14,7 +14,7 @@ const DocsTopbar = () => {
     const seen: Record<string, boolean> = {};
     while (cur && state.pagesById[cur] && !seen[cur]) {
       seen[cur] = true;
-      const p = state.pagesById[cur];
+      const p = state.pagesById[cur] as { icon: string; title: string; id: string; parentId: string | null };
       path.unshift({ icon: p.icon, title: p.title || '제목 없음', id: p.id });
       cur = p.parentId;
     }

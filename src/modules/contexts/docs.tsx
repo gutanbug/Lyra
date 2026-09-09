@@ -64,7 +64,7 @@ export const reducer = (state: DocsState, action: actions.ActionType): DocsState
  * 과거 스키마로 저장된 db(로컬스토리지/클라우드)를 로드할 때, 이후 추가된 필드가
  * 누락되어 있어도 런타임 에러 없이 동작하도록 기본값을 채워 넣는다.
  */
-const normalizeDb = (db: Record<string, DocsDbState> | undefined): Record<string, DocsDbState> => {
+export const normalizeDb = (db: Record<string, DocsDbState> | undefined): Record<string, DocsDbState> => {
   const out: Record<string, DocsDbState> = {};
   Object.entries(db || {}).forEach(([id, raw]) => {
     const customFields = raw.customFields || [];
@@ -1447,7 +1447,8 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     if (!v) return;
     const s = stateRef.current;
     const d = s.db[s.activeId];
-    if (d.boardExtraGroups.includes(v) || d.rows.some((r) => r[d.groupBy || 'status'] === v)) return;
+    // groupBy는 동적 키('status'|'priority'|'tag')라 DocsDbRow 정적 인덱싱이 불가 → Record로 캐스팅(런타임 동작 불변).
+    if (d.boardExtraGroups.includes(v) || d.rows.some((r) => (r as unknown as Record<string, unknown>)[d.groupBy || 'status'] === v)) return;
     patch({ db: { ...s.db, [s.activeId]: { ...d, boardExtraGroups: [...d.boardExtraGroups, v] } } });
   }, [patch]);
   const removeBoardGroup = useCallback((name: string) => {

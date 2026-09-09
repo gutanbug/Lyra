@@ -4,6 +4,7 @@ import { useHistory, useLocation } from 'react-router-dom';
 import { theme } from 'lib/styles/theme';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
+import { str } from 'lib/utils/typeHelpers';
 import { ChevronRight, ChevronDown, FolderOpen, FileText, Loader, Search, Settings, Globe } from 'lucide-react';
 
 interface Space {
@@ -29,10 +30,6 @@ interface SpaceTree {
   pages: PageNode[];
   loading: boolean;
   loaded: boolean;
-}
-
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
 }
 
 async function loadSelectedSpaces(accountId: string): Promise<string[]> {
@@ -487,7 +484,7 @@ const SearchBox = styled.div`
 const SearchIconWrap = styled.span`
   display: inline-flex;
   align-items: center;
-  color: #a39d96;
+  color: ${theme.color.gray5};
   flex-shrink: 0;
 `;
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
+import { RingSpinner as Spinner } from 'lib/styles/primitives';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { transition } from 'lib/styles/styles';
 import { getStatusColor } from 'lib/utils/jiraUtils';
@@ -632,25 +633,12 @@ const SmallBtn = styled.button`
   &:hover { background: ${jiraTheme.hairline}; color: ${jiraTheme.text.primary}; }
 `;
 
-const spin = keyframes`
-  to { transform: rotate(360deg); }
-`;
-
 const LoadingArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
   padding: 4rem 2rem;
-`;
-
-const Spinner = styled.div`
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2.5px solid ${jiraTheme.border};
-  border-top-color: ${jiraTheme.primary};
-  border-radius: 50%;
-  animation: ${spin} 0.7s linear infinite;
 `;
 
 const LoadingText = styled.span`

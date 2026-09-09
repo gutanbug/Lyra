@@ -4,6 +4,7 @@ import { useHistory } from 'react-router-dom';
 import { theme } from 'lib/styles/theme';
 import { useAccount } from 'modules/contexts/account';
 import { integrationController } from 'controllers/account';
+import { str } from 'lib/utils/typeHelpers';
 import JiraTaskIcon from 'components/jira/JiraTaskIcon';
 import { Search, Loader, ChevronDown, ChevronRight, LayoutGrid, X } from 'lucide-react';
 
@@ -16,10 +17,6 @@ interface JiraBoard {
   id: number;
   name: string;
   type: string;
-}
-
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
 }
 
 /** localStorage / Electron settings에서 스페이스 설정 읽기 */
@@ -277,7 +274,7 @@ const SearchBox = styled.div`
 const SearchIconWrap = styled.span`
   display: inline-flex;
   align-items: center;
-  color: #a39d96;
+  color: ${theme.color.gray5};
   flex-shrink: 0;
 `;
 

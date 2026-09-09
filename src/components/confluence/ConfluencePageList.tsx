@@ -1,5 +1,6 @@
 import React from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
+import { RingSpinner as Spinner } from 'lib/styles/primitives';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { transition } from 'lib/styles/styles';
 import { isPersonalSpaceKey } from 'lib/utils/confluenceNormalizers';
@@ -186,25 +187,12 @@ const SmallBtn = styled.button`
   &:hover { background: ${confluenceTheme.hairline}; color: ${confluenceTheme.text.primary}; }
 `;
 
-const spin = keyframes`
-  to { transform: rotate(360deg); }
-`;
-
 const LoadingArea = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
   padding: 4rem 2rem;
-`;
-
-const Spinner = styled.div`
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2.5px solid ${confluenceTheme.border};
-  border-top-color: ${confluenceTheme.primary};
-  border-radius: 50%;
-  animation: ${spin} 0.7s linear infinite;
 `;
 
 const LoadingText = styled.span`

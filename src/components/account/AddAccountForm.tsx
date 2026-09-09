@@ -6,6 +6,7 @@ import { accountController, integrationController } from 'controllers/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
 import { theme } from 'lib/styles/theme';
+import { PrimaryButton } from 'lib/styles/primitives';
 import { transition } from 'lib/styles/styles';
 import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
 import GitHostDeviceFlow from './GitHostDeviceFlow';
@@ -48,29 +49,8 @@ const Input = styled.input`
   }
 `;
 
-const Button = styled.button`
-  padding: 13px 22px;
-  background: ${theme.color.accent};
-  color: white;
-  border: none;
-  border-radius: ${theme.radius.ctl};
-  font-family: ${theme.font.body};
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  box-shadow: ${theme.shadow.btnAccent};
-  transition: filter ${theme.motion.fast}, transform ${theme.motion.fast};
-
-  &:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
-  &:active:not(:disabled) { transform: scale(0.98); }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    box-shadow: none;
-  }
-`;
+// 공유 프리미티브 채택: 기존 로컬 정의는 PrimaryButton(M 사이즈)과 동일했다.
+const Button = PrimaryButton;
 
 
 const ServiceSelectWrapper = styled.div`

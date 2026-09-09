@@ -84,13 +84,13 @@ const Button = styled.button<{ $variant?: 'primary' | 'danger' }>`
     background: ${theme.color.dangerSoft};
     color: ${theme.color.dangerInk};
     border-color: ${theme.color.dangerSoft};
-    &:hover { background: #f9d6da; }
+    &:hover { filter: brightness(0.96); }
   `
       : `
     background: ${theme.color.accentSoft};
     color: ${theme.color.accentStrong};
     border-color: ${theme.color.accentSoft};
-    &:hover { background: #d8e9ff; }
+    &:hover { filter: brightness(0.96); }
   `}
 `;
 

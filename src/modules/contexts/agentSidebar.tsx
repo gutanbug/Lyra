@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 // ─── Types ─────────────────────────────────
 
@@ -25,8 +25,13 @@ export const AgentSidebarProvider = ({ children }: { children: React.ReactNode }
   const openSidebar = useCallback(() => setOpen(true), []);
   const closeSidebar = useCallback(() => setOpen(false), []);
 
+  const value = useMemo(
+    () => ({ open, toggle, openSidebar, closeSidebar }),
+    [open, toggle, openSidebar, closeSidebar],
+  );
+
   return (
-    <AgentSidebarContext.Provider value={{ open, toggle, openSidebar, closeSidebar }}>
+    <AgentSidebarContext.Provider value={value}>
       {children}
     </AgentSidebarContext.Provider>
   );

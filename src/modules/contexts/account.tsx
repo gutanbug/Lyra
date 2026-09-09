@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Account } from 'types/account';
 import { isAtlassianAccount } from 'types/account';
 import { accountController, integrationController } from 'controllers/account';
@@ -83,8 +83,13 @@ const AccountProvider = ({ children }: { children: React.ReactNode }) => {
     })();
   }, [activeAccount, refresh]);
 
+  const value = useMemo(
+    () => ({ accounts, activeAccount, isLoading, refresh, setActive }),
+    [accounts, activeAccount, isLoading, refresh, setActive],
+  );
+
   return (
-    <accountContext.Provider value={{ accounts, activeAccount, isLoading, refresh, setActive }}>
+    <accountContext.Provider value={value}>
       {children}
     </accountContext.Provider>
   );

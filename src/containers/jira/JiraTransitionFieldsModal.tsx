@@ -188,9 +188,9 @@ const Overlay = styled.div`
 `;
 
 const Dialog = styled.div`
-  width: 500px;
+  width: 80vw;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 64px);
+  max-height: 85vh;
   background: ${jiraTheme.bg.default};
   border-radius: 22px;
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);

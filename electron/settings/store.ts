@@ -19,6 +19,8 @@ interface SettingsStore {
   selectedSpaces: Record<string, string[]>;
   /** 계정·프로젝트별 필드 표시 설정 { [accountId]: { [projectKey]: ProjectFieldConfig } } */
   projectFieldConfigs: Record<string, Record<string, ProjectFieldConfig>>;
+  /** Docs 로컬 저장소 경로 (미지정 시 기본 경로 사용) */
+  docsStoragePath?: string;
 }
 
 const store = new Store<SettingsStore>({
@@ -60,6 +62,18 @@ export const SettingsManager = {
     if (!all[accountId]) all[accountId] = {};
     all[accountId][projectKey] = config;
     store.set('projectFieldConfigs', all);
+  },
+
+  getDocsStoragePath(): string | undefined {
+    return store.get('docsStoragePath');
+  },
+
+  setDocsStoragePath(path: string): void {
+    store.set('docsStoragePath', path);
+  },
+
+  resetDocsStoragePath(): void {
+    store.delete('docsStoragePath');
   },
 
   /** 계정 삭제 시 관련 설정 모두 제거 */

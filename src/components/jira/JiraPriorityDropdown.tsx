@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
@@ -15,8 +15,14 @@ interface Props {
 
 const JiraPriorityDropdown = ({ target, currentPriority, onSelect, onClose }: Props) => {
   const ref = useRef<HTMLDivElement>(null);
+  const initialIndex = Math.max(
+    0,
+    PRIORITIES.findIndex((p) => p.toLowerCase() === currentPriority.toLowerCase()),
+  );
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
 
   useEffect(() => {
+    ref.current?.focus();
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
@@ -24,17 +30,43 @@ const JiraPriorityDropdown = ({ target, currentPriority, onSelect, onClose }: Pr
     return () => document.removeEventListener('mousedown', handleClick);
   }, [onClose]);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % PRIORITIES.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + PRIORITIES.length) % PRIORITIES.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onSelect(target.issueKey, PRIORITIES[activeIndex]);
+      onClose();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   return createPortal(
     <Overlay onClick={onClose}>
       <Dropdown
         ref={ref}
         style={{ top: target.top, left: target.left }}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+        role="listbox"
+        aria-label="우선순위"
+        aria-activedescendant={`priority-opt-${PRIORITIES[activeIndex]}`}
+        tabIndex={-1}
       >
-        {PRIORITIES.map((p) => (
+        {PRIORITIES.map((p, i) => (
           <Item
             key={p}
-            $active={currentPriority.toLowerCase() === p.toLowerCase()}
+            id={`priority-opt-${p}`}
+            role="option"
+            aria-selected={currentPriority.toLowerCase() === p.toLowerCase()}
+            $active={i === activeIndex}
+            onMouseEnter={() => setActiveIndex(i)}
             onClick={() => { onSelect(target.issueKey, p); onClose(); }}
           >
             <JiraPriorityIcon priority={p} size={16} />

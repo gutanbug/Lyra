@@ -2,21 +2,32 @@ import React from 'react';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { getStatusColor } from 'lib/utils/jiraUtils';
-import { Check } from 'lucide-react';
+import { Check, CheckCheck } from 'lucide-react';
 import type { StatusCount } from 'lib/hooks/useJiraSearch';
 
 interface JiraStatusSummaryProps {
   statusCounts: StatusCount[];
   selectedStatuses: Set<string>;
   onToggleStatus: (name: string) => void;
+  isDoneOnlyActive: boolean;
+  onToggleDoneOnly: () => void;
 }
 
-const JiraStatusSummary = ({ statusCounts, selectedStatuses, onToggleStatus }: JiraStatusSummaryProps) => {
+const JiraStatusSummary = ({ statusCounts, selectedStatuses, onToggleStatus, isDoneOnlyActive, onToggleDoneOnly }: JiraStatusSummaryProps) => {
   const total = statusCounts.reduce((s, c) => s + c.count, 0);
   const hasFilter = selectedStatuses.size > 0;
 
   return (
     <StatusSummaryBar>
+      <DoneOnlyBtn
+        type="button"
+        $active={isDoneOnlyActive}
+        onClick={onToggleDoneOnly}
+        title="완료 상태 이슈만 표시"
+      >
+        <CheckCheck size={12} strokeWidth={2.5} />
+        완료만 보기
+      </DoneOnlyBtn>
       {statusCounts.map((sc) => {
         const color = getStatusColor(sc.name, sc.category);
         const isSelected = selectedStatuses.has(sc.name);
@@ -64,6 +75,26 @@ const StatusSummaryBar = styled.div`
   border-bottom: 1px solid ${jiraTheme.border};
   flex-wrap: wrap;
   flex-shrink: 0;
+`;
+
+const DoneOnlyBtn = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  background: ${({ $active }) => ($active ? jiraTheme.primary : jiraTheme.bg.default)};
+  color: ${({ $active }) => ($active ? '#fff' : jiraTheme.text.primary)};
+  border: 1.5px solid ${({ $active }) => ($active ? jiraTheme.primary : jiraTheme.border)};
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    border-color: ${jiraTheme.primary};
+  }
 `;
 
 const StatusSummaryItem = styled.div<{ $color: string; $selected: boolean; $dimmed: boolean }>`

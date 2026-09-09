@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { LocalRepo } from 'types/git';
 import { localGitController } from 'controllers/account';
 
@@ -76,7 +76,7 @@ const LocalRepoProvider = ({ children }: { children: React.ReactNode }) => {
     localGitController.checkInstalled().then((result) => {
       if (cancelled) return;
       setGitInstalled(result.installed);
-      setGitVersion(result.version ?? null);
+      setGitVersion('version' in result ? result.version ?? null : null);
     }).catch(() => {
       if (cancelled) return;
       setGitInstalled(false);
@@ -218,26 +218,33 @@ const LocalRepoProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  const value = useMemo(
+    () => ({
+      openedRepos,
+      currentRepoId,
+      currentRepo,
+      isOpening,
+      errorCode,
+      errorMessage,
+      gitInstalled,
+      gitVersion,
+      openWithDialog,
+      openByPath,
+      switchRepo,
+      closeRepo,
+      refresh,
+      refreshRepo,
+      clearError,
+    }),
+    [
+      openedRepos, currentRepoId, currentRepo, isOpening, errorCode, errorMessage,
+      gitInstalled, gitVersion, openWithDialog, openByPath, switchRepo, closeRepo,
+      refresh, refreshRepo, clearError,
+    ],
+  );
+
   return (
-    <localRepoContext.Provider
-      value={{
-        openedRepos,
-        currentRepoId,
-        currentRepo,
-        isOpening,
-        errorCode,
-        errorMessage,
-        gitInstalled,
-        gitVersion,
-        openWithDialog,
-        openByPath,
-        switchRepo,
-        closeRepo,
-        refresh,
-        refreshRepo,
-        clearError,
-      }}
-    >
+    <localRepoContext.Provider value={value}>
       {children}
     </localRepoContext.Provider>
   );

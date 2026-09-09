@@ -12,6 +12,7 @@ import { useAgentSidebar } from 'modules/contexts/agentSidebar';
 import { isAtlassianAccount, isGitHostAccount } from 'types/account';
 import { newSnackbar } from 'modules/actions/snackbar';
 import { snackbarContext } from 'modules/contexts/snackbar';
+import { isImeComposing } from 'lib/utils/keyboard';
 
 /** 메뉴 정의 */
 const MENUS = [
@@ -97,6 +98,12 @@ const Header = () => {
     history.push('/stats');
   };
 
+  const handleGoDocs = () => {
+    deactivateTab();
+    if (isSplit) closeSplit();
+    history.push('/docs');
+  };
+
   const handleToggleAgent = () => {
     toggleAgentSidebar();
   };
@@ -175,6 +182,7 @@ const Header = () => {
   useEffect(() => {
     if (!profileOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       // 활성화 가능한 계정이 없으면 ArrowDown/ArrowUp/Enter는 무동작(Escape만 살림).
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -322,6 +330,21 @@ const Header = () => {
             )}
           </NavIconButton>
 
+          {/* Docs 버튼 — 계정 비연동 독립 워크스페이스 */}
+          <IconButton
+            onClick={handleGoDocs}
+            $active={location.pathname.startsWith('/docs')}
+            data-tooltip="Docs"
+            aria-label="Docs"
+          >
+            <IconSvg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              <path d="M14 3v5h5" />
+              <line x1="9" y1="13" x2="15" y2="13" />
+              <line x1="9" y1="17" x2="13" y2="17" />
+            </IconSvg>
+          </IconButton>
+
           {/* AI Agent 버튼 — 우측 슬라이드 사이드바 토글 */}
           <IconButton
             onClick={handleToggleAgent}
@@ -400,6 +423,7 @@ const Header = () => {
                     onChange={(e) => setEditingName(e.target.value)}
                     onBlur={commitRename}
                     onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
                       if (e.key === 'Enter') commitRename();
                       if (e.key === 'Escape') { setEditingTabId(null); setEditingName(''); }
                     }}
@@ -553,7 +577,7 @@ const IconButton = styled.button<{ $active?: boolean }>`
     left: 50%;
     transform: translateX(-50%);
     background: ${theme.color.gray8};
-    color: #fff;
+    color: ${theme.color.surface};
     padding: 5px 9px;
     border-radius: 6px;
     font-size: 0.6875rem;

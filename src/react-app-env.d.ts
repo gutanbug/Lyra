@@ -14,6 +14,15 @@ declare global {
         setSelectedProjects: (accountId: string, keys: string[]) => Promise<void>;
         getSelectedSpaces: (accountId: string) => Promise<string[]>;
         setSelectedSpaces: (accountId: string, keys: string[]) => Promise<void>;
+        getProjectFieldConfig?: (
+          accountId: string,
+          projectKey: string,
+        ) => Promise<import('lib/utils/storageHelpers').ProjectFieldConfig | null>;
+        setProjectFieldConfig?: (
+          accountId: string,
+          projectKey: string,
+          config: import('lib/utils/storageHelpers').ProjectFieldConfig,
+        ) => Promise<void>;
       };
       account: {
         getAll: () => Promise<unknown[]>;

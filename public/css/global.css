@@ -113,3 +113,22 @@ strong {
 	-webkit-tap-highlight-color: rgba(0,0,0,0);
 	font-size: 1rem;
 }
+
+/* 키보드 포커스에만 링을 복원한다. 마우스 클릭에는 나타나지 않음(:focus-visible).
+   전역 `* { outline: none }`이 모든 포커스 표시를 지워 키보드 접근성이 깨져 있던 것을 보완. */
+:focus-visible {
+	outline: 2px solid var(--lyra-c-accent, #007bff);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+/* 모션 최소화 선호 사용자를 위해 애니메이션/전환을 전역으로 비활성화.
+   스피너 회전·hover transform 등 비-사용자 트리거 모션을 일괄 처리. */
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

@@ -40,6 +40,28 @@ export function getStatusColor(name: string, category: string): string {
   return jiraTheme.status.default;
 }
 
+/**
+ * 상태가 "완료(done)" 카테고리인지 판별.
+ * getStatusColor와 동일한 우선순위 규칙을 따른다 — 카테고리 신호를 우선 신뢰하고,
+ * 진행 중을 완료보다 먼저 검사해 "수정완료"처럼 이름에 완료가 포함된 진행 상태의
+ * 오분류를 방지한다.
+ */
+export function isDoneStatus(statusName: string, statusCategory: string): boolean {
+  const c = statusCategory.toLowerCase().trim();
+  // 1) statusCategory.key / colorName 정확 매칭
+  if (c === 'done' || c === 'green') return true;
+  if (c === 'indeterminate' || c === 'new' || c === 'yellow' || c === 'blue-gray') return false;
+  // 2) 카테고리 키워드 매칭 (진행을 완료보다 먼저 검사)
+  if (c.includes('progress') || c.includes('진행') || c.includes('indeterminate')) return false;
+  if (c.includes('done') || c.includes('완료')) return true;
+  if (c.includes('to do') || c.includes('todo') || c.includes('해야') || c.includes('할 일')) return false;
+  // 3) 카테고리에 신호가 없을 때만 이름 키워드 폴백
+  const n = statusName.toLowerCase();
+  if (n.includes('progress') || n.includes('진행')) return false;
+  if (n.includes('done') || n.includes('완료')) return true;
+  return false;
+}
+
 export function getPriorityColor(priority: string): string {
   if (!priority) return jiraTheme.priority.default;
   const p = priority.toLowerCase();

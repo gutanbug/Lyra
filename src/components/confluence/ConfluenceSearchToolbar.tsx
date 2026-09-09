@@ -4,6 +4,7 @@ import { getServiceIcon, hasServiceIcon } from 'lib/icons/services';
 import { confluenceTheme } from 'lib/styles/confluenceTheme';
 import { transition } from 'lib/styles/styles';
 import { isPersonalSpaceKey } from 'lib/utils/confluenceNormalizers';
+import { isImeComposing } from 'lib/utils/keyboard';
 import { useSidebarToggle } from 'components/sidebar/SidebarLayout';
 import type { ConfluenceSpace, NormalizedConfluencePage } from 'types/confluence';
 import type { SearchFieldType } from 'lib/hooks/useConfluenceSearch';
@@ -114,6 +115,7 @@ const ConfluenceSearchToolbar = ({
             onChange={(e) => onSearchChange(e.target.value)}
             style={{ paddingRight: '5.5rem' }}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === 'Enter') {
                 if (showSuggestions && activeSuggestionIdx >= 0 && suggestions[activeSuggestionIdx]) {
                   onHideSuggestions();

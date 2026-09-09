@@ -10,6 +10,7 @@ import AgentChatSidebar from 'components/agent/AgentChatSidebar';
 const JiraPage = lazy(() => import('pages/JiraPage'));
 const ConfluencePage = lazy(() => import('pages/ConfluencePage'));
 const GitWorkspacePage = lazy(() => import('pages/GitWorkspacePage'));
+const DocsPage = lazy(() => import('pages/DocsPage'));
 const AccountSettings = lazy(() => import('pages/AccountSettings'));
 const StatsPage = lazy(() => import('pages/StatsPage'));
 const NotFound = lazy(() => import('pages/NotFound'));
@@ -49,6 +50,7 @@ const PANEL_MAP: Record<string, React.ComponentType> = {
   jira: JiraPage,
   confluence: ConfluencePage,
   git: GitWorkspacePage,
+  docs: DocsPage,
   settings: AccountSettings,
 };
 
@@ -57,6 +59,7 @@ const INITIAL_PATH: Record<string, string> = {
   jira: '/jira',
   confluence: '/confluence',
   git: '/git',
+  docs: '/docs',
   settings: '/settings',
 };
 
@@ -69,6 +72,7 @@ const SingleView = ({ navActive }: { navActive: boolean }) => (
         <Route path="/jira" component={JiraPage} />
         <Route path="/confluence" component={ConfluencePage} />
         <Route path="/git" component={GitWorkspacePage} />
+        <Route path="/docs" component={DocsPage} />
         {/* 구 라우트는 단일 /git으로 리다이렉트 (계정 추가 흐름 등 외부 링크가 남아있을 수 있음) */}
         <Redirect from="/github" to="/git" />
         <Redirect from="/gitlab" to="/git" />

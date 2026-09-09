@@ -18,8 +18,8 @@ export function loadSelectedProjects(accountId: string): string[] {
 
 export async function loadSelectedProjectsAsync(accountId: string): Promise<string[]> {
   try {
-    if ((window as any).workspaceAPI?.settings) {
-      return await (window as any).workspaceAPI.settings.getSelectedProjects(accountId);
+    if (window.workspaceAPI?.settings) {
+      return await window.workspaceAPI.settings.getSelectedProjects(accountId);
     }
     const raw = localStorage.getItem(`lyra:jira:selectedProjects:${accountId}`);
     if (raw) {
@@ -32,8 +32,8 @@ export async function loadSelectedProjectsAsync(accountId: string): Promise<stri
 
 export function saveSelectedProjects(accountId: string, keys: string[]): void {
   try {
-    if ((window as any).workspaceAPI?.settings) {
-      (window as any).workspaceAPI.settings.setSelectedProjects(accountId, keys);
+    if (window.workspaceAPI?.settings) {
+      window.workspaceAPI.settings.setSelectedProjects(accountId, keys);
     }
     localStorage.setItem(`lyra:jira:selectedProjects:${accountId}`, JSON.stringify(keys));
   } catch { /* ignore */ }
@@ -75,8 +75,8 @@ export function loadSelectedSpaces(_accountId: string): string[] {
 
 export async function loadSelectedSpacesAsync(accountId: string): Promise<string[]> {
   try {
-    if ((window as any).workspaceAPI?.settings) {
-      return await (window as any).workspaceAPI.settings.getSelectedSpaces?.(accountId) ?? [];
+    if (window.workspaceAPI?.settings) {
+      return await window.workspaceAPI.settings.getSelectedSpaces?.(accountId) ?? [];
     }
     const raw = localStorage.getItem(`lyra:confluence:selectedSpaces:${accountId}`);
     if (raw) {
@@ -89,8 +89,8 @@ export async function loadSelectedSpacesAsync(accountId: string): Promise<string
 
 export function saveSelectedSpaces(accountId: string, keys: string[]): void {
   try {
-    if ((window as any).workspaceAPI?.settings) {
-      (window as any).workspaceAPI.settings.setSelectedSpaces?.(accountId, keys);
+    if (window.workspaceAPI?.settings) {
+      window.workspaceAPI.settings.setSelectedSpaces?.(accountId, keys);
     }
     localStorage.setItem(`lyra:confluence:selectedSpaces:${accountId}`, JSON.stringify(keys));
   } catch { /* ignore */ }
@@ -106,6 +106,8 @@ export interface ProjectFieldEntry {
 
 export interface ProjectFieldConfig {
   fields: ProjectFieldEntry[];
+  /** 타임라인 뷰에서 시작일로 사용할 customfield ID (예: 'customfield_10015'). 미지정이면 undefined. */
+  startDateFieldId?: string;
 }
 
 /**
@@ -122,12 +124,12 @@ export async function loadProjectFieldConfigAsync(
   projectKey: string,
 ): Promise<ProjectFieldConfig | null> {
   try {
-    if ((window as any).workspaceAPI?.settings?.getProjectFieldConfig) {
-      const cfg = await (window as any).workspaceAPI.settings.getProjectFieldConfig(
+    if (window.workspaceAPI?.settings?.getProjectFieldConfig) {
+      const cfg = await window.workspaceAPI.settings.getProjectFieldConfig(
         accountId,
         projectKey,
       );
-      if (cfg && Array.isArray(cfg.fields)) return cfg as ProjectFieldConfig;
+      if (cfg && Array.isArray(cfg.fields)) return cfg;
     }
     const raw = localStorage.getItem(fieldConfigKey(accountId, projectKey));
     if (raw) {
@@ -158,9 +160,7 @@ export async function saveProjectFieldConfig(
   projectKey: string,
   config: ProjectFieldConfig,
 ): Promise<void> {
-  const setRemote = (window as any).workspaceAPI?.settings?.setProjectFieldConfig as
-    | ((aid: string, pk: string, c: unknown) => Promise<void>)
-    | undefined;
+  const setRemote = window.workspaceAPI?.settings?.setProjectFieldConfig;
   if (setRemote) {
     // IPC 실패는 그대로 throw — 부분 성공으로 인한 cross-window 비일관성 방지
     await setRemote(accountId, projectKey, config);

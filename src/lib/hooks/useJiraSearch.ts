@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import React from 'react';
 import { integrationController } from 'controllers/account';
 import { isEpicType } from 'lib/utils/jiraUtils';
-import { parseIssues, buildProjectClause } from 'lib/utils/jiraNormalizers';
+import { parseIssues, buildProjectClause, setJiraParseContext } from 'lib/utils/jiraNormalizers';
+import { loadProjectFieldConfigAsync } from 'lib/utils/storageHelpers';
 import { createAccountScopedCache, useAccountScopedCache } from 'lib/hooks/_shared/useAccountScopedCache';
 import { useJiraStatusFilter } from 'lib/hooks/jira/useJiraStatusFilter';
 import { useJiraProjects } from 'lib/hooks/jira/useJiraProjects';
@@ -75,6 +76,46 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
 
   const [showSpaceSettings, setShowSpaceSettings] = useState(false);
 
+  // 타임라인 뷰용: 활성 프로젝트 각각의 startDateFieldId 매핑.
+  // ProjectFieldConfig 변경 시 `lyra:project-field-config-changed` 이벤트로 갱신.
+  // 전체 모드(selectedProjects가 비어 있음)에서는 visible projects 전부를 대상으로 한다.
+  const [startDateByProject, setStartDateByProject] = useState<Record<string, string>>({});
+  const projectKeysForFieldConfig = useMemo(
+    () => (selectedProjects.length > 0 ? selectedProjects : projects.map((p) => p.key)),
+    [selectedProjects, projects],
+  );
+  useEffect(() => {
+    if (!currentAccountId || projectKeysForFieldConfig.length === 0) {
+      setStartDateByProject({});
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const next: Record<string, string> = {};
+      for (const pk of projectKeysForFieldConfig) {
+        try {
+          const cfg = await loadProjectFieldConfigAsync(currentAccountId, pk);
+          if (cfg?.startDateFieldId) next[pk] = cfg.startDateFieldId;
+        } catch { /* ignore */ }
+      }
+      if (!cancelled) setStartDateByProject(next);
+    };
+    load();
+    const handler = () => { load(); };
+    window.addEventListener('lyra:project-field-config-changed', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('lyra:project-field-config-changed', handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, [currentAccountId, projectKeysForFieldConfig]);
+  const startDateByProjectRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    startDateByProjectRef.current = startDateByProject;
+    setJiraParseContext({ startDateByProject });
+  }, [startDateByProject]);
+
   // 완료 이슈/카운트
   const doneIssuesHook = useJiraDoneIssues({
     accountId: currentAccountId,
@@ -116,7 +157,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         action: 'searchIssues',
         params: { jql, maxResults: 200, skipCache: true },
       });
-      for (const issue of parseIssues(result)) {
+      for (const issue of parseIssues(result, { startDateByProject: startDateByProjectRef.current })) {
         if (seenKeys.has(issue.key)) continue;
         allChildren.push(issue);
         seenKeys.add(issue.key);
@@ -133,7 +174,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
           action: 'searchIssues',
           params: { jql, maxResults: 200, skipCache: true },
         });
-        for (const issue of parseIssues(result)) {
+        for (const issue of parseIssues(result, { startDateByProject: startDateByProjectRef.current })) {
           if (seenKeys.has(issue.key)) continue;
           if (!issue.parentKey && parentKeys.length === 1) {
             issue.parentKey = parentKeys[0];
@@ -151,7 +192,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
             action: 'searchIssues',
             params: { jql, maxResults: 200, skipCache: true },
           });
-          for (const issue of parseIssues(result)) {
+          for (const issue of parseIssues(result, { startDateByProject: startDateByProjectRef.current })) {
             if (seenKeys.has(issue.key)) continue;
             if (issue.parentKey && !parentKeySet.has(issue.parentKey)) continue;
             if (!issue.parentKey && parentKeys.length === 1) {
@@ -177,7 +218,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
         action: 'searchIssues',
         params: { jql, maxResults: keys.size, skipCache: true },
       });
-      return parseIssues(result);
+      return parseIssues(result, { startDateByProject: startDateByProjectRef.current });
     } catch {
       return [];
     }
@@ -319,7 +360,7 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     doneCounts,
     cachedSelectedStatuses: cached?.selectedStatuses,
   });
-  const { selectedStatuses, statusCounts, toggleStatus } = statusFilterHook;
+  const { selectedStatuses, statusCounts, toggleStatus, isDoneOnlyActive, toggleDoneOnly } = statusFilterHook;
 
   // 검색 + 자동완성
   const issueSearchHook = useJiraIssueSearch({
@@ -446,6 +487,38 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     fetchDoneIssues();
   }, [activeAccount, projectsReady, fetchProjects, fetchMyIssues, fetchDoneCounts, fetchDoneIssues, setProjects, setMyIssues]);
 
+  // startDateByProject 매핑이 바뀌면 이미 정규화된 NormalizedIssue들의 startDate는 stale.
+  // 안전하게 다시 조회해 새 ambient context로 재정규화한다. (검색/브라우즈는 별도 trigger)
+  const startDateByProjectKey = useMemo(
+    () =>
+      Object.entries(startDateByProject)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('|'),
+    [startDateByProject],
+  );
+  const startDateInitialRunRef = useRef(true);
+  useEffect(() => {
+    if (startDateInitialRunRef.current) {
+      startDateInitialRunRef.current = false;
+      return;
+    }
+    if (!activeAccount) return;
+    fetchMyIssues();
+    fetchDoneCounts();
+    setDoneIssuesLoaded(false);
+    fetchDoneIssues();
+    // 검색/브라우즈가 활성이라면 같이 갱신
+    if (searchResults !== null) {
+      // useJiraIssueSearch는 외부에서 jql 변경으로만 재실행되므로 setSearchResults(null)로 표시 갱신만.
+      // 사용자 입력이 다시 들어올 때 새 매핑이 적용된다.
+    }
+    if (browseProjectKey) {
+      // browse 모드는 별도 effect chain — 매핑 적용된 막대는 보지 않으므로 noop.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDateByProjectKey]);
+
   const goToIssue = useCallback((key: string) => {
     if (key) history.push(`/jira/issue/${key}`);
   }, [history]);
@@ -485,6 +558,29 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     setMyIssues, setDoneIssues, setSearchResults, setBrowseEpics, setBrowseChildrenMap, setDefaultChildrenMap,
     fetchMyIssues, fetchDoneCounts, fetchDoneIssues,
   ]);
+
+  const handleDateChanged = useCallback((issueKey: string, next: { startDate: string; duedate: string }) => {
+    const updateIssues = (list: NormalizedIssue[]) =>
+      list.map((i) => i.key === issueKey ? { ...i, startDate: next.startDate, duedate: next.duedate } : i);
+    setMyIssues((prev) => updateIssues(prev));
+    setDoneIssues((prev) => updateIssues(prev));
+    setSearchResults((prev) => prev ? updateIssues(prev) : prev);
+    setBrowseEpics((prev) => updateIssues(prev));
+    setBrowseChildrenMap((prev) => {
+      const out: Record<string, NormalizedIssue[]> = {};
+      for (const [k, children] of Object.entries(prev)) {
+        out[k] = updateIssues(children);
+      }
+      return out;
+    });
+    setDefaultChildrenMap((prev) => {
+      const out: Record<string, NormalizedIssue[]> = {};
+      for (const [k, children] of Object.entries(prev)) {
+        out[k] = updateIssues(children);
+      }
+      return out;
+    });
+  }, [setMyIssues, setDoneIssues, setSearchResults, setBrowseEpics, setBrowseChildrenMap, setDefaultChildrenMap]);
 
   const handleAssigned = useCallback((issueKey: string, displayName: string) => {
     const updateIssues = (list: NormalizedIssue[]) =>
@@ -587,7 +683,13 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     toggleBrowseEpic,
     handleTransitioned,
     handleAssigned,
+    handleDateChanged,
     saveSpaceSettings,
     toggleStatus,
+    isDoneOnlyActive,
+    toggleDoneOnly,
+
+    // 타임라인용 메타
+    startDateByProject,
   };
 }

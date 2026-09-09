@@ -12,7 +12,7 @@ const Modal = () => {
 	const modalList = modalState.modalList;
 	const show = modalList.length !== 0;
 	
-	const PreventModalOff = e => e.stopPropagation();
+	const PreventModalOff = (e: React.MouseEvent) => e.stopPropagation();
 
 	const onMouseDown = (id: string) => {
 		dispatch(deleteModal(id));

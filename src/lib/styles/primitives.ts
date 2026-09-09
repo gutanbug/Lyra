@@ -165,6 +165,20 @@ export const InlineSpinner = styled.span<{ $size?: number; $color?: string }>`
   flex-shrink: 0;
 `;
 
+/**
+ * 토큰 기반 링 스피너 — 리스트/로딩 영역용. border=borderDefault, top=accent 로
+ * 다크모드 자동 대응. 도메인별로 재구현되던 border-ring 스피너를 대체한다.
+ */
+export const RingSpinner = styled.div<{ $size?: number; $thickness?: number }>`
+  width: ${({ $size = 24 }) => `${$size}px`};
+  height: ${({ $size = 24 }) => `${$size}px`};
+  border: ${({ $thickness = 2.5 }) => `${$thickness}px`} solid ${t.color.borderDefault};
+  border-top-color: ${t.color.accent};
+  border-radius: 50%;
+  animation: ${spinKf} 0.7s linear infinite;
+  flex-shrink: 0;
+`;
+
 // ── Inputs ────────────────────────────────────────────────
 
 export const TextInput = styled.input<{ $error?: boolean }>`

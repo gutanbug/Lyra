@@ -23,6 +23,7 @@ import type {
 import { openDialog as localGitOpenDialog, openRepo as localGitOpenRepo, getRepoMeta as localGitGetRepoMeta, checkGitInstalled as localGitCheckInstalled } from '../integrations/localGit/service';
 import { getCommits as localGitGetCommits } from '../integrations/localGit/graph';
 import { watchRepo as localGitWatchRepo, unwatchRepo as localGitUnwatchRepo, setChangeListener as localGitSetChangeListener } from '../integrations/localGit/watcher';
+import * as docsStorage from './docsStorage';
 
 /**
  * OAuthFlowError를 IPC 경로에서 안전한 모양(plain Error + 명시적 code 속성)으로 재포장.
@@ -234,4 +235,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('agents:permissionResponse', (_e, response: PermissionResponse) => {
     return permissionBridge.respond(response);
   });
+
+  // === Docs 로컬 저장소 ===
+  ipcMain.handle('docs:loadAll', () => docsStorage.loadAll());
+  ipcMain.handle('docs:saveMeta', (_, meta: unknown) => docsStorage.saveMeta(meta));
+  ipcMain.handle('docs:savePage', (_, pageId: string, data: unknown) => docsStorage.savePage(pageId, data));
+  ipcMain.handle('docs:deletePage', (_, pageId: string) => docsStorage.deletePage(pageId));
+  ipcMain.handle('docs:getStoragePath', () => docsStorage.getStoragePath());
+  ipcMain.handle('docs:setStoragePath', (_, newPath: string) => docsStorage.setStoragePath(newPath));
+  ipcMain.handle('docs:resetStoragePath', () => docsStorage.resetStoragePath());
+  ipcMain.handle('docs:selectFolder', () => docsStorage.selectFolder());
+  ipcMain.handle('docs:openFolder', () => docsStorage.openFolder());
+  ipcMain.handle('docs:readMedia', (_, mediaId: string) => docsStorage.readMedia(mediaId));
+  ipcMain.handle('docs:writeMedia', (_, mediaId: string, data: ArrayBuffer, mime: string) =>
+    docsStorage.writeMedia(mediaId, Buffer.from(data), mime)
+  );
+  ipcMain.handle('docs:deleteMedia', (_, mediaId: string) => docsStorage.deleteMedia(mediaId));
 }

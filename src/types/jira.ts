@@ -59,6 +59,7 @@ export interface NormalizedIssue {
   priorityName: string;
   created: string;
   updated: string;
+  startDate: string;
   duedate: string;
   parentKey: string;
   parentSummary: string;
@@ -73,6 +74,8 @@ export interface EpicGroup {
   statusCategory: string;
   assigneeName: string;
   priorityName: string;
+  startDate: string;
+  duedate: string;
   children: NormalizedIssue[];
 }
 

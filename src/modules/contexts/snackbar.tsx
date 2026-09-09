@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, Dispatch } from 'react'
+import React, { createContext, useReducer, useMemo, Dispatch } from 'react'
 import { produce } from 'immer'
 // modules
 import initialState from 'modules/states/snackbar'
@@ -44,7 +44,7 @@ export const snackbarContext = createContext<{
 
 const Provider = ({ children }: { children: React.ReactNode }) => {
 	const [state, dispatch] = useReducer(reducer, initialState);
-	const value = { state, dispatch };
+	const value = useMemo(() => ({ state, dispatch }), [state]);
 
 	return (
 		<snackbarContext.Provider value={value}>

@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, Dispatch } from 'react'
+import React, { createContext, useReducer, useMemo, Dispatch } from 'react'
 import { produce } from 'immer'
 // modules
 import initialState from 'modules/states/modal'
@@ -53,7 +53,7 @@ export const modalContext = createContext<{
 
 const Provider = ({ children }: { children: React.ReactNode }) => {
 	const [state, dispatch] = useReducer(reducer, initialState);
-	const value = { state, dispatch };
+	const value = useMemo(() => ({ state, dispatch }), [state]);
 
 	return (
 		<modalContext.Provider value={value}>

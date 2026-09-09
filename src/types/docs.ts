@@ -292,6 +292,7 @@ export interface DocsState {
   trashOpen: boolean;
   trash: DocsTrashEntry[];
   deleteConfirm: { id: string; title: string; icon: string; childCount: number } | null;
+  moveModal: { id: string } | null;
   cloudOpen: boolean;
   cloud: DocsCloudState;
   storageOpen: boolean;

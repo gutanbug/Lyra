@@ -15,7 +15,7 @@ import type { DocsBlock } from 'types/docs';
 
 const DocsDocView = () => {
   const {
-    state, activePage, getBlocks, onTitleInput, addCover, removeCover, ensureTrailing, setPageIcon,
+    state, activePage, getBlocks, onTitleInput, addCover, removeCover, setPageIcon,
   } = useDocs();
   const page = activePage();
   const blocks = getBlocks();
@@ -60,17 +60,22 @@ const DocsDocView = () => {
   const onDocClick = (e: React.MouseEvent) => {
     const el = e.target as HTMLElement;
     // subpage/page-mention 칩 클릭은 각 블록에서 자체 처리하므로 여기서는 빈 영역(블록 바깥) 클릭만 처리한다.
-    // 블록 내부 클릭은 네이티브 contentEditable 커서 배치를 그대로 따라야 하므로 가로채지 않는다.
-    if (el.closest('[data-page]') || el.closest('[data-block-id]')) return;
-    if (blocks.length > 0) {
-      const last = blocks[blocks.length - 1];
-      const lastText = document.querySelector<HTMLElement>(`[data-block-id="${last.id}"] .lyra-ed`);
-      if (lastText && (lastText.textContent || '').length === 0) lastText.focus();
-      else {
-        const nid = ensureTrailing(last.id);
-        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-block-id="${nid}"] .lyra-ed`)?.focus());
-      }
-    }
+    // 제목/블록 내부 클릭은 네이티브 contentEditable 커서 배치를 그대로 따라야 하므로 가로채지 않는다.
+    if (el.closest('[data-page]') || el.closest('[data-block-id]') || el.closest('.lyra-title')) return;
+    if (blocks.length === 0) return;
+    // 빈 영역 클릭은 실제 문서 편집기처럼 마지막으로 줄바꿈된 위치(마지막 블록의 끝)에만 커서를 둔다.
+    // 매번 새 블록을 만들면 클릭할 때마다 커서가 계속 아래로 밀려나므로 블록을 추가하지 않는다.
+    const last = blocks[blocks.length - 1];
+    const lastText = document.querySelector<HTMLElement>(`[data-block-id="${last.id}"] .lyra-ed`);
+    if (!lastText) return;
+    lastText.focus();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(lastText);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
   };
 
   useEffect(() => { setIconPickerOpen(false); }, [page?.id]);

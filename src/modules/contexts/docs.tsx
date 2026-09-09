@@ -127,7 +127,7 @@ const loadPersisted = (): { state: DocsState; text: Record<string, string>; uid:
 	Context
 */
 type MenuField = 'blockMenu' | 'mention' | 'fmtBar' | 'pageMenu' | 'cellEditor' | 'filterMenu' | 'pasteMenu' | 'slash'
-  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu';
+  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal';
 
 export interface DocsContextValue {
   state: DocsState;
@@ -156,6 +156,7 @@ export interface DocsContextValue {
   renamePage: (id: string) => void;
   commitRename: (id: string, title: string) => void;
   cancelRename: () => void;
+  movePage: (id: string, targetParentId: string) => void;
   setPageIcon: (id: string, icon: string) => void;
   onTitleInput: (title: string) => void;
   addCover: () => void;
@@ -315,7 +316,7 @@ export const docsContext = createContext<DocsContextValue>({
   openPage: noop, toggleSidebar: noop, toggleTree: noop, toggleCollapse: noop, toggleFav: noop,
   activePage: () => undefined, addPage: noop, createSubpage: () => ({ id: '', blockId: '' }),
   duplicatePage: noop, deletePage: noop, requestDeletePage: noop, cancelDeletePage: noop, confirmDeletePage: noop,
-  renamePage: noop, commitRename: noop, cancelRename: noop,
+  renamePage: noop, commitRename: noop, cancelRename: noop, movePage: noop,
   setPageIcon: noop, onTitleInput: noop, addCover: noop, removeCover: noop,
   exportMarkdown: noop, docToMarkdown: () => '',
   openTrash: noop, closeTrash: noop, restoreTrash: noop, purgeTrash: noop,
@@ -673,6 +674,45 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
   }, [patch]);
 
   const cancelDeletePage = useCallback(() => patch({ deleteConfirm: null }), [patch]);
+
+  /** 페이지를 새 부모(폴더/페이지 id 또는 스페이스 루트 id) 아래로 이동. 자기 자신/자신의 하위로는 이동 불가. */
+  const movePage = useCallback((id: string, targetParentId: string) => {
+    const s = stateRef.current;
+    const page = s.pagesById[id];
+    if (!page || id === targetParentId) return;
+    const isSelfOrDescendant = (nodeId: string): boolean => {
+      if (nodeId === id) return true;
+      return (s.pagesById[nodeId]?.children || []).some((c) => isSelfOrDescendant(c));
+    };
+    if (targetParentId.indexOf('sp_') !== 0 && isSelfOrDescendant(targetParentId)) return;
+    if (targetParentId.indexOf('sp_') !== 0 && !s.pagesById[targetParentId]) return;
+    if (page.parentId === targetParentId) return;
+
+    let spaces = s.spaces;
+    const pagesById = { ...s.pagesById };
+    const oldParent = page.parentId;
+    if (oldParent) {
+      if (oldParent.indexOf('sp_') === 0) {
+        spaces = spaces.map((sp) => (sp.id === oldParent ? { ...sp, children: sp.children.filter((c) => c !== id) } : sp));
+      } else if (pagesById[oldParent]) {
+        pagesById[oldParent] = { ...pagesById[oldParent], children: pagesById[oldParent].children.filter((c) => c !== id) };
+      }
+    }
+    if (targetParentId.indexOf('sp_') === 0) {
+      spaces = spaces.map((sp) => (sp.id === targetParentId ? { ...sp, children: [...sp.children, id] } : sp));
+    } else {
+      pagesById[targetParentId] = { ...pagesById[targetParentId], children: [...pagesById[targetParentId].children, id] };
+    }
+    pagesById[id] = { ...pagesById[id], parentId: targetParentId };
+
+    patch({
+      pagesById,
+      spaces,
+      treeOpen: { ...s.treeOpen, [targetParentId]: true },
+      pageMenu: null,
+      moveModal: null,
+    });
+  }, [patch]);
 
   const confirmDeletePage = useCallback(() => {
     const target = stateRef.current.deleteConfirm;
@@ -2061,7 +2101,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     getText, setText, nextId,
     openPage, toggleSidebar, toggleTree, toggleCollapse, toggleFav,
     activePage, addPage, createSubpage, duplicatePage, deletePage, requestDeletePage, cancelDeletePage, confirmDeletePage,
-    renamePage, commitRename, cancelRename,
+    renamePage, commitRename, cancelRename, movePage,
     setPageIcon, onTitleInput, addCover, removeCover,
     exportMarkdown, docToMarkdown,
     openTrash, closeTrash, restoreTrash, purgeTrash,

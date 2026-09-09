@@ -360,7 +360,9 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     doneCounts,
     cachedSelectedStatuses: cached?.selectedStatuses,
   });
-  const { selectedStatuses, statusCounts, toggleStatus, isDoneOnlyActive, toggleDoneOnly } = statusFilterHook;
+  const {
+    selectedStatuses, statusCounts, toggleStatus, isDoneOnlyActive, toggleDoneOnly, isHideDoneActive, toggleHideDone,
+  } = statusFilterHook;
 
   // 검색 + 자동완성
   const issueSearchHook = useJiraIssueSearch({
@@ -688,6 +690,8 @@ export function useJiraSearch({ activeAccount, history }: UseJiraSearchOptions) 
     toggleStatus,
     isDoneOnlyActive,
     toggleDoneOnly,
+    isHideDoneActive,
+    toggleHideDone,
 
     // 타임라인용 메타
     startDateByProject,

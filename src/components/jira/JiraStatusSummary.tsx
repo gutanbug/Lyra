@@ -2,8 +2,10 @@ import React from 'react';
 import styled from 'styled-components';
 import { jiraTheme } from 'lib/styles/jiraTheme';
 import { getStatusColor } from 'lib/utils/jiraUtils';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, EyeOff } from 'lucide-react';
 import type { StatusCount } from 'lib/hooks/useJiraSearch';
+import type { AssigneeCount } from 'lib/hooks/jira/useJiraAssigneeFilter';
+import JiraAssigneeFilterMenu from 'components/jira/JiraAssigneeFilterMenu';
 
 interface JiraStatusSummaryProps {
   statusCounts: StatusCount[];
@@ -11,9 +13,21 @@ interface JiraStatusSummaryProps {
   onToggleStatus: (name: string) => void;
   isDoneOnlyActive: boolean;
   onToggleDoneOnly: () => void;
+  isHideDoneActive: boolean;
+  onToggleHideDone: () => void;
+  assigneeCounts: AssigneeCount[];
+  isAssigneeSelected: (name: string) => boolean;
+  onToggleAssignee: (name: string) => void;
+  isAssigneeFilterActive: boolean;
+  assigneeSelectedCount: number;
+  onClearAssigneeFilter: () => void;
 }
 
-const JiraStatusSummary = ({ statusCounts, selectedStatuses, onToggleStatus, isDoneOnlyActive, onToggleDoneOnly }: JiraStatusSummaryProps) => {
+const JiraStatusSummary = ({
+  statusCounts, selectedStatuses, onToggleStatus, isDoneOnlyActive, onToggleDoneOnly,
+  isHideDoneActive, onToggleHideDone,
+  assigneeCounts, isAssigneeSelected, onToggleAssignee, isAssigneeFilterActive, assigneeSelectedCount, onClearAssigneeFilter,
+}: JiraStatusSummaryProps) => {
   const total = statusCounts.reduce((s, c) => s + c.count, 0);
   const hasFilter = selectedStatuses.size > 0;
 
@@ -28,6 +42,23 @@ const JiraStatusSummary = ({ statusCounts, selectedStatuses, onToggleStatus, isD
         <CheckCheck size={12} strokeWidth={2.5} />
         완료만 보기
       </DoneOnlyBtn>
+      <DoneOnlyBtn
+        type="button"
+        $active={isHideDoneActive}
+        onClick={onToggleHideDone}
+        title="완료 상태 이슈 제외"
+      >
+        <EyeOff size={12} strokeWidth={2.5} />
+        완료 제외
+      </DoneOnlyBtn>
+      <JiraAssigneeFilterMenu
+        assigneeCounts={assigneeCounts}
+        isSelected={isAssigneeSelected}
+        onToggle={onToggleAssignee}
+        isActive={isAssigneeFilterActive}
+        selectedCount={assigneeSelectedCount}
+        onClear={onClearAssigneeFilter}
+      />
       {statusCounts.map((sc) => {
         const color = getStatusColor(sc.name, sc.category);
         const isSelected = selectedStatuses.has(sc.name);

@@ -12,12 +12,34 @@ import { Check, RotateCcw, Sun, Moon } from 'lucide-react';
 import { theme } from 'lib/styles/theme';
 import { useAppearance, DEFAULT_PAGE_BG, type ThemeMode } from 'modules/contexts/appearance';
 
+type IconVariant = 'dark' | 'light';
+
+const ICON_PREVIEW_SRC: Record<IconVariant, string> = {
+  dark: 'images/app-icon-dark.png',
+  light: 'images/app-icon-light.png',
+};
+
 const AppearanceSettings = () => {
   const { mode, setMode, pageBg, setPageBg, resetPageBg, presets } = useAppearance();
   const [draft, setDraft] = useState<string>(pageBg);
 
   // 외부 변경(reset/preset 클릭/다른 탭 동기화)에 hex input 동기
   useEffect(() => { setDraft(pageBg); }, [pageBg]);
+
+  // 앱 아이콘 배색 (Electron 메인 프로세스 electron-store에 영구 저장 — 앱 재시작 후에도 유지)
+  const [iconVariant, setIconVariantState] = useState<IconVariant>('dark');
+  const iconApiAvailable = typeof window.workspaceAPI?.settings?.getIconVariant === 'function';
+
+  useEffect(() => {
+    window.workspaceAPI?.settings?.getIconVariant?.().then((v) => {
+      if (v) setIconVariantState(v);
+    });
+  }, []);
+
+  const handlePickIconVariant = (variant: IconVariant) => {
+    setIconVariantState(variant);
+    window.workspaceAPI?.settings?.setIconVariant?.(variant);
+  };
 
   const activePreset = presets.find((p) => p.value.toLowerCase() === pageBg.toLowerCase());
   const isDefault = pageBg.toLowerCase() === DEFAULT_PAGE_BG.toLowerCase();
@@ -57,7 +79,45 @@ const AppearanceSettings = () => {
         </ModeGrid>
       </Section>
 
-      {/* 2) Page bg color (light mode only) */}
+      {/* 2) App icon variant (Electron 데스크톱 앱에서만 표시) */}
+      {iconApiAvailable && (
+        <Section>
+          <SectionLabel>앱 아이콘</SectionLabel>
+          <SectionHint>Dock/작업표시줄에 표시되는 아이콘 배색을 선택하세요. 선택은 앱을 재시작해도 유지됩니다.</SectionHint>
+
+          <ModeGrid>
+            <ModeCard
+              type="button"
+              $active={iconVariant === 'dark'}
+              onClick={() => handlePickIconVariant('dark')}
+              aria-pressed={iconVariant === 'dark'}
+            >
+              <IconSwatch $variant="dark">
+                <IconPreviewImg src={ICON_PREVIEW_SRC.dark} alt="" />
+                {iconVariant === 'dark' && <ModeCheck><Check size={14} strokeWidth={3} /></ModeCheck>}
+              </IconSwatch>
+              <ModeName>다크</ModeName>
+              <ModeDesc>검은 배경 · 흰색 아이콘 (기본값)</ModeDesc>
+            </ModeCard>
+
+            <ModeCard
+              type="button"
+              $active={iconVariant === 'light'}
+              onClick={() => handlePickIconVariant('light')}
+              aria-pressed={iconVariant === 'light'}
+            >
+              <IconSwatch $variant="light">
+                <IconPreviewImg src={ICON_PREVIEW_SRC.light} alt="" />
+                {iconVariant === 'light' && <ModeCheck><Check size={14} strokeWidth={3} /></ModeCheck>}
+              </IconSwatch>
+              <ModeName>라이트</ModeName>
+              <ModeDesc>흰 배경 · 검은색 아이콘</ModeDesc>
+            </ModeCard>
+          </ModeGrid>
+        </Section>
+      )}
+
+      {/* 3) Page bg color (light mode only) */}
       <Section $disabled={isDark}>
         <SectionLabel>페이지 배경색</SectionLabel>
         <SectionHint>
@@ -210,6 +270,26 @@ const ModeSwatch = styled.span<{ $variant: ThemeMode }>`
   background: ${({ $variant }) => ($variant === 'dark' ? '#1e1f22' : '#e8f0fa')};
   color: ${({ $variant }) => ($variant === 'dark' ? '#f0f1f3' : '#1c1b1a')};
   border: 1px solid ${({ $variant }) => ($variant === 'dark' ? '#4b4e54' : '#dbe5f0')};
+`;
+
+const IconSwatch = styled.span<{ $variant: IconVariant }>`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: ${theme.radius.ctl};
+  margin-bottom: 6px;
+  background: ${({ $variant }) => ($variant === 'dark' ? '#1e1f22' : '#f5f4f2')};
+  border: 1px solid ${({ $variant }) => ($variant === 'dark' ? '#4b4e54' : '#dbe5f0')};
+  overflow: hidden;
+`;
+
+const IconPreviewImg = styled.img`
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
 `;
 
 const ModeCheck = styled.span`

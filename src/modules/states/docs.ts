@@ -57,6 +57,7 @@ const initialState: DocsState = {
   trashOpen: false,
   trash: [],
   deleteConfirm: null,
+  moveModal: null,
   cloudOpen: false,
   cloud: {
     url: '', key: '', table: 'lyra_docs', wsId: 'my-workspace', auto: false,

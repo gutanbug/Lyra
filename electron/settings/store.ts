@@ -21,6 +21,8 @@ interface SettingsStore {
   projectFieldConfigs: Record<string, Record<string, ProjectFieldConfig>>;
   /** Docs 로컬 저장소 경로 (미지정 시 기본 경로 사용) */
   docsStoragePath?: string;
+  /** 앱 아이콘 배색 (dark = 검은 배경/흰 아이콘 기본값, light = 흰 배경/검은 아이콘) */
+  iconVariant?: 'dark' | 'light';
 }
 
 const store = new Store<SettingsStore>({
@@ -74,6 +76,14 @@ export const SettingsManager = {
 
   resetDocsStoragePath(): void {
     store.delete('docsStoragePath');
+  },
+
+  getIconVariant(): 'dark' | 'light' {
+    return store.get('iconVariant', 'dark');
+  },
+
+  setIconVariant(variant: 'dark' | 'light'): void {
+    store.set('iconVariant', variant);
   },
 
   /** 계정 삭제 시 관련 설정 모두 제거 */

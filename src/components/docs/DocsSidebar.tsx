@@ -60,7 +60,7 @@ function loadSidebarWidth(): number {
 const DocsSidebar = () => {
   const {
     state, openPage, toggleTree, toggleCollapse, toggleFav, addPage, openPageMenu, openTrash, togglePalette,
-    commitRename, cancelRename, isFileStorageAvailable, openStorage,
+    commitRename, cancelRename, isFileStorageAvailable, openStorage, movePage,
   } = useDocs();
   const history = useHistory();
 
@@ -117,6 +117,34 @@ const DocsSidebar = () => {
     if (renamingId) setRenameValue(state.pagesById[renamingId]?.title || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renamingId]);
+
+  // 사이드바 트리 Drag & Drop 이동 (폴더/페이지/스페이스 루트 어디로든 드롭 가능)
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const onRowDragStart = useCallback((id: string) => (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    setDragId(id);
+  }, []);
+  const onRowDragEnd = useCallback(() => {
+    setDragId(null);
+    setDragOverId(null);
+  }, []);
+  const onRowDragOver = useCallback((targetId: string) => (e: React.DragEvent) => {
+    if (!dragId || dragId === targetId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverId(targetId);
+  }, [dragId]);
+  const onRowDragLeave = useCallback((targetId: string) => () => {
+    setDragOverId((v) => (v === targetId ? null : v));
+  }, []);
+  const onRowDrop = useCallback((targetId: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragId && dragId !== targetId) movePage(dragId, targetId);
+    setDragId(null);
+    setDragOverId(null);
+  }, [dragId, movePage]);
 
   const [addMenu, setAddMenu] = useState<{ parentId: string; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -226,7 +254,15 @@ const DocsSidebar = () => {
         )}
 
         {navRows.map((n) => (n.isSpace ? (
-          <SpaceRow key={n.id} className="nav-row" onClick={() => toggleTree(n.id)}>
+          <SpaceRow
+            key={n.id}
+            className="nav-row"
+            onClick={() => toggleTree(n.id)}
+            $dragOver={dragOverId === n.id}
+            onDragOver={onRowDragOver(n.id)}
+            onDragLeave={onRowDragLeave(n.id)}
+            onDrop={onRowDrop(n.id)}
+          >
             <CaretBtn onClick={(e) => { e.stopPropagation(); toggleTree(n.id); }}>
               {n.open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </CaretBtn>
@@ -241,6 +277,13 @@ const DocsSidebar = () => {
             className="nav-row"
             $active={n.active}
             $depth={n.depth}
+            $dragOver={dragOverId === n.id}
+            draggable={renamingId !== n.id}
+            onDragStart={onRowDragStart(n.id)}
+            onDragEnd={onRowDragEnd}
+            onDragOver={onRowDragOver(n.id)}
+            onDragLeave={onRowDragLeave(n.id)}
+            onDrop={onRowDrop(n.id)}
             onClick={() => openPage(n.id)}
             onContextMenu={(e) => { e.preventDefault(); openPageMenu(n.id, e.clientX, e.clientY); }}
             title={n.title}
@@ -442,7 +485,7 @@ const NavRowFav = styled.div<{ $active: boolean }>`
   &:hover { background: ${docsTheme.hover}; }
 `;
 
-const SpaceRow = styled.div`
+const SpaceRow = styled.div<{ $dragOver: boolean }>`
   display: flex;
   align-items: center;
   gap: 6px;
@@ -450,7 +493,10 @@ const SpaceRow = styled.div`
   cursor: pointer;
   user-select: none;
   border-radius: ${docsTheme.radius.ctl};
-  &:hover { background: ${docsTheme.hover}; }
+  outline: ${({ $dragOver }) => ($dragOver ? `2px solid ${docsTheme.accent}` : 'none')};
+  outline-offset: -2px;
+  background: ${({ $dragOver }) => ($dragOver ? docsTheme.accentSoft : 'transparent')};
+  &:hover { background: ${({ $dragOver }) => ($dragOver ? docsTheme.accentSoft : docsTheme.hover)}; }
 `;
 
 const CaretSlot = styled.span`
@@ -525,7 +571,7 @@ const AddTypeBtn = styled.button`
   &:hover { background: ${docsTheme.hover}; }
 `;
 
-const PageRow = styled.div<{ $active: boolean; $depth: number }>`
+const PageRow = styled.div<{ $active: boolean; $depth: number; $dragOver: boolean }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -536,8 +582,10 @@ const PageRow = styled.div<{ $active: boolean; $depth: number }>`
   cursor: pointer;
   user-select: none;
   margin-bottom: 1px;
-  background: ${({ $active }) => ($active ? docsTheme.active : 'transparent')};
-  &:hover { background: ${docsTheme.hover}; }
+  outline: ${({ $dragOver }) => ($dragOver ? `2px solid ${docsTheme.accent}` : 'none')};
+  outline-offset: -2px;
+  background: ${({ $active, $dragOver }) => ($dragOver ? docsTheme.accentSoft : $active ? docsTheme.active : 'transparent')};
+  &:hover { background: ${({ $dragOver }) => ($dragOver ? docsTheme.accentSoft : docsTheme.hover)}; }
 `;
 
 const AddRootBtn = styled.button`

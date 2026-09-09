@@ -23,6 +23,7 @@ export const useDocsGlobalEvents = () => {
       if (state.filterMenu) closeMenu('filterMenu');
       if (state.pageMenu) closeMenu('pageMenu');
       if (state.mediaMenu) closeMenu('mediaMenu');
+      if (state.dateMenu) closeMenu('dateMenu');
       if (state.fieldTypeMenu) closeMenu('fieldTypeMenu');
       if (state.tagMenu) closeMenu('tagMenu');
     };
@@ -30,7 +31,7 @@ export const useDocsGlobalEvents = () => {
     return () => document.removeEventListener('mousedown', onDocDown, true);
   }, [
     state.slash, state.pasteMenu, state.mention, state.blockMenu, state.cellEditor, state.filterMenu,
-    state.pageMenu, state.mediaMenu, state.fieldTypeMenu, state.tagMenu, closeMenu,
+    state.pageMenu, state.mediaMenu, state.dateMenu, state.fieldTypeMenu, state.tagMenu, closeMenu,
   ]);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export const useDocsGlobalEvents = () => {
         else if (state.filterMenu) closeMenu('filterMenu');
         else if (state.pageMenu) closeMenu('pageMenu');
         else if (state.mediaMenu) closeMenu('mediaMenu');
+        else if (state.dateMenu) closeMenu('dateMenu');
         else if (state.fieldTypeMenu) closeMenu('fieldTypeMenu');
         else if (state.tagMenu) closeMenu('tagMenu');
       }
@@ -61,7 +63,7 @@ export const useDocsGlobalEvents = () => {
   }, [
     state.palette, state.trashOpen, state.deleteConfirm, state.templateEditorId,
     state.slash, state.pasteMenu, state.mention, state.blockMenu, state.cellEditor,
-    state.filterMenu, state.pageMenu, state.mediaMenu, state.fieldTypeMenu, state.tagMenu,
+    state.filterMenu, state.pageMenu, state.mediaMenu, state.dateMenu, state.fieldTypeMenu, state.tagMenu,
     togglePalette, closePalette, closeTrash, cancelDeletePage, closeTemplateEditor, closeMenu,
   ]);
 };

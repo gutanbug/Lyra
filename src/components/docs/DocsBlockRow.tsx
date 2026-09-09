@@ -6,7 +6,7 @@ import { EditableDiv } from 'lib/styles/docsCommon';
 import { useEditableRef } from 'lib/hooks/useEditableRef';
 import { useDocsMediaUrl } from 'lib/hooks/useDocsMediaUrl';
 import { useDocsInlineChips, buildHydratedHtml } from 'lib/hooks/useDocsInlineChips';
-import { matchMarkdown, filteredFlatCmds } from 'lib/utils/docsUtils';
+import { matchMarkdown, filteredFlatCmds, serializeChipText } from 'lib/utils/docsUtils';
 import { moveDocsCaretByArrow } from 'lib/utils/docsCaretNavigation';
 import { isImeComposing } from 'lib/utils/keyboard';
 import { renderMath } from 'lib/utils/katexLoader';
@@ -77,9 +77,9 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     state, getText, setText, setEl, getBlocks, addBelow, focusBlock, ensureTrailing,
     toggleCheck, toggleCollapse, replaceBlock, setBlocks, openMenu, closeMenu,
     openMention, chooseMention, onBlockPaste, applyCmd, resolveIssueByKey, schedulePersist,
-    openPage, filteredPages,
+    openPage, filteredPages, openDateMenu,
   } = useDocs();
-  const { makeChipHTML, makePageChipHTML } = useDocsInlineChips();
+  const { makeChipHTML, makePageChipHTML, makeDateChipHTML } = useDocsInlineChips();
   const dnd = useBlockDnd(block.id);
   const indent = block.indent || 0;
 
@@ -92,10 +92,11 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
       (id) => state.pagesById[id],
       makeChipHTML,
       makePageChipHTML,
+      makeDateChipHTML,
     );
-  }, [resolveIssueByKey, state.pagesById, makeChipHTML, makePageChipHTML]);
+  }, [resolveIssueByKey, state.pagesById, makeChipHTML, makePageChipHTML, makeDateChipHTML]);
 
-  const { setRef, onInput: onEditableInput, resync } = useEditableRef(getValue, onChange, renderValue);
+  const { setRef, resync } = useEditableRef(getValue, onChange, renderValue);
 
   const setElRef = useCallback((el: HTMLElement | null) => {
     setRef(el);
@@ -103,9 +104,9 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
   }, [setRef, setEl, block.id]);
 
   const onInput = (e: React.FormEvent<HTMLDivElement>) => {
-    onEditableInput(e);
     const el = e.currentTarget;
-    const txt = el.textContent || '';
+    const txt = serializeChipText(el);
+    setText(block.id, txt);
     schedulePersist();
 
     if (txt.startsWith('/')) {
@@ -196,8 +197,11 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     openMenu('mediaMenu', { blockId: block.id, x: Math.min(r.left, window.innerWidth - 340), y: r.bottom + 6 });
   };
   const onDocPageClick = (e: React.MouseEvent) => {
-    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-page]');
-    if (chip) { e.preventDefault(); openPage(chip.getAttribute('data-page')!); }
+    const target = e.target as HTMLElement;
+    const pageChip = target.closest<HTMLElement>('[data-page]');
+    if (pageChip) { e.preventDefault(); openPage(pageChip.getAttribute('data-page')!); return; }
+    const dateChip = target.closest<HTMLElement>('[data-docs-date]');
+    if (dateChip) { e.preventDefault(); e.stopPropagation(); openDateMenu(block.id, dateChip); }
   };
 
   // ── math (LaTeX 렌더링 미리보기 ↔ 편집 토글) ──

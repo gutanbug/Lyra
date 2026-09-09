@@ -16,6 +16,7 @@ import React, {
 } from 'react';
 import { produce } from 'immer';
 import { deleteMedia, getMedia, putMedia } from 'lib/utils/docsMediaStore';
+import { serializeChipText } from 'lib/utils/docsUtils';
 import {
   isDocsRowDraftUnchanged, type DocsRowDraftSnapshot,
 } from 'lib/utils/docsBoardGroups';
@@ -40,6 +41,14 @@ const STORAGE_KEY = 'lyraDocs.v1';
 const CLOUD_STORAGE_KEY = 'lyraDocs.cloud';
 const PERSIST_DEBOUNCE_MS = 450;
 const CLOUD_DEBOUNCE_MS = 1500;
+
+/** 로컬 타임존 기준 YYYY-MM-DD (toISOString은 UTC라 자정 근처에 날짜가 하루 밀릴 수 있음) */
+const toLocalIsoDate = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 /*
 	Reducer
@@ -127,7 +136,7 @@ const loadPersisted = (): { state: DocsState; text: Record<string, string>; uid:
 	Context
 */
 type MenuField = 'blockMenu' | 'mention' | 'fmtBar' | 'pageMenu' | 'cellEditor' | 'filterMenu' | 'pasteMenu' | 'slash'
-  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal';
+  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal' | 'dateMenu' | 'bookmarkMenu';
 
 export interface DocsContextValue {
   state: DocsState;
@@ -228,6 +237,8 @@ export interface DocsContextValue {
   removeComment: (blockId: string, commentId: string) => void;
   openMention: (id: string, query: string, el: HTMLElement) => void;
   chooseMention: (pageId: string) => void;
+  openDateMenu: (blockId: string, chipEl: HTMLElement) => void;
+  setChipDate: (iso: string) => void;
 
   // ── mention ──
   filteredPages: (q: string) => DocsPage[];
@@ -334,6 +345,7 @@ export const docsContext = createContext<DocsContextValue>({
   focusBlock: noop, applyCmd: noop, applyFmt: noop, applyColor: noop, applySize: noop, applyLink: noop,
   getActiveBlockId: () => null, setBlockAlign: noop, addComment: noop, removeComment: noop,
   openMention: noop, chooseMention: noop,
+  openDateMenu: noop, setChipDate: noop,
   filteredPages: () => [], paletteResults: () => [],
   setDbView: noop, setSort: noop, clearSort: noop, addFilter: noop, updateFilter: noop, removeFilter: noop,
   setGroupBy: noop, addDbView: noop, removeDbView: noop, addBoardGroup: noop, removeBoardGroup: noop,
@@ -1064,7 +1076,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
       nr.setStartAfter(last); nr.collapse(true);
       sel.removeAllRanges(); sel.addRange(nr);
     }
-    textRef.current[blockId] = el.textContent || '';
+    textRef.current[blockId] = serializeChipText(el);
     schedulePersist();
   }, [schedulePersist]);
 
@@ -1136,6 +1148,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
 
   const jiraRotRef = useRef(0);
   const mentionRangeRef = useRef<Range | null>(null);
+  const dateChipRef = useRef<HTMLElement | null>(null);
 
   const focusBlock = useCallback((id: string, atEnd: boolean) => {
     requestAnimationFrame(() => {
@@ -1151,9 +1164,9 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, []);
 
-  const makeDateChipHTMLInternal = useCallback(() => {
-    const d = new Date(2026, 6, 14);
-    return `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:#faf9f7;border:1px solid #e6e3df;color:#5d5957;font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;user-select:none;white-space:nowrap">📅 2026년 ${d.getMonth() + 1}월 ${d.getDate()}일</span>`;
+  const makeDateChipHTMLInternal = useCallback((iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return `<span contenteditable="false" data-docs-date="${iso}" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:#faf9f7;border:1px solid #e6e3df;color:#5d5957;font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap">📅 ${y}년 ${m}월 ${d}일</span>`;
   }, []);
 
   const applyCmd = useCallback((cmdId: string) => {
@@ -1190,7 +1203,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     clearText();
     if (cmdId === 'date') {
       patch({ slash: null });
-      insertChip(sid, makeDateChipHTMLInternal(), null);
+      insertChip(sid, makeDateChipHTMLInternal(toLocalIsoDate(new Date())), null);
       return;
     }
     if (cmdId === 'pagemention') {
@@ -1387,6 +1400,32 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     patch({ mention: null });
     if (id && page) insertChip(id, makePageChipHTMLInternal(page), mentionRangeRef.current);
   }, [patch, insertChip, makePageChipHTMLInternal]);
+
+  // ── 날짜 칩 클릭 → 인라인 날짜 변경 팝업 ──
+  const openDateMenu = useCallback((blockId: string, chipEl: HTMLElement) => {
+    dateChipRef.current = chipEl;
+    const rect = chipEl.getBoundingClientRect();
+    let y = rect.bottom + 6;
+    if (y + 200 > window.innerHeight) y = Math.max(10, rect.top - 206);
+    patch({
+      dateMenu: {
+        blockId, iso: chipEl.getAttribute('data-docs-date') || toLocalIsoDate(new Date()),
+        x: Math.min(rect.left, window.innerWidth - 236), y,
+      },
+    });
+  }, [patch]);
+
+  const setChipDate = useCallback((iso: string) => {
+    const chipEl = dateChipRef.current;
+    const dm = stateRef.current.dateMenu;
+    if (!chipEl || !dm) return;
+    chipEl.setAttribute('data-docs-date', iso);
+    const [y, m, d] = iso.split('-').map(Number);
+    chipEl.textContent = `📅 ${y}년 ${m}월 ${d}일`;
+    const blockEl = elsRef.current[dm.blockId];
+    if (blockEl) { textRef.current[dm.blockId] = serializeChipText(blockEl); schedulePersist(); }
+    patch({ dateMenu: { ...dm, iso } });
+  }, [patch, schedulePersist]);
 
   // ── mention ──
   const filteredPages = useCallback((q: string) => {
@@ -2123,6 +2162,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     focusBlock, applyCmd, applyFmt, applyColor, applySize, applyLink,
     getActiveBlockId, setBlockAlign, addComment, removeComment,
     openMention, chooseMention,
+    openDateMenu, setChipDate,
     filteredPages, paletteResults,
     setDbView, setSort, clearSort, addFilter, updateFilter, removeFilter, setGroupBy,
     addDbView, removeDbView, addBoardGroup, removeBoardGroup, setBoardGroupOrder, setBoardGroupColor,

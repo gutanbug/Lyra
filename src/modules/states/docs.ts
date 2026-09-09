@@ -52,6 +52,8 @@ const initialState: DocsState = {
   jiraIssues,
   pasteMenu: null,
   mediaMenu: null,
+  dateMenu: null,
+  bookmarkMenu: null,
   slash: null,
   palette: null,
   trashOpen: false,

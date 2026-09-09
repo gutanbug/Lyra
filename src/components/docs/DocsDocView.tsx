@@ -2,7 +2,7 @@ import {
   useCallback, useEffect, useMemo, useState,
 } from 'react';
 import styled from 'styled-components';
-import { FileText, Database } from 'lucide-react';
+import { FileText, Database, Image as ImageIcon } from 'lucide-react';
 import { useDocs } from 'modules/contexts/docs';
 import { docsTheme } from 'lib/styles/docsTheme';
 import { EditableTitle } from 'lib/styles/docsCommon';
@@ -105,7 +105,7 @@ const DocsDocView = () => {
           )}
         </IconWrap>
         <CoverRow className="nav-row">
-          {!page.cover && <CoverBtn className="nav-add" onClick={addCover}>🖼 커버</CoverBtn>}
+          {!page.cover && <CoverBtn className="nav-add" onClick={addCover}><ImageIcon size={14} /> 커버</CoverBtn>}
         </CoverRow>
         <EditableTitle
           className="lyra-title"

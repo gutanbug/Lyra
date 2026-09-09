@@ -35,7 +35,7 @@ export const DOCS_CMDS: DocsCmdGroup[] = [
     { id: 'outline', icon: '≡', label: '목차', desc: '제목 자동 목차' },
   ] },
   { cat: '미디어', items: [
-    { id: 'image', icon: '🖼', label: '이미지', desc: '이미지 업로드' },
+    { id: 'image', icon: '🖼️', label: '이미지', desc: '이미지 업로드' },
     { id: 'video', icon: '🎬', label: '동영상', desc: '동영상 임베드' },
     { id: 'file', icon: '📎', label: '파일', desc: '파일 첨부' },
     { id: 'bookmark', icon: '🔖', label: '웹 북마크', desc: '링크 미리보기' },

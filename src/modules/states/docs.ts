@@ -54,6 +54,7 @@ const initialState: DocsState = {
   mediaMenu: null,
   dateMenu: null,
   bookmarkMenu: null,
+  jiraMenu: null,
   slash: null,
   palette: null,
   trashOpen: false,

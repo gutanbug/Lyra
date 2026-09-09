@@ -15,6 +15,9 @@ import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef,
 } from 'react';
 import { produce } from 'immer';
+import { integrationController } from 'controllers/account';
+import { useAccount } from 'modules/contexts/account';
+import { buildSearchJql, parseIssues } from 'lib/utils/jiraNormalizers';
 import { deleteMedia, getMedia, putMedia } from 'lib/utils/docsMediaStore';
 import { serializeChipText } from 'lib/utils/docsUtils';
 import {
@@ -136,7 +139,7 @@ const loadPersisted = (): { state: DocsState; text: Record<string, string>; uid:
 	Context
 */
 type MenuField = 'blockMenu' | 'mention' | 'fmtBar' | 'pageMenu' | 'cellEditor' | 'filterMenu' | 'pasteMenu' | 'slash'
-  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal' | 'dateMenu' | 'bookmarkMenu';
+  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal' | 'dateMenu' | 'bookmarkMenu' | 'jiraMenu';
 
 export interface DocsContextValue {
   state: DocsState;
@@ -217,6 +220,8 @@ export interface DocsContextValue {
   resolveIssueByKey: (k: string) => DocsJiraIssue | undefined;
   registerIssue: (issue: DocsJiraIssue) => DocsJiraIssue;
   setEmbedMode: (id: string, mode: 'card' | 'link') => void;
+  searchJiraIssues: (query: string) => Promise<DocsJiraIssue[]>;
+  chooseJiraIssue: (issue: DocsJiraIssue) => void;
 
   // ── DOM refs (paste/mention chip 삽입용) ──
   setEl: (id: string, el: HTMLElement | null) => void;
@@ -340,7 +345,7 @@ export const docsContext = createContext<DocsContextValue>({
   turnInto: noop, setBlockMedia: noop, setBlockBookmark: noop, moveBlock: noop, toggleCheck: noop, ensureTrailing: () => '', insertBlockAfter: noop,
   replaceBlock: noop,
   jiraType: () => ({ color: '#8c8582', letter: '•' }), hostOf: () => '', resolveIssueByKey: () => undefined,
-  registerIssue: (i) => i, setEmbedMode: noop,
+  registerIssue: (i) => i, setEmbedMode: noop, searchJiraIssues: async () => [], chooseJiraIssue: noop,
   setEl: noop, getEl: () => undefined, insertChip: noop, insertTextAt: noop, insertEmbedAfter: noop,
   onBlockPaste: noop, choosePaste: noop,
   focusBlock: noop, applyCmd: noop, applyFmt: noop, applyColor: noop, applySize: noop, applyLink: noop,
@@ -380,6 +385,7 @@ const insertAfter = (arr: string[], id: string, nid: string) => {
 };
 
 const DocsProvider = ({ children }: { children: React.ReactNode }) => {
+  const { activeAccount } = useAccount();
   const loadedRef = useRef(loadPersisted());
   const [state, dispatch] = useReducer(reducer, loadedRef.current.state);
 
@@ -1055,6 +1061,34 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, mode } : b)));
   }, [setBlocks]);
 
+  const searchJiraIssues = useCallback(async (query: string): Promise<DocsJiraIssue[]> => {
+    if (!activeAccount || !query.trim()) return [];
+    const baseUrl = (activeAccount.credentials as { baseUrl?: string } | undefined)?.baseUrl || '';
+    const jql = buildSearchJql(query, [], []);
+    if (!jql) return [];
+    try {
+      const result = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'searchIssues',
+        params: { jql: `${jql} ORDER BY updated DESC`, maxResults: 8, skipCache: true },
+      });
+      return parseIssues(result).map((n) => ({
+        key: n.key,
+        summary: n.summary,
+        type: n.issueTypeName,
+        status: n.statusName,
+        priority: n.priorityName,
+        assignee: n.assigneeName,
+        url: baseUrl ? `${baseUrl.replace(/\/$/, '')}/browse/${n.key}` : '',
+        host: hostOf(baseUrl),
+      }));
+    } catch (e) {
+      return [];
+    }
+  }, [activeAccount, hostOf]);
+
+
   // ── DOM refs + paste/chip 삽입 ──
   const elsRef = useRef<Record<string, HTMLElement>>({});
   const setEl = useCallback((id: string, el: HTMLElement | null) => {
@@ -1155,7 +1189,6 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [resolveIssueByKey, registerIssue, hostOf, patch]);
 
-  const jiraRotRef = useRef(0);
   const mentionRangeRef = useRef<Range | null>(null);
   const dateChipRef = useRef<HTMLElement | null>(null);
 
@@ -1173,6 +1206,20 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, []);
 
+  const chooseJiraIssue = useCallback((issue: DocsJiraIssue) => {
+    const jm = stateRef.current.jiraMenu;
+    if (!jm) return;
+    registerIssue(issue);
+    if (jm.mode === 'inline') {
+      insertChip(jm.blockId, makeChipHTMLInternal(issue), null);
+    } else {
+      replaceBlock(jm.blockId, { id: jm.blockId, type: 'jira', issueKey: issue.key, mode: jm.mode });
+      const nid = ensureTrailing(jm.blockId);
+      focusBlock(nid, false);
+    }
+    patch({ jiraMenu: null });
+  }, [registerIssue, insertChip, makeChipHTMLInternal, replaceBlock, ensureTrailing, focusBlock, patch]);
+
   const makeDateChipHTMLInternal = useCallback((iso: string) => {
     const [y, m, d] = iso.split('-').map(Number);
     return `<span contenteditable="false" data-docs-date="${iso}" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:#faf9f7;border:1px solid #e6e3df;color:#5d5957;font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap">📅 ${y}년 ${m}월 ${d}일</span>`;
@@ -1188,24 +1235,16 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     if (cmdId.indexOf('jira') === 0) {
-      const issues = stateRef.current.jiraIssues;
-      if (issues.length === 0) {
-        clearText();
-        patch({ slash: null });
-        return;
-      }
-      const issue = issues[jiraRotRef.current++ % issues.length];
       clearText();
-      if (cmdId === 'jira-inline') {
-        patch({ slash: null });
-        insertChip(sid, makeChipHTMLInternal(issue), null);
-        return;
-      }
-      const mode = cmdId === 'jira-link' ? 'link' : 'card';
-      replaceBlock(sid, { id: sid, type: 'jira', issueKey: issue.key, mode });
-      patch({ slash: null });
-      const nid = ensureTrailing(sid);
-      focusBlock(nid, false);
+      const mode = cmdId === 'jira-inline' ? 'inline' : cmdId === 'jira-link' ? 'link' : 'card';
+      const el = elsRef.current[sid];
+      const rect = el?.getBoundingClientRect();
+      let y = (rect?.bottom || 0) + 6;
+      if (y + 320 > window.innerHeight) y = Math.max(10, (rect?.top || 0) - 326);
+      patch({
+        slash: null,
+        jiraMenu: { blockId: sid, mode, x: Math.min(rect?.left || 0, window.innerWidth - 320), y },
+      });
       return;
     }
 
@@ -1256,7 +1295,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     patch({ slash: null });
     if (isEditable) focusBlock(sid, false);
     else ensureTrailing(sid);
-  }, [patch, insertChip, makeChipHTMLInternal, makeDateChipHTMLInternal, replaceBlock, ensureTrailing, createSubpage, focusBlock]);
+  }, [patch, insertChip, makeDateChipHTMLInternal, replaceBlock, ensureTrailing, createSubpage, focusBlock]);
 
   // ── 선택 서식 툴바 ──
   const wrapInline = useCallback((css: string) => {
@@ -2165,7 +2204,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     getBlocks, openRowNote, closeRowNote,
     setBlocks, addBelow, duplicateBlock, removeBlock, turnInto, setBlockMedia, setBlockBookmark, moveBlock, toggleCheck,
     ensureTrailing, insertBlockAfter, replaceBlock,
-    jiraType, hostOf, resolveIssueByKey, registerIssue, setEmbedMode,
+    jiraType, hostOf, resolveIssueByKey, registerIssue, setEmbedMode, searchJiraIssues, chooseJiraIssue,
     setEl, getEl, insertChip, insertTextAt, insertEmbedAfter, onBlockPaste, choosePaste,
     focusBlock, applyCmd, applyFmt, applyColor, applySize, applyLink,
     getActiveBlockId, setBlockAlign, addComment, removeComment,

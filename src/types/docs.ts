@@ -261,6 +261,7 @@ export interface DocsPasteMenuState { blockId: string; x: number; y: number; tit
 export interface DocsMediaMenuState { blockId: string; x: number; y: number }
 export interface DocsDateMenuState { blockId: string; iso: string; x: number; y: number }
 export interface DocsBookmarkMenuState { blockId: string; x: number; y: number }
+export interface DocsJiraMenuState { blockId: string; mode: 'card' | 'link' | 'inline'; x: number; y: number }
 
 export interface DocsState {
   activeId: string;
@@ -291,6 +292,7 @@ export interface DocsState {
   mediaMenu: DocsMediaMenuState | null;
   dateMenu: DocsDateMenuState | null;
   bookmarkMenu: DocsBookmarkMenuState | null;
+  jiraMenu: DocsJiraMenuState | null;
   slash: DocsSlashMenuState | null;
   palette: DocsPaletteState | null;
   trashOpen: boolean;

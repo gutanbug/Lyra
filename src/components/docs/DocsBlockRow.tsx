@@ -196,6 +196,17 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     openMenu('mediaMenu', { blockId: block.id, x: Math.min(r.left, window.innerWidth - 340), y: r.bottom + 6 });
   };
+  const openBookmarkMenuFor = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openMenu('bookmarkMenu', { blockId: block.id, x: Math.min(r.left, window.innerWidth - 340), y: r.bottom + 6 });
+  };
+  const openBookmarkExternal = () => {
+    if (!block.url) return;
+    const api = (window as unknown as { electronAPI?: { openExternal?: (u: string) => void } }).electronAPI;
+    if (api?.openExternal) api.openExternal(block.url);
+    else window.open(block.url, '_blank', 'noopener');
+  };
   const onDocPageClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const pageChip = target.closest<HTMLElement>('[data-page]');
@@ -279,10 +290,21 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
 
   // ── bookmark ──
   if (block.type === 'bookmark') {
+    if (!block.url) {
+      return (
+        <BlockRowShell {...dnd} $align={block.align} data-block-id={block.id} style={{ padding: '5px 0' }}>
+          <BlockGutter id={block.id} top={12} />
+          <MediaPlaceholder $row onClick={openBookmarkMenuFor}>
+            <span style={{ fontSize: 26, flex: '0 0 auto' }}>🔖</span>
+            <span style={{ fontSize: 13.5 }}>웹 북마크를 추가하려면 클릭</span>
+          </MediaPlaceholder>
+        </BlockRowShell>
+      );
+    }
     return (
       <BlockRowShell {...dnd} $align={block.align} data-block-id={block.id} style={{ padding: '5px 0' }}>
         <BlockGutter id={block.id} top={12} />
-        <Bookmark>
+        <Bookmark onClick={openBookmarkExternal}>
           <div style={{ flex: 1, minWidth: 0, padding: '12px 15px' }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: docsTheme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{block.title || '웹 북마크'}</div>
             <div style={{ fontSize: 11.5, color: docsTheme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 4 }}>{block.url || ''}</div>
@@ -290,6 +312,7 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
           <BookmarkThumb>
             <span style={{ width: 30, height: 30, borderRadius: 7, background: docsTheme.accent, color: '#fff', fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Sora' }}>{(block.host || 'W')[0].toUpperCase()}</span>
           </BookmarkThumb>
+          <BookmarkEditBtn title="링크 수정" onClick={openBookmarkMenuFor}>✎</BookmarkEditBtn>
         </Bookmark>
       </BlockRowShell>
     );
@@ -673,7 +696,28 @@ const Bookmark = styled.div`
   background: ${docsTheme.surface};
   cursor: pointer;
   width: 100%;
+  position: relative;
   &:hover { border-color: ${docsTheme.borderStrong}; box-shadow: ${docsTheme.shadow}; }
+`;
+
+const BookmarkEditBtn = styled.button`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  appearance: none;
+  border: 1px solid ${docsTheme.border};
+  background: ${docsTheme.surface};
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: ${docsTheme.text2};
+  display: none;
+  align-items: center;
+  justify-content: center;
+  ${Bookmark}:hover & { display: inline-flex; }
+  &:hover { background: ${docsTheme.hover}; }
 `;
 
 const BookmarkThumb = styled.div`

@@ -21,6 +21,7 @@ import DocsFilterMenu from 'components/docs/DocsFilterMenu';
 import DocsPasteMenu from 'components/docs/DocsPasteMenu';
 import DocsMediaMenu from 'components/docs/DocsMediaMenu';
 import DocsDateMenu from 'components/docs/DocsDateMenu';
+import DocsBookmarkMenu from 'components/docs/DocsBookmarkMenu';
 import DocsDeleteConfirmModal from 'components/docs/DocsDeleteConfirmModal';
 import DocsMoveModal from 'components/docs/DocsMoveModal';
 import DocsRowDetail from 'components/docs/DocsRowDetail';
@@ -64,6 +65,7 @@ const DocsContainer = () => {
       <DocsPasteMenu />
       <DocsMediaMenu />
       <DocsDateMenu />
+      <DocsBookmarkMenu />
       <DocsDeleteConfirmModal />
       <DocsMoveModal />
       <DocsCommandPalette />

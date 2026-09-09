@@ -204,6 +204,7 @@ export interface DocsContextValue {
   removeBlock: (id: string) => void;
   turnInto: (id: string, type: DocsBlockType) => void;
   setBlockMedia: (blockId: string, fields: { url?: string; mediaId?: string; title?: string }) => void;
+  setBlockBookmark: (blockId: string, url: string) => void;
   moveBlock: (src: string, target: string, after: boolean) => void;
   toggleCheck: (id: string) => void;
   ensureTrailing: (sid: string) => string;
@@ -336,7 +337,7 @@ export const docsContext = createContext<DocsContextValue>({
   togglePalette: noop, closePalette: noop, setPaletteQuery: noop, setPaletteActive: noop,
   getBlocks: () => [], openRowNote: () => '', closeRowNote: noop,
   setBlocks: noop, addBelow: () => '', duplicateBlock: noop, removeBlock: noop,
-  turnInto: noop, setBlockMedia: noop, moveBlock: noop, toggleCheck: noop, ensureTrailing: () => '', insertBlockAfter: noop,
+  turnInto: noop, setBlockMedia: noop, setBlockBookmark: noop, moveBlock: noop, toggleCheck: noop, ensureTrailing: () => '', insertBlockAfter: noop,
   replaceBlock: noop,
   jiraType: () => ({ color: '#8c8582', letter: '•' }), hostOf: () => '', resolveIssueByKey: () => undefined,
   registerIssue: (i) => i, setEmbedMode: noop,
@@ -983,6 +984,14 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     patch({ mediaMenu: null });
   }, [setBlocks, patch]);
 
+  const setBlockBookmark = useCallback((blockId: string, rawUrl: string) => {
+    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { /* noop */ }
+    setBlocks((bs) => bs.map((b) => (b.id === blockId ? { ...b, url, title: host, host } : b)));
+    patch({ bookmarkMenu: null });
+  }, [setBlocks, patch]);
+
   const moveBlock = useCallback((src: string, target: string, after: boolean) => {
     setBlocks((bs) => {
       const srcBlk = bs.find((b) => b.id === src);
@@ -1239,7 +1248,6 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     let block: DocsBlock = { id: sid, type: cmdId as DocsBlockType, indent: 0 };
     if (cmdId === 'todo') block = { ...block, checked: false };
     if (cmdId === 'callout') block = { ...block, icon: '💡' };
-    if (cmdId === 'bookmark') block = { ...block, url: 'https://appflowy.io', title: 'AppFlowy', host: 'appflowy.io' };
     if (cmdId === 'table') {
       block = { ...block, cells: [['제목', '상태', '메모'], ['', '', ''], ['', '', '']] };
       ['제목', '상태', '메모'].forEach((label, ci) => { textRef.current[`${sid}:0:${ci}`] = label; });
@@ -2155,7 +2163,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     openMenu, closeMenu, openPageMenu, openBlockMenu, openFilterMenu, openCellEditor, openPasteMenu,
     togglePalette, closePalette, setPaletteQuery, setPaletteActive,
     getBlocks, openRowNote, closeRowNote,
-    setBlocks, addBelow, duplicateBlock, removeBlock, turnInto, setBlockMedia, moveBlock, toggleCheck,
+    setBlocks, addBelow, duplicateBlock, removeBlock, turnInto, setBlockMedia, setBlockBookmark, moveBlock, toggleCheck,
     ensureTrailing, insertBlockAfter, replaceBlock,
     jiraType, hostOf, resolveIssueByKey, registerIssue, setEmbedMode,
     setEl, getEl, insertChip, insertTextAt, insertEmbedAfter, onBlockPaste, choosePaste,

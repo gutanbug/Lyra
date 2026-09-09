@@ -7,6 +7,7 @@ import { useTransitionDropdown } from 'lib/hooks/useTransitionDropdown';
 import { useAssigneeDropdown } from 'lib/hooks/useAssigneeDropdown';
 import { usePriorityDropdown } from 'lib/hooks/usePriorityDropdown';
 import { useJiraSearch } from 'lib/hooks/useJiraSearch';
+import { useJiraAssigneeFilter } from 'lib/hooks/jira/useJiraAssigneeFilter';
 import { groupByEpic } from 'lib/utils/jiraNormalizers';
 import { isEpicType } from 'lib/utils/jiraUtils';
 import type { NormalizedIssue } from 'types/jira';
@@ -78,6 +79,7 @@ const JiraDashboard = () => {
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
     selectedStatuses, doneIssues, doneOwnKeys, toggleStatus, isDoneOnlyActive, toggleDoneOnly,
+    isHideDoneActive, toggleHideDone,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadMoreBrowseEpics, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
@@ -107,21 +109,31 @@ const JiraDashboard = () => {
   const isSearchMode = searchResults !== null;
   const baseIssues = isSearchMode ? searchResults : myIssues;
 
+  // 완료 이슈를 base에 합산 (중복 제거). 상태/담당자 필터 및 카운트 계산에서 공통으로 사용.
+  const merged = useMemo(() => {
+    const keySet = new Set(baseIssues.map((i) => i.key));
+    const out = [...baseIssues];
+    for (const d of doneIssues) {
+      if (!keySet.has(d.key)) {
+        out.push(d);
+        keySet.add(d.key);
+      }
+    }
+    return out;
+  }, [baseIssues, doneIssues]);
+
+  // 담당자 필터: 상태 카운트와 동일한 모집단("내 담당" 이슈만)을 기준으로 선택지를 만든다
+  const ownIssuesForFilters = useMemo(
+    () => merged.filter((i) => myIssueKeys.has(i.key) || doneOwnKeys.has(i.key)),
+    [merged, myIssueKeys, doneOwnKeys],
+  );
+  const assigneeFilter = useJiraAssigneeFilter(ownIssuesForFilters);
+
   // 상태 필터 적용:
   // - 검색 모드: 필터 무시(전체 표시)
   // - 선택된 상태가 없음: 아무 이슈도 표시하지 않음 (사용자가 명시적으로 모두 해제한 상태)
   // - 그 외: Epic 포함 모든 이슈를 자신의 statusName 기준으로 엄격히 필터링
   const displayIssues = useMemo(() => {
-    // 완료 이슈를 base에 합산 (중복 제거)
-    const keySet = new Set(baseIssues.map((i) => i.key));
-    const merged = [...baseIssues];
-    for (const d of doneIssues) {
-      if (!keySet.has(d.key)) {
-        merged.push(d);
-        keySet.add(d.key);
-      }
-    }
-
     // 기본 모드의 1차 매칭은 "내 담당 이슈(myIssueKeys)"로만 한정.
     // myIssues 배열에는 부모/조부모 보강분이 포함되어 있어, 그것들이 상태만 같다고 단독으로 노출되면
     // "다른 사람 담당의 에픽"이 끼어 들어온다. 조상은 자식이 매칭됐을 때만 아래 부모-체인 백필을 통해 합류해야 한다.
@@ -134,6 +146,7 @@ const JiraDashboard = () => {
       filtered = merged.filter((issue) =>
         (myIssueKeys.has(issue.key) || doneOwnKeys.has(issue.key))
         && selectedStatuses.has(issue.statusName)
+        && assigneeFilter.isAssigneeSelected(issue.assigneeName || '미지정')
       );
     }
 
@@ -159,7 +172,7 @@ const JiraDashboard = () => {
     }
 
     return extras.length > 0 ? [...filtered, ...extras] : filtered;
-  }, [baseIssues, doneIssues, selectedStatuses, myIssueKeys, doneOwnKeys, isSearchMode]);
+  }, [merged, selectedStatuses, myIssueKeys, doneOwnKeys, isSearchMode, assigneeFilter.isAssigneeSelected]);
 
   const epicGroups = useMemo(() => groupByEpic(displayIssues), [displayIssues]);
   epicGroupsRef.current = epicGroups;
@@ -206,6 +219,14 @@ const JiraDashboard = () => {
           onToggleStatus={toggleStatus}
           isDoneOnlyActive={isDoneOnlyActive}
           onToggleDoneOnly={toggleDoneOnly}
+          isHideDoneActive={isHideDoneActive}
+          onToggleHideDone={toggleHideDone}
+          assigneeCounts={assigneeFilter.assigneeCounts}
+          isAssigneeSelected={assigneeFilter.isAssigneeSelected}
+          onToggleAssignee={assigneeFilter.toggleAssignee}
+          isAssigneeFilterActive={assigneeFilter.isAssigneeFilterActive}
+          assigneeSelectedCount={assigneeFilter.selectedCount}
+          onClearAssigneeFilter={assigneeFilter.clearAssigneeFilter}
         />
       )}
 

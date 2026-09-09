@@ -39,6 +39,9 @@ import JiraAttachmentGrid from 'components/jira/JiraAttachmentGrid';
 import { useProjectFieldConfig } from 'lib/hooks/useProjectFieldConfig';
 import { useProjectFieldSchemas } from 'lib/hooks/useProjectFieldSchemas';
 import { resolveDetailFieldLayout, type SectionFieldId } from 'lib/utils/jiraDetailFieldConfig';
+import { isDoneStatus } from 'lib/utils/jiraUtils';
+import { useJiraAssigneeFilter } from 'lib/hooks/jira/useJiraAssigneeFilter';
+import JiraAssigneeFilterMenu from 'components/jira/JiraAssigneeFilterMenu';
 import JiraFieldEditModal from 'containers/jira/JiraFieldEditModal';
 import type { JiraProjectField } from 'types/jira';
 
@@ -162,6 +165,53 @@ const JiraIssueDetail = () => {
   const { config: fieldConfig } = useProjectFieldConfig(activeAccount?.id, projectKey);
   const fieldSchemas = useProjectFieldSchemas(activeAccount?.id, projectKey);
 
+  // 완료 항목 필터 (클라이언트 사이드 — 이미 로드된 데이터를 필터링하므로 로딩 없음)
+  // 'all' 전체 표시 / 'hideDone' 완료 제외 / 'onlyDone' 완료만 보기 — 대시보드와 동일한 3-way 프리셋
+  const [doneFilter, setDoneFilter] = useState<'all' | 'hideDone' | 'onlyDone'>('all');
+
+  // 담당자 필터 (하위 업무 + 손자 항목 대상. 연결된 이슈는 담당자 정보가 없어 대상 아님)
+  const allChildAndGrandchildren = useMemo(
+    () => childIssues.flatMap((ci) => [ci, ...ci.grandchildren]),
+    [childIssues],
+  );
+  const assigneeFilter = useJiraAssigneeFilter(allChildAndGrandchildren);
+
+  const matchesDoneFilter = useCallback((statusName: string, statusCategory: string) => {
+    if (doneFilter === 'hideDone') return !isDoneStatus(statusName, statusCategory);
+    if (doneFilter === 'onlyDone') return isDoneStatus(statusName, statusCategory);
+    return true;
+  }, [doneFilter]);
+
+  // 하위 업무: 완료 필터 + 담당자 필터를 손자 항목까지 함께 적용
+  const visibleChildIssues = useMemo(() => {
+    if (doneFilter === 'all' && !assigneeFilter.isAssigneeFilterActive) return childIssues;
+    return childIssues
+      .filter((ci) => matchesDoneFilter(ci.statusName, ci.statusCategory) && assigneeFilter.isAssigneeSelected(ci.assigneeName || '미지정'))
+      .map((ci) => ({
+        ...ci,
+        grandchildren: ci.grandchildren.filter(
+          (gc) => matchesDoneFilter(gc.statusName, gc.statusCategory) && assigneeFilter.isAssigneeSelected(gc.assigneeName || '미지정'),
+        ),
+      }));
+  }, [childIssues, doneFilter, matchesDoneFilter, assigneeFilter.isAssigneeFilterActive, assigneeFilter.isAssigneeSelected]);
+
+  // 연결된 이슈: 완료 필터만 적용 (담당자 정보 없음)
+  const visibleLinkedIssues = useMemo(() => {
+    if (doneFilter === 'all') return linkedIssues;
+    return linkedIssues.filter((li) => matchesDoneFilter(li.statusName, li.statusCategory));
+  }, [linkedIssues, doneFilter, matchesDoneFilter]);
+
+  // 완료 항목이 하나라도 있어야 필터 토글을 노출
+  const hasDoneItems = useMemo(
+    () =>
+      childIssues.some(
+        (ci) =>
+          isDoneStatus(ci.statusName, ci.statusCategory) ||
+          ci.grandchildren.some((gc) => isDoneStatus(gc.statusName, gc.statusCategory)),
+      ) || linkedIssues.some((li) => isDoneStatus(li.statusName, li.statusCategory)),
+    [childIssues, linkedIssues],
+  );
+
   // 편집 모달 (커스텀 필드 + duedate 등)
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const editingField: JiraProjectField | null = useMemo(() => {
@@ -234,7 +284,7 @@ const JiraIssueDetail = () => {
         ) : null,
       subtasks: () => (
         <JiraChildIssues
-          childIssues={childIssues}
+          childIssues={visibleChildIssues}
           childIssuesLoading={childIssuesLoading}
           expandedChildren={expandedChildren}
           setExpandedChildren={setExpandedChildren}
@@ -260,7 +310,7 @@ const JiraIssueDetail = () => {
       ),
       issuelinks: () => (
         <JiraLinkedIssues
-          linkedIssues={linkedIssues}
+          linkedIssues={visibleLinkedIssues}
           goToChildIssue={goToChildIssue}
           onOpenTransition={openTransitionDropdown}
         />
@@ -271,9 +321,9 @@ const JiraIssueDetail = () => {
       handleSaveDescription, cancelEditDesc, isSavingDesc, startEditDesc,
       handleAdfLinkClick, mediaUrlMap, linkMetaMap, fileMetaMap, handleFileClick,
       attachments, attachmentImages, setLightboxSrc,
-      childIssues, childIssuesLoading, expandedChildren, setExpandedChildren,
+      visibleChildIssues, childIssuesLoading, expandedChildren, setExpandedChildren,
       goToChildIssue, myDisplayName, openTransitionDropdown, openAssigneeDropdown, openPriorityDropdown,
-      commentState, linkedIssues,
+      commentState, visibleLinkedIssues,
     ],
   );
 
@@ -323,6 +373,38 @@ const JiraIssueDetail = () => {
           currentIssue={{ key: issue.key, summary: issue.summary, issueTypeName: issue.issueTypeName }}
           onNavigate={goToBreadcrumb}
         />
+        <FilterGroup>
+          {allChildAndGrandchildren.length > 0 && (
+            <JiraAssigneeFilterMenu
+              assigneeCounts={assigneeFilter.assigneeCounts}
+              isSelected={assigneeFilter.isAssigneeSelected}
+              onToggle={assigneeFilter.toggleAssignee}
+              isActive={assigneeFilter.isAssigneeFilterActive}
+              selectedCount={assigneeFilter.selectedCount}
+              onClear={assigneeFilter.clearAssigneeFilter}
+            />
+          )}
+          {hasDoneItems && (
+            <>
+              <HideDoneToggle
+                $active={doneFilter === 'onlyDone'}
+                onClick={() => setDoneFilter((v) => (v === 'onlyDone' ? 'all' : 'onlyDone'))}
+                title="완료된 하위/연결 항목만 표시"
+                aria-pressed={doneFilter === 'onlyDone'}
+              >
+                완료만 보기
+              </HideDoneToggle>
+              <HideDoneToggle
+                $active={doneFilter === 'hideDone'}
+                onClick={() => setDoneFilter((v) => (v === 'hideDone' ? 'all' : 'hideDone'))}
+                title="완료된 하위/연결 항목 숨기기"
+                aria-pressed={doneFilter === 'hideDone'}
+              >
+                완료 제외
+              </HideDoneToggle>
+            </>
+          )}
+        </FilterGroup>
       </ToolbarArea>
 
       <Content>
@@ -483,6 +565,34 @@ const BackButton = styled.button`
   &:hover {
     background: ${jiraTheme.bg.hover};
     color: ${jiraTheme.text.primary};
+  }
+`;
+
+const FilterGroup = styled.div`
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+`;
+
+const HideDoneToggle = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 20px;
+  border: 1px solid ${(p) => (p.$active ? jiraTheme.primary : jiraTheme.border)};
+  background: ${(p) => (p.$active ? jiraTheme.primary : 'transparent')};
+  color: ${(p) => (p.$active ? '#fff' : jiraTheme.text.secondary)};
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ${transition};
+
+  &:hover {
+    border-color: ${jiraTheme.primary};
+    color: ${(p) => (p.$active ? '#fff' : jiraTheme.text.primary)};
   }
 `;
 

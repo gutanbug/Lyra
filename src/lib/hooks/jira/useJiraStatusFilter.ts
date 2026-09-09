@@ -21,6 +21,10 @@ export interface UseJiraStatusFilterResult {
   isDoneOnlyActive: boolean;
   /** 화면 전환 없이 완료 상태만 표시하도록 토글. 다시 누르면 토글 이전 선택으로 복원. */
   toggleDoneOnly: () => void;
+  /** "완료 제외" 토글 활성 여부 (선택된 상태 = 완료가 아닌 상태 전체와 정확히 일치) */
+  isHideDoneActive: boolean;
+  /** 화면 전환 없이 완료 상태를 제외하고 표시하도록 토글. 다시 누르면 토글 이전 선택으로 복원. */
+  toggleHideDone: () => void;
 }
 
 export function isDoneCategory(category: string): boolean {
@@ -140,6 +144,41 @@ export function useJiraStatusFilter({
     }
   }, [isDoneOnlyActive, statusCounts, doneStatusNames, selectedStatuses, accountId]);
 
+  // 완료가 아닌 상태 이름 집합 ("완료 제외" 프리셋)
+  const hideDoneStatusNames = useMemo(() => {
+    const out = new Set<string>();
+    statusCounts.forEach((sc) => { if (!doneStatusNames.has(sc.name)) out.add(sc.name); });
+    return out;
+  }, [statusCounts, doneStatusNames]);
+
+  const isHideDoneActive = useMemo(() => {
+    if (hideDoneStatusNames.size === 0 || selectedStatuses.size === 0) return false;
+    if (selectedStatuses.size !== hideDoneStatusNames.size) return false;
+    for (const name of selectedStatuses) {
+      if (!hideDoneStatusNames.has(name)) return false;
+    }
+    return true;
+  }, [selectedStatuses, hideDoneStatusNames]);
+
+  const toggleHideDone = useCallback(() => {
+    if (isHideDoneActive) {
+      const restored = prevSelectionRef.current;
+      const next = restored && restored.length > 0
+        ? new Set(restored)
+        : new Set(statusCounts.map((sc) => sc.name));
+      prevSelectionRef.current = null;
+      initializedRef.current = true;
+      setSelectedStatuses(next);
+      saveSelectedStatuses(accountId, Array.from(next));
+    } else {
+      prevSelectionRef.current = Array.from(selectedStatuses);
+      const next = new Set(hideDoneStatusNames);
+      initializedRef.current = true;
+      setSelectedStatuses(next);
+      saveSelectedStatuses(accountId, Array.from(next));
+    }
+  }, [isHideDoneActive, statusCounts, hideDoneStatusNames, selectedStatuses, accountId]);
+
   return {
     selectedStatuses,
     statusCounts,
@@ -147,5 +186,7 @@ export function useJiraStatusFilter({
     isDoneCategory: isDoneCategoryCb,
     isDoneOnlyActive,
     toggleDoneOnly,
+    isHideDoneActive,
+    toggleHideDone,
   };
 }

@@ -119,6 +119,9 @@ export const resolveDetailFieldLayout = (
 
   // 헤더 코어는 enabled 여부만 추적 (config에 명시적으로 있을 때만 가시성 변경)
   const headerSeen: Partial<Record<HeaderCoreId, boolean>> = {};
+  // 메타 필드도 config에 실제로 존재하는지 추적. 저장된 설정에 아예 없는 필드(예: 설정 저장 이후
+  // 새로 추가된 메타 필드)는 사용자가 끈 적이 없으므로 기본값(노출)로 폴백해야 한다.
+  const metaSeen: Partial<Record<MetaFieldId, boolean>> = {};
 
   // 요약/이슈 유형/우선순위는 사용자 설정 대상이 아님 — 헤더에 항상 노출
   // 프로젝트는 브레드크럼/탭에서 다루므로 MetaItem으로 표시하지 않음
@@ -136,12 +139,14 @@ export const resolveDetailFieldLayout = (
       visibility[entry.id] = entry.enabled;
       return;
     }
-    if (!entry.enabled) return;
     if (isMetaId(entry.id)) {
+      metaSeen[entry.id] = true;
+      if (!entry.enabled) return;
       const desc = buildMetaDescriptor(entry.id, entry.label, args);
       if (desc) metaFields.push(desc);
       return;
     }
+    if (!entry.enabled) return;
     if (isSectionId(entry.id)) {
       // 본문 섹션은 사용자 설정 대상 아님 — config의 entry 무시 (아래에서 일괄 추가)
       return;
@@ -160,6 +165,14 @@ export const resolveDetailFieldLayout = (
       value: formatted ?? '미설정',
       editable: true,
     });
+  });
+
+  // config에 아예 없던 메타 필드(스키마 진화로 새로 추가된 필드 등)는 사용자가 끈 적이 없으므로
+  // 기본값(노출)로 폴백해 저장 시점 이후 추가된 필드가 조용히 사라지지 않도록 한다.
+  META_FIELD_IDS.forEach((id) => {
+    if (metaSeen[id]) return;
+    const desc = buildMetaDescriptor(id, undefined, args);
+    if (desc) metaFields.push(desc);
   });
 
   // 본문 섹션은 항상 기본 순서 + 기본 라벨로 노출 (Jira 표준 영역)

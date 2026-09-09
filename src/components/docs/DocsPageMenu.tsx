@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import {
-  Pencil, Plus, Star, Copy, Download, Trash2,
+  Pencil, Plus, Star, Copy, Download, Trash2, FolderInput,
 } from 'lucide-react';
 import { DocsPopup, DocsMenuButton, DocsMenuDivider } from 'lib/styles/docsCommon';
 import { useDocs } from 'modules/contexts/docs';
@@ -11,7 +11,7 @@ const ICON_SLOT: CSSProperties = {
 
 const DocsPageMenu = () => {
   const {
-    state, closeMenu, renamePage, addPage, toggleFav, duplicatePage, exportMarkdown, requestDeletePage,
+    state, closeMenu, openMenu, renamePage, addPage, toggleFav, duplicatePage, exportMarkdown, requestDeletePage,
   } = useDocs();
   const { pageMenu } = state;
   if (!pageMenu) return null;
@@ -26,6 +26,7 @@ const DocsPageMenu = () => {
         <span style={ICON_SLOT}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></span>{isFav ? '즐겨찾기 해제' : '즐겨찾기 추가'}
       </DocsMenuButton>
       <DocsMenuButton onClick={() => duplicatePage(id)}><span style={ICON_SLOT}><Copy size={14} /></span>복제</DocsMenuButton>
+      <DocsMenuButton onClick={() => { closeMenu('pageMenu'); openMenu('moveModal', { id }); }}><span style={ICON_SLOT}><FolderInput size={14} /></span>이동</DocsMenuButton>
       <DocsMenuButton onClick={() => exportMarkdown(id)}><span style={ICON_SLOT}><Download size={14} /></span>마크다운으로 내보내기</DocsMenuButton>
       <DocsMenuDivider />
       <DocsMenuButton onClick={() => requestDeletePage(id)} style={{ color: '#e5484d' }}><span style={ICON_SLOT}><Trash2 size={14} /></span>삭제</DocsMenuButton>

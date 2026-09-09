@@ -39,7 +39,7 @@ export const EditableTitle = styled.div`
   margin-bottom: 20px;
   &:empty:before {
     content: attr(data-ph);
-    color: ${docsTheme.faint};
+    color: ${docsTheme.muted};
     pointer-events: none;
   }
 `;

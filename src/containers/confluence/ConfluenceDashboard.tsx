@@ -10,6 +10,7 @@ import ConfluenceSearchToolbar from 'components/confluence/ConfluenceSearchToolb
 import ConfluencePageList from 'components/confluence/ConfluencePageList';
 import SpaceFilterModal from 'components/common/SpaceFilterModal';
 import ItemContextMenu from 'components/common/ItemContextMenu';
+import { Rocket } from 'lucide-react';
 
 // ── 컴포넌트 ──
 
@@ -86,7 +87,10 @@ const ConfluenceDashboard = () => {
       <Layout>
         <CenterContent>
           <EmptyCenter>
-            Atlassian 계정을 추가하고 활성화해주세요. 계정 설정에서 Atlassian을 연결할 수 있습니다.
+            <EmptyIconWrap><Rocket size={22} /></EmptyIconWrap>
+            <EmptyTitle>연결된 Atlassian 계정이 없어요</EmptyTitle>
+            <EmptyDesc>계정을 추가하고 활성화하면 Confluence 페이지를 확인할 수 있습니다.</EmptyDesc>
+            <EmptyCta onClick={() => history.push('/settings')}>계정 설정으로 이동</EmptyCta>
           </EmptyCenter>
         </CenterContent>
       </Layout>
@@ -214,4 +218,47 @@ const EmptyCenter = styled.div`
   text-align: center;
   color: ${confluenceTheme.text.muted};
   font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+const EmptyIconWrap = styled.div`
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${confluenceTheme.bg.tile};
+  color: ${confluenceTheme.text.muted};
+  margin-bottom: 14px;
+`;
+
+const EmptyTitle = styled.div`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${confluenceTheme.text.primary};
+  margin-bottom: 6px;
+`;
+
+const EmptyDesc = styled.div`
+  font-size: 0.88rem;
+  color: ${confluenceTheme.text.muted};
+  margin-bottom: 18px;
+`;
+
+const EmptyCta = styled.button`
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #fff;
+  background: ${confluenceTheme.primary};
+  padding: 9px 18px;
+  border-radius: 8px;
+  transition: opacity 0.12s;
+  &:hover { opacity: 0.88; }
 `;

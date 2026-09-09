@@ -14,7 +14,7 @@ import type { NormalizedIssue } from 'types/jira';
 import JiraTransitionDropdown from 'components/jira/JiraTransitionDropdown';
 import JiraTransitionFieldsModal from 'containers/jira/JiraTransitionFieldsModal';
 import JiraProjectFieldSettingsModal from 'containers/jira/JiraProjectFieldSettingsModal';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Rocket } from 'lucide-react';
 import JiraAssigneeDropdown from 'components/jira/JiraAssigneeDropdown';
 import JiraPriorityDropdown from 'components/jira/JiraPriorityDropdown';
 import JiraSearchToolbar from 'components/jira/JiraSearchToolbar';
@@ -182,7 +182,10 @@ const JiraDashboard = () => {
       <Layout>
         <CenterContent>
           <EmptyCenter>
-            Atlassian 계정을 추가하고 활성화해주세요. 계정 설정에서 Atlassian을 연결할 수 있습니다.
+            <EmptyIconWrap><Rocket size={22} /></EmptyIconWrap>
+            <EmptyTitle>연결된 Atlassian 계정이 없어요</EmptyTitle>
+            <EmptyDesc>계정을 추가하고 활성화하면 Jira 이슈를 확인할 수 있습니다.</EmptyDesc>
+            <EmptyCta onClick={() => history.push('/settings')}>계정 설정으로 이동</EmptyCta>
           </EmptyCenter>
         </CenterContent>
       </Layout>
@@ -467,6 +470,49 @@ const EmptyCenter = styled.div`
   text-align: center;
   color: ${jiraTheme.text.muted};
   font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+const EmptyIconWrap = styled.div`
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${jiraTheme.bg.tile};
+  color: ${jiraTheme.text.muted};
+  margin-bottom: 14px;
+`;
+
+const EmptyTitle = styled.div`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${jiraTheme.text.primary};
+  margin-bottom: 6px;
+`;
+
+const EmptyDesc = styled.div`
+  font-size: 0.88rem;
+  color: ${jiraTheme.text.muted};
+  margin-bottom: 18px;
+`;
+
+const EmptyCta = styled.button`
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #fff;
+  background: ${jiraTheme.primary};
+  padding: 9px 18px;
+  border-radius: 8px;
+  transition: opacity 0.12s;
+  &:hover { opacity: 0.88; }
 `;
 
 const DependencyToggle = styled.button<{ $active: boolean }>`

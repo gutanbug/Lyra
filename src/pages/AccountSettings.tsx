@@ -131,22 +131,24 @@ const AccountPanel = () => {
           />
         </AccountPanelLeft>
 
-        <AccountPanelRight>
-          {selectedAccount ? (
-            <>
-              <PanelHeader>
-                <PanelTitle>{selectedAccount.displayName} 설정</PanelTitle>
-              </PanelHeader>
-              {isAtlassianAccount(selectedAccount.serviceType) ? (
-                <AtlassianSettings key={selectedAccount.id} account={selectedAccount} />
-              ) : (
-                <EmptySettingsMsg>이 서비스 타입의 커스텀 설정은 아직 지원되지 않습니다.</EmptySettingsMsg>
-              )}
-            </>
-          ) : (
-            <EmptySettingsMsg>계정을 선택하면 커스텀 설정을 진행할 수 있습니다.</EmptySettingsMsg>
-          )}
-        </AccountPanelRight>
+        {accounts.length > 0 && (
+          <AccountPanelRight>
+            {selectedAccount ? (
+              <>
+                <PanelHeader>
+                  <PanelTitle>{selectedAccount.displayName} 설정</PanelTitle>
+                </PanelHeader>
+                {isAtlassianAccount(selectedAccount.serviceType) ? (
+                  <AtlassianSettings key={selectedAccount.id} account={selectedAccount} />
+                ) : (
+                  <EmptySettingsMsg>이 서비스 타입의 커스텀 설정은 아직 지원되지 않습니다.</EmptySettingsMsg>
+                )}
+              </>
+            ) : (
+              <EmptySettingsMsg>계정을 선택하면 커스텀 설정을 진행할 수 있습니다.</EmptySettingsMsg>
+            )}
+          </AccountPanelRight>
+        )}
       </AccountPanelLayout>
 
       {modalMode && (

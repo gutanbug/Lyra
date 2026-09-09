@@ -274,7 +274,7 @@ export default StatsPage;
 // ── Styled Components ──
 
 const Page = styled.div`
-  flex: 1; min-height: 0; overflow-y: auto; background: ${theme.bgSecondary}; zoom: 1.2;
+  flex: 1; min-height: 0; overflow-y: auto; background: ${theme.color.pageBg}; zoom: 1.2;
 `;
 
 const Container = styled.div`

@@ -23,6 +23,8 @@ declare global {
           projectKey: string,
           config: import('lib/utils/storageHelpers').ProjectFieldConfig,
         ) => Promise<void>;
+        getIconVariant?: () => Promise<'dark' | 'light'>;
+        setIconVariant?: (variant: 'dark' | 'light') => Promise<void>;
       };
       account: {
         getAll: () => Promise<unknown[]>;

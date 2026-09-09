@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       ipcRenderer.invoke('settings:getProjectFieldConfig', accountId, projectKey),
     setProjectFieldConfig: (accountId: string, projectKey: string, config: unknown) =>
       ipcRenderer.invoke('settings:setProjectFieldConfig', accountId, projectKey, config),
+    getIconVariant: () => ipcRenderer.invoke('settings:getIconVariant'),
+    setIconVariant: (variant: 'dark' | 'light') =>
+      ipcRenderer.invoke('settings:setIconVariant', variant),
   },
   account: {
     getAll: () => ipcRenderer.invoke('account:getAll'),

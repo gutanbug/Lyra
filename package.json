@@ -90,6 +90,16 @@
       "output": "release",
       "buildResources": "build-resources"
     },
+    "extraResources": [
+      {
+        "from": "build-resources",
+        "to": "build-resources",
+        "filter": [
+          "icon.png",
+          "icon-light.png"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "build-resources/icon.icns",

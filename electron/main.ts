@@ -4,6 +4,7 @@ import { initIntegrations } from './integrations/registry';
 import { registerIpcHandlers } from './ipc/handlers';
 import { permissionBridge } from './integrations/agents/permission-bridge';
 import { atlassianBridge } from './integrations/agents/atlassian-bridge';
+import { getIconPath, getStoredIconVariant, applyIconVariant } from './icon';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -81,7 +82,7 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: path.join(__dirname, '../build-resources/icon.png'),
+    icon: getIconPath(getStoredIconVariant()),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -95,6 +96,9 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
+
+  // macOS Dock 아이콘은 BrowserWindow의 icon 옵션이 아니라 app.dock으로 별도 적용해야 한다
+  applyIconVariant(getStoredIconVariant());
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');

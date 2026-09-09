@@ -1,6 +1,7 @@
 import { ipcMain, shell } from 'electron';
 import { AccountManager } from '../account/manager';
 import { SettingsManager } from '../settings/store';
+import { applyIconVariant, type IconVariant } from '../icon';
 import { getAdapter, getAvailableServices } from '../integrations/registry';
 import { AgentManager } from '../integrations/agents/manager';
 import type { AgentId } from '../integrations/agents/types';
@@ -109,6 +110,11 @@ export function registerIpcHandlers(): void {
         config as Parameters<typeof SettingsManager.setProjectFieldConfig>[2]
       )
   );
+  ipcMain.handle('settings:getIconVariant', () => SettingsManager.getIconVariant());
+  ipcMain.handle('settings:setIconVariant', (_, variant: IconVariant) => {
+    SettingsManager.setIconVariant(variant);
+    applyIconVariant(variant);
+  });
 
   // === 사용 가능한 서비스 목록 ===
   ipcMain.handle('integration:getAvailable', () =>

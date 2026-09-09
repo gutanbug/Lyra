@@ -181,9 +181,16 @@ const AppearanceSettings = () => {
         </CustomRow>
 
         <Preview $bg={isDark ? '#1e1f22' : pageBg}>
+          <MockSidebar $dark={isDark}>
+            <MockSidebarDot $dark={isDark} $active />
+            <MockSidebarDot $dark={isDark} />
+            <MockSidebarDot $dark={isDark} />
+          </MockSidebar>
           <PreviewCard $dark={isDark}>
             <PreviewTitle $dark={isDark}>미리보기</PreviewTitle>
             <PreviewBody $dark={isDark}>현재 모드: {mode === 'dark' ? '다크' : '라이트'} · 배경: {isDark ? '고정' : pageBg}</PreviewBody>
+            <MockRow $dark={isDark} $w="78%" />
+            <MockRow $dark={isDark} $w="55%" />
           </PreviewCard>
         </Preview>
       </Section>
@@ -450,13 +457,44 @@ const ResetBtn = styled.button`
 
 const Preview = styled.div<{ $bg: string }>`
   margin-top: 8px;
-  padding: 22px;
+  padding: 16px;
+  display: flex;
+  gap: 12px;
   border-radius: ${theme.radius.card};
   background: ${({ $bg }) => $bg};
   border: 1px solid ${theme.color.borderStrong};
 `;
 
+const MockSidebar = styled.div<{ $dark: boolean }>`
+  flex: 0 0 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  background: ${({ $dark }) => ($dark ? '#2b2d30' : '#ffffff')};
+  border: 1px solid ${({ $dark }) => ($dark ? '#4b4e54' : '#dbe5f0')};
+  border-radius: ${theme.radius.ctl};
+`;
+
+const MockSidebarDot = styled.div<{ $dark: boolean; $active?: boolean }>`
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: ${({ $active, $dark }) => ($active ? theme.color.accent : $dark ? '#43454a' : '#eeeceb')};
+`;
+
+const MockRow = styled.div<{ $dark: boolean; $w: string }>`
+  height: 8px;
+  width: ${({ $w }) => $w};
+  margin-top: 8px;
+  border-radius: 4px;
+  background: ${({ $dark }) => ($dark ? '#43454a' : '#eeeceb')};
+`;
+
 const PreviewCard = styled.div<{ $dark: boolean }>`
+  flex: 1;
+  min-width: 0;
   padding: 18px 20px;
   background: ${({ $dark }) => ($dark ? '#2b2d30' : '#ffffff')};
   border: 1px solid ${({ $dark }) => ($dark ? '#4b4e54' : '#dbe5f0')};

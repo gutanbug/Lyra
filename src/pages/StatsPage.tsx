@@ -238,10 +238,12 @@ const StatsPage = () => {
       <Container>
         <StatsFilters selectedYear={selectedYear} yearOptions={yearOptions} onChangeYear={setSelectedYear} hasAtlassian={hasAtlassian} onBack={() => history.push('/jira')} />
         {!hasAtlassian ? (
-          <EmptyCard>
-            <EmptyText>Atlassian 계정이 설정되어 있지 않습니다.</EmptyText>
-            <EmptySubText>계정 설정에서 Atlassian을 연결하면 Jira / Confluence 통계를 확인할 수 있습니다.</EmptySubText>
-          </EmptyCard>
+          <EmptyWrap>
+            <EmptyCard>
+              <EmptyText>Atlassian 계정이 설정되어 있지 않습니다.</EmptyText>
+              <EmptySubText>계정 설정에서 Atlassian을 연결하면 Jira / Confluence 통계를 확인할 수 있습니다.</EmptySubText>
+            </EmptyCard>
+          </EmptyWrap>
         ) : (
           <>
             <StatsJiraSection
@@ -279,6 +281,10 @@ const Page = styled.div`
 
 const Container = styled.div`
   max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem;
+`;
+
+const EmptyWrap = styled.div`
+  min-height: 55vh; display: flex; align-items: center; justify-content: center;
 `;
 
 const EmptyCard = styled.div`

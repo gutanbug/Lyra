@@ -43,8 +43,8 @@ const DocsMediaMenu = () => {
   return (
     <DocsPopup data-docs-menu style={{ left: mediaMenu.x, top: mediaMenu.y, width: 320, padding: 0 }}>
       <TabRow>
-        <TabBtn $active={tab === 'upload'} onClick={() => setTab('upload')}><Upload size={13} />Upload</TabBtn>
-        <TabBtn $active={tab === 'embed'} onClick={() => setTab('embed')}><Link2 size={13} />Embed Link</TabBtn>
+        <TabBtn $active={tab === 'upload'} onClick={() => setTab('upload')}><Upload size={13} />업로드</TabBtn>
+        <TabBtn $active={tab === 'embed'} onClick={() => setTab('embed')}><Link2 size={13} />링크 삽입</TabBtn>
       </TabRow>
 
       {tab === 'upload' ? (
@@ -58,7 +58,7 @@ const DocsMediaMenu = () => {
           <input ref={fileInputRef} type="file" hidden onChange={onFileInput} />
           <Upload size={22} color={docsTheme.faint} />
           <DropText>
-            Drag &amp; drop a file or <UploadLink>click to Upload</UploadLink>
+            파일을 드래그하거나 <UploadLink>클릭하여 업로드</UploadLink>
           </DropText>
         </Dropzone>
       ) : (

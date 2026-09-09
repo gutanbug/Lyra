@@ -1167,6 +1167,11 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
 
     if (cmdId.indexOf('jira') === 0) {
       const issues = stateRef.current.jiraIssues;
+      if (issues.length === 0) {
+        clearText();
+        patch({ slash: null });
+        return;
+      }
       const issue = issues[jiraRotRef.current++ % issues.length];
       clearText();
       if (cmdId === 'jira-inline') {
@@ -1222,7 +1227,10 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     if (cmdId === 'todo') block = { ...block, checked: false };
     if (cmdId === 'callout') block = { ...block, icon: '💡' };
     if (cmdId === 'bookmark') block = { ...block, url: 'https://appflowy.io', title: 'AppFlowy', host: 'appflowy.io' };
-    if (cmdId === 'table') block = { ...block, cells: [['제목', '상태', '메모'], ['', '', ''], ['', '', '']] };
+    if (cmdId === 'table') {
+      block = { ...block, cells: [['제목', '상태', '메모'], ['', '', ''], ['', '', '']] };
+      ['제목', '상태', '메모'].forEach((label, ci) => { textRef.current[`${sid}:0:${ci}`] = label; });
+    }
     replaceBlock(sid, block);
     patch({ slash: null });
     if (isEditable) focusBlock(sid, false);

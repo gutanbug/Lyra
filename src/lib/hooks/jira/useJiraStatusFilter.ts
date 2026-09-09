@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadSelectedStatuses, saveSelectedStatuses } from 'lib/utils/storageHelpers';
+import { isDoneStatus } from 'lib/utils/jiraUtils';
 import type { NormalizedIssue } from 'types/jira';
 import type { StatusCount } from 'lib/hooks/useJiraSearch';
 
@@ -16,6 +17,10 @@ export interface UseJiraStatusFilterResult {
   statusCounts: StatusCount[];
   toggleStatus: (statusName: string) => void;
   isDoneCategory: (category: string) => boolean;
+  /** "완료만 보기" 토글 활성 여부 (선택된 상태 = 완료 카테고리 상태 전체와 정확히 일치) */
+  isDoneOnlyActive: boolean;
+  /** 화면 전환 없이 완료 상태만 표시하도록 토글. 다시 누르면 토글 이전 선택으로 복원. */
+  toggleDoneOnly: () => void;
 }
 
 export function isDoneCategory(category: string): boolean {
@@ -97,10 +102,50 @@ export function useJiraStatusFilter({
 
   const isDoneCategoryCb = useCallback((category: string) => isDoneCategory(category), []);
 
+  // 완료 카테고리에 속하는 상태 이름 집합. statusCategory가 비어있거나 모호한 경우
+  // isDoneStatus의 상태명 폴백 규칙까지 함께 사용해 판별한다.
+  const doneStatusNames = useMemo(
+    () => new Set(statusCounts.filter((sc) => isDoneStatus(sc.name, sc.category)).map((sc) => sc.name)),
+    [statusCounts]
+  );
+
+  const isDoneOnlyActive = useMemo(() => {
+    if (doneStatusNames.size === 0 || selectedStatuses.size === 0) return false;
+    if (selectedStatuses.size !== doneStatusNames.size) return false;
+    for (const name of selectedStatuses) {
+      if (!doneStatusNames.has(name)) return false;
+    }
+    return true;
+  }, [selectedStatuses, doneStatusNames]);
+
+  // 토글 이전 선택을 기억해 뒀다가 "완료만 보기" 해제 시 복원한다.
+  const prevSelectionRef = useRef<string[] | null>(null);
+
+  const toggleDoneOnly = useCallback(() => {
+    if (isDoneOnlyActive) {
+      const restored = prevSelectionRef.current;
+      const next = restored && restored.length > 0
+        ? new Set(restored)
+        : new Set(statusCounts.map((sc) => sc.name));
+      prevSelectionRef.current = null;
+      initializedRef.current = true;
+      setSelectedStatuses(next);
+      saveSelectedStatuses(accountId, Array.from(next));
+    } else {
+      prevSelectionRef.current = Array.from(selectedStatuses);
+      const next = new Set(doneStatusNames);
+      initializedRef.current = true;
+      setSelectedStatuses(next);
+      saveSelectedStatuses(accountId, Array.from(next));
+    }
+  }, [isDoneOnlyActive, statusCounts, doneStatusNames, selectedStatuses, accountId]);
+
   return {
     selectedStatuses,
     statusCounts,
     toggleStatus,
     isDoneCategory: isDoneCategoryCb,
+    isDoneOnlyActive,
+    toggleDoneOnly,
   };
 }

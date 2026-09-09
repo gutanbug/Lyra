@@ -77,7 +77,7 @@ const JiraDashboard = () => {
     browseExpandedKeys, setBrowseExpandedKeys, browseLoadedChildren,
     searchWrapperRef, epicGroupsRef,
     statusCounts, filteredProjects,
-    selectedStatuses, doneIssues, doneOwnKeys, toggleStatus,
+    selectedStatuses, doneIssues, doneOwnKeys, toggleStatus, isDoneOnlyActive, toggleDoneOnly,
     fetchMyIssues, fetchDoneCounts, searchIssues, handleSearchChange, clearSearch,
     loadBrowseChildren, loadMoreBrowseEpics, loadDefaultChildren,
     goToIssue, toggleEpic, expandAll, collapseAll, toggleBrowseEpic,
@@ -200,7 +200,13 @@ const JiraDashboard = () => {
       />
 
       {!browseProjectKey && !isSearchMode && statusCounts.length > 0 && (
-        <JiraStatusSummary statusCounts={statusCounts} selectedStatuses={selectedStatuses} onToggleStatus={toggleStatus} />
+        <JiraStatusSummary
+          statusCounts={statusCounts}
+          selectedStatuses={selectedStatuses}
+          onToggleStatus={toggleStatus}
+          isDoneOnlyActive={isDoneOnlyActive}
+          onToggleDoneOnly={toggleDoneOnly}
+        />
       )}
 
       {(() => {

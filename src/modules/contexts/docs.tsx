@@ -19,7 +19,8 @@ import { integrationController } from 'controllers/account';
 import { useAccount } from 'modules/contexts/account';
 import { buildSearchJql, parseIssues } from 'lib/utils/jiraNormalizers';
 import { deleteMedia, getMedia, putMedia } from 'lib/utils/docsMediaStore';
-import { serializeChipText } from 'lib/utils/docsUtils';
+import { serializeChipText, escapeHtml } from 'lib/utils/docsUtils';
+import { docsTheme } from 'lib/styles/docsTheme';
 import {
   isDocsRowDraftUnchanged, type DocsRowDraftSnapshot,
 } from 'lib/utils/docsBoardGroups';
@@ -147,6 +148,9 @@ export interface DocsContextValue {
   // ── text store (uncontrolled block/cell content) ──
   getText: (id: string) => string;
   setText: (id: string, value: string) => void;
+  bumpOutline: () => void;
+  addTableRow: (blockId: string) => void;
+  addTableColumn: (blockId: string) => void;
   nextId: (prefix: string) => string;
 
   // ── navigation ──
@@ -329,7 +333,7 @@ const noopAsync = async () => {};
 
 export const docsContext = createContext<DocsContextValue>({
   state: initialState,
-  getText: () => '', setText: noop, nextId: () => '',
+  getText: () => '', setText: noop, bumpOutline: noop, addTableRow: noop, addTableColumn: noop, nextId: () => '',
   openPage: noop, toggleSidebar: noop, toggleTree: noop, toggleCollapse: noop, toggleFav: noop,
   activePage: () => undefined, addPage: noop, createSubpage: () => ({ id: '', blockId: '' }),
   duplicatePage: noop, deletePage: noop, requestDeletePage: noop, cancelDeletePage: noop, confirmDeletePage: noop,
@@ -417,6 +421,16 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
   const nextId = useCallback((prefix: string) => `${prefix}${uidRef.current++}`, []);
   const getText = useCallback((id: string) => textRef.current[id] || '', []);
   const setText = useCallback((id: string, value: string) => { textRef.current[id] = value; }, []);
+  /** 제목 텍스트는 ref에만 저장되어 리렌더를 유발하지 않으므로, 활성 페이지에 목차(outline)
+   * 블록이 있을 때만 리렌더를 강제해 최신 제목이 반영되도록 한다. */
+  const bumpOutline = useCallback(() => {
+    const s = stateRef.current;
+    const scopeId = blockScopeRef.current || s.activeId;
+    const pageBlocks = s.docs[scopeId] || [];
+    if (pageBlocks.some((b) => b.type === 'outline')) {
+      patch({ outlineTick: s.outlineTick + 1 });
+    }
+  }, [patch]);
 
   // ── 영속화 ──
   const serialize = useCallback((): DocsPersistedShape => {
@@ -425,7 +439,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
       state: {
         sidebarOpen: s.sidebarOpen, activeId: s.activeId, dbView: s.dbView, collapsed: s.collapsed,
         treeOpen: s.treeOpen, favorites: s.favorites, recentIds: s.recentIds, spaces: s.spaces, pagesById: s.pagesById,
-        docs: s.docs, db: s.db, trash: s.trash, comments: s.comments,
+        docs: s.docs, db: s.db, trash: s.trash, comments: s.comments, jiraIssues: s.jiraIssues,
       },
       text: textRef.current,
       uid: uidRef.current,
@@ -438,7 +452,8 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     const meta: DocsStorageMeta = {
       sidebarOpen: s.sidebarOpen, activeId: s.activeId, dbView: s.dbView, collapsed: s.collapsed,
       treeOpen: s.treeOpen, favorites: s.favorites, recentIds: s.recentIds, spaces: s.spaces,
-      pagesById: s.pagesById, trash: s.trash, comments: s.comments, text: textRef.current, uid: uidRef.current,
+      pagesById: s.pagesById, trash: s.trash, comments: s.comments, jiraIssues: s.jiraIssues,
+      text: textRef.current, uid: uidRef.current,
     };
     const pageIds = new Set([...Object.keys(s.docs), ...Object.keys(s.db)]);
     await docsStorageController.saveMeta(meta);
@@ -473,6 +488,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
       sidebarOpen: meta.sidebarOpen, activeId: meta.activeId, dbView: meta.dbView, collapsed: meta.collapsed,
       treeOpen: meta.treeOpen, favorites: meta.favorites, recentIds: meta.recentIds, spaces: meta.spaces,
       pagesById: meta.pagesById, docs, db: normalizeDb(db), trash: meta.trash, comments: meta.comments,
+      jiraIssues: meta.jiraIssues || [],
     };
     stateRef.current = nextState;
     dispatch(actions.reset(nextState));
@@ -1026,6 +1042,20 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     return bs[idx + 1].id;
   }, [getBlocks, nextId, setBlocks]);
 
+  const addTableRow = useCallback((blockId: string) => {
+    setBlocks((bs) => bs.map((b) => {
+      if (b.id !== blockId || b.type !== 'table') return b;
+      const cols = b.cells?.[0]?.length || 3;
+      return { ...b, cells: [...(b.cells || []), Array<string>(cols).fill('')] };
+    }));
+  }, [setBlocks]);
+
+  const addTableColumn = useCallback((blockId: string) => {
+    setBlocks((bs) => bs.map((b) => (
+      b.id === blockId && b.type === 'table' ? { ...b, cells: (b.cells || []).map((row) => [...row, '']) } : b
+    )));
+  }, [setBlocks]);
+
   const insertBlockAfter = useCallback((afterId: string, block: DocsBlock, text?: string) => {
     if (text !== undefined) textRef.current[block.id] = text;
     setBlocks((bs) => {
@@ -1039,13 +1069,9 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
   }, [setBlocks]);
 
   // ── jira ──
-  const JIRA_TYPE_META: Record<string, [string, string]> = {
-    버그: ['#dc3545', 'B'], 스토리: ['#12b886', 'S'], 태스크: ['#007bff', 'T'], 에픽: ['#7a5af0', 'E'], link: ['#8c8582', '🔗'],
-  };
-  const jiraType = useCallback((t: string) => {
-    const m = JIRA_TYPE_META[t] || ['#8c8582', '•'];
-    return { color: m[0], letter: m[1] };
-  }, []);
+  const jiraType = useCallback((t: string) => (
+    docsTheme.jiraType[t] || { color: docsTheme.faint, letter: '•' }
+  ), []);
   const hostOf = useCallback((u: string) => {
     const m = u.match(/^https?:\/\/([^/]+)/);
     return m ? m[1] : 'link';
@@ -1055,8 +1081,13 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
   ), []);
   const registerIssue = useCallback((issue: DocsJiraIssue) => {
     extIssuesRef.current[issue.key] = issue;
+    const prev = stateRef.current.jiraIssues;
+    const existing = prev.find((i) => i.key === issue.key);
+    if (!existing || JSON.stringify(existing) !== JSON.stringify(issue)) {
+      patch({ jiraIssues: [...prev.filter((i) => i.key !== issue.key), issue] });
+    }
     return issue;
-  }, []);
+  }, [patch]);
   const setEmbedMode = useCallback((id: string, mode: 'card' | 'link') => {
     setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, mode } : b)));
   }, [setBlocks]);
@@ -1066,26 +1097,22 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     const baseUrl = (activeAccount.credentials as { baseUrl?: string } | undefined)?.baseUrl || '';
     const jql = buildSearchJql(query, [], []);
     if (!jql) return [];
-    try {
-      const result = await integrationController.invoke({
-        accountId: activeAccount.id,
-        serviceType: 'jira',
-        action: 'searchIssues',
-        params: { jql: `${jql} ORDER BY updated DESC`, maxResults: 8, skipCache: true },
-      });
-      return parseIssues(result).map((n) => ({
-        key: n.key,
-        summary: n.summary,
-        type: n.issueTypeName,
-        status: n.statusName,
-        priority: n.priorityName,
-        assignee: n.assigneeName,
-        url: baseUrl ? `${baseUrl.replace(/\/$/, '')}/browse/${n.key}` : '',
-        host: hostOf(baseUrl),
-      }));
-    } catch (e) {
-      return [];
-    }
+    const result = await integrationController.invoke({
+      accountId: activeAccount.id,
+      serviceType: 'jira',
+      action: 'searchIssues',
+      params: { jql: `${jql} ORDER BY updated DESC`, maxResults: 8, skipCache: true },
+    });
+    return parseIssues(result).map((n) => ({
+      key: n.key,
+      summary: n.summary,
+      type: n.issueTypeName,
+      status: n.statusName,
+      priority: n.priorityName,
+      assignee: n.assigneeName,
+      url: baseUrl ? `${baseUrl.replace(/\/$/, '')}/browse/${n.key}` : '',
+      host: hostOf(baseUrl),
+    }));
   }, [activeAccount, hostOf]);
 
 
@@ -1145,10 +1172,10 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
   }, [nextId, setBlocks]);
 
   const makeChipHTMLInternal = useCallback((issue: DocsJiraIssue) => {
-    const tc = JIRA_TYPE_META[issue.type] || ['#8c8582', '•'];
-    return `<span contenteditable="false" data-jira="${issue.key}" style="display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;background:#e6f2ff;color:#007bff;font-weight:600;font-size:.9em;padding:1px 4px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap"><span style="width:13px;height:13px;border-radius:4px;background:${tc[0]};color:#fff;font-size:8px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:Sora">${tc[1]}</span>${issue.key}</span>`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const tc = jiraType(issue.type);
+    const label = issue.summary && issue.summary.length > 16 ? `${issue.summary.slice(0, 15)}…` : issue.summary;
+    return `<span contenteditable="false" data-jira="${issue.key}" style="display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;background:${docsTheme.accentSoft};color:${docsTheme.accent};font-weight:600;font-size:.9em;padding:1px 4px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap"><span style="width:13px;height:13px;border-radius:4px;background:${tc.color};color:#fff;font-size:8px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:Sora">${tc.letter}</span>${issue.key}${label ? ` · ${escapeHtml(label)}` : ''}</span>`;
+  }, [jiraType]);
 
   const pasteCtxRef = useRef<{ range: Range | null; issue: DocsJiraIssue; blockId: string } | null>(null);
   const extSeqRef = useRef(0);
@@ -1278,7 +1305,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
       if (noteScopeActive) patch({ activeId: parentId });
       replaceBlock(sid, { id: sid, type: 'subpage', pageId: np.id });
       patch({ slash: null });
-      ensureTrailing(sid);
+      focusBlock(ensureTrailing(sid), false);
       return;
     }
 
@@ -1294,7 +1321,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     replaceBlock(sid, block);
     patch({ slash: null });
     if (isEditable) focusBlock(sid, false);
-    else ensureTrailing(sid);
+    else focusBlock(ensureTrailing(sid), false);
   }, [patch, insertChip, makeDateChipHTMLInternal, replaceBlock, ensureTrailing, createSubpage, focusBlock]);
 
   // ── 선택 서식 툴바 ──
@@ -2192,7 +2219,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
 
   const value = useMemo<DocsContextValue>(() => ({
     state,
-    getText, setText, nextId,
+    getText, setText, bumpOutline, addTableRow, addTableColumn, nextId,
     openPage, toggleSidebar, toggleTree, toggleCollapse, toggleFav,
     activePage, addPage, createSubpage, duplicatePage, deletePage, requestDeletePage, cancelDeletePage, confirmDeletePage,
     renamePage, commitRename, cancelRename, movePage,

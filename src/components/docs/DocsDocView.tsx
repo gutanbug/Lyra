@@ -23,11 +23,12 @@ const DocsDocView = () => {
 
   const visibleBlocks = useMemo(() => {
     const out: { block: DocsBlock; numLabel: number }[] = [];
-    let hideUntilIndent0 = false;
+    let hiding = false;
+    let hideThreshold = 0;
     let numCounter = 0;
     blocks.forEach((b, i) => {
-      if (hideUntilIndent0) {
-        if ((b.indent || 0) === 0) hideUntilIndent0 = false;
+      if (hiding) {
+        if ((b.indent || 0) <= hideThreshold) hiding = false;
         else return;
       }
       if (b.type === 'number') {
@@ -37,7 +38,10 @@ const DocsDocView = () => {
         numCounter = 0;
       }
       out.push({ block: b, numLabel: numCounter });
-      if (b.type === 'toggle' && !!state.collapsed[b.id]) hideUntilIndent0 = true;
+      if (b.type === 'toggle' && !!state.collapsed[b.id]) {
+        hiding = true;
+        hideThreshold = b.indent || 0;
+      }
     });
     return out;
   }, [blocks, state.collapsed]);

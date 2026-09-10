@@ -3,6 +3,7 @@ import type {
   DocsComment,
   DocsDbState,
   DocsDbView,
+  DocsJiraIssue,
   DocsPage,
   DocsSpace,
   DocsTrashEntry,
@@ -21,6 +22,7 @@ export interface DocsStorageMeta {
   pagesById: Record<string, DocsPage>;
   trash: DocsTrashEntry[];
   comments: Record<string, DocsComment[]>;
+  jiraIssues: DocsJiraIssue[];
   text: Record<string, string>;
   uid: number;
 }

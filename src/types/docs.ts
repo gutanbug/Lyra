@@ -305,13 +305,16 @@ export interface DocsState {
   storagePath: string;
   storageStatus: string;
   storageStatusKind: '' | 'ok' | 'err';
+  /** 제목(h1/h2/h3) 텍스트는 ref에만 저장돼 리렌더를 유발하지 않으므로, 목차(outline) 블록이
+   * 최신 제목을 반영하도록 강제 리렌더를 트리거하는 카운터 (영속화 대상 아님) */
+  outlineTick: number;
 }
 
 /** localStorage(`lyraDocs.v1`) 직렬화 셰이프 */
 export interface DocsPersistedShape {
   state: Pick<DocsState,
     | 'sidebarOpen' | 'activeId' | 'dbView' | 'collapsed' | 'treeOpen' | 'favorites' | 'recentIds'
-    | 'spaces' | 'pagesById' | 'docs' | 'db' | 'trash' | 'comments'
+    | 'spaces' | 'pagesById' | 'docs' | 'db' | 'trash' | 'comments' | 'jiraIssues'
   >;
   text: Record<string, string>;
   uid: number;

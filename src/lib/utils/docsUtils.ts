@@ -77,6 +77,9 @@ export const matchMarkdown = (t: string): { type: DocsBlockType } | null => {
   return null;
 };
 
+/** 인라인 칩 HTML 생성 시 사용하는 최소 HTML 이스케이프 */
+export const escapeHtml = (s: string): string => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+
 /** Jira 이슈 키 인라인 참조: [[LYRA-142]] */
 export const JIRA_KEY_RE = /\[\[([A-Z][A-Z0-9]+-\d+)\]\]/g;
 /** 페이지 멘션: [[page:p1a]] */

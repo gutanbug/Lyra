@@ -1,15 +1,15 @@
 import { useCallback } from 'react';
 import { useDocs } from 'modules/contexts/docs';
 import { docsTheme } from 'lib/styles/docsTheme';
-import { JIRA_KEY_RE, PAGE_MENTION_RE, DATE_MENTION_RE } from 'lib/utils/docsUtils';
+import {
+  JIRA_KEY_RE, PAGE_MENTION_RE, DATE_MENTION_RE, escapeHtml,
+} from 'lib/utils/docsUtils';
 import type { DocsJiraIssue, DocsPage } from 'types/docs';
 
 const formatDateLabel = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number);
   return `${y}년 ${m}월 ${d}일`;
 };
-
-const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
 /** 인라인 칩(Jira/페이지/날짜) HTML 생성 + [[..]] 패턴 하이드레이션 — Source: makeChipHTML 등 */
 export const useDocsInlineChips = () => {

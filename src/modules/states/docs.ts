@@ -70,6 +70,7 @@ const initialState: DocsState = {
   storagePath: '',
   storageStatus: '',
   storageStatusKind: '',
+  outlineTick: 0,
 };
 
 export const getInitialUid = () => uid;

@@ -74,7 +74,7 @@ const useBlockDnd = (id: string) => {
 
 const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
   const {
-    state, getText, setText, setEl, getBlocks, addBelow, focusBlock, ensureTrailing,
+    state, getText, setText, bumpOutline, addTableRow, addTableColumn, setEl, getBlocks, addBelow, focusBlock, ensureTrailing,
     toggleCheck, toggleCollapse, replaceBlock, setBlocks, openMenu, closeMenu,
     openMention, chooseMention, onBlockPaste, applyCmd, resolveIssueByKey, schedulePersist,
     openPage, filteredPages, openDateMenu,
@@ -108,6 +108,7 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     const txt = serializeChipText(el);
     setText(block.id, txt);
     schedulePersist();
+    if (block.type === 'h1' || block.type === 'h2' || block.type === 'h3') bumpOutline();
 
     if (txt.startsWith('/')) {
       const rect = el.getBoundingClientRect();
@@ -127,7 +128,7 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
         checked: md.type === 'todo' ? false : undefined,
         icon: md.type === 'callout' ? '💡' : undefined,
       });
-      if (md.type === 'divider') ensureTrailing(block.id);
+      if (md.type === 'divider') focusBlock(ensureTrailing(block.id), false);
       else focusBlock(block.id, true);
       return;
     }
@@ -155,6 +156,16 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
       if (e.key === 'ArrowUp') { e.preventDefault(); openMenu('mention', { ...s.mention, active: (s.mention.active - 1 + flat.length) % Math.max(1, flat.length) }); return; }
       if (e.key === 'Enter') { e.preventDefault(); if (flat[s.mention.active]) chooseMention(flat[s.mention.active].id); return; }
       if (e.key === 'Escape') { e.preventDefault(); closeMenu('mention'); return; }
+    }
+
+    if (e.key === 'Tab' && !s.slash && !s.mention) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (indent > 0) replaceBlock(block.id, { ...block, indent: indent - 1 });
+      } else if (indent < 8) {
+        replaceBlock(block.id, { ...block, indent: indent + 1 });
+      }
+      return;
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -324,17 +335,23 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     return (
       <BlockRowShell {...dnd} $align={block.align} data-block-id={block.id} style={{ padding: '6px 0' }}>
         <BlockGutter id={block.id} top={8} />
-        <TableBox>
-          {cells.map((row, ri) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <TableRow key={ri}>
-              {row.map((_val, ci) => (
+        <TableWrap>
+          <TableRowGroup>
+            <TableBox>
+              {cells.map((row, ri) => (
                 // eslint-disable-next-line react/no-array-index-key
-                <TableCell key={ci} id={`${block.id}:${ri}:${ci}`} block={block} ri={ri} ci={ci} header={ri === 0} />
+                <TableRow key={ri}>
+                  {row.map((_val, ci) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <TableCell key={ci} id={`${block.id}:${ri}:${ci}`} block={block} ri={ri} ci={ci} header={ri === 0} />
+                  ))}
+                </TableRow>
               ))}
-            </TableRow>
-          ))}
-        </TableBox>
+            </TableBox>
+            <AddColBtn title="열 추가" onClick={() => addTableColumn(block.id)}>＋</AddColBtn>
+          </TableRowGroup>
+          <AddRowBtn title="행 추가" onClick={() => addTableRow(block.id)}>＋ 행 추가</AddRowBtn>
+        </TableWrap>
       </BlockRowShell>
     );
   }
@@ -729,17 +746,59 @@ const BookmarkThumb = styled.div`
   justify-content: center;
 `;
 
+const TableWrap = styled.div`
+  width: 100%;
+`;
+
+const TableRowGroup = styled.div`
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+`;
+
 const TableBox = styled.div`
   border: 1px solid ${docsTheme.border};
   border-radius: 10px;
   overflow: hidden;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 `;
 
 const TableRow = styled.div`
   display: flex;
   border-bottom: 1px solid ${docsTheme.hairline};
   &:last-child { border-bottom: none; }
+`;
+
+const AddColBtn = styled.button`
+  appearance: none;
+  border: 1px dashed ${docsTheme.border};
+  background: transparent;
+  border-radius: 8px;
+  width: 26px;
+  flex: 0 0 auto;
+  color: ${docsTheme.faint};
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  ${TableRowGroup}:hover & { opacity: 1; }
+  &:hover { background: ${docsTheme.hover}; color: ${docsTheme.text2}; }
+`;
+
+const AddRowBtn = styled.button`
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  margin-top: 3px;
+  padding: 5px 0;
+  border-radius: 8px;
+  color: ${docsTheme.faint};
+  cursor: pointer;
+  font-size: 12px;
+  text-align: center;
+  &:hover { background: ${docsTheme.hover}; color: ${docsTheme.text2}; }
 `;
 
 const TableCellDiv = styled(EditableDiv)<{ $header: boolean }>`

@@ -35,7 +35,7 @@ export const DOCS_CMDS: DocsCmdGroup[] = [
     { id: 'outline', icon: '≡', label: '목차', desc: '제목 자동 목차' },
   ] },
   { cat: '미디어', items: [
-    { id: 'image', icon: '🖼', label: '이미지', desc: '이미지 업로드' },
+    { id: 'image', icon: '🖼️', label: '이미지', desc: '이미지 업로드' },
     { id: 'video', icon: '🎬', label: '동영상', desc: '동영상 임베드' },
     { id: 'file', icon: '📎', label: '파일', desc: '파일 첨부' },
     { id: 'bookmark', icon: '🔖', label: '웹 북마크', desc: '링크 미리보기' },
@@ -81,3 +81,30 @@ export const matchMarkdown = (t: string): { type: DocsBlockType } | null => {
 export const JIRA_KEY_RE = /\[\[([A-Z][A-Z0-9]+-\d+)\]\]/g;
 /** 페이지 멘션: [[page:p1a]] */
 export const PAGE_MENTION_RE = /\[\[page:([a-zA-Z0-9_]+)\]\]/g;
+/** 날짜 칩: [[date:2026-07-14]] */
+export const DATE_MENTION_RE = /\[\[date:(\d{4}-\d{2}-\d{2})\]\]/g;
+
+/**
+ * contentEditable 요소를 순회하며 인라인 칩(data-jira/data-page/data-docs-date)을
+ * [[...]] 마커 텍스트로 직렬화한다. blur 시 buildHydratedHtml이 이 마커를 다시 칩으로
+ * 복원하므로, 이 직렬화를 거치지 않으면 칩이 일반 텍스트로 퇴화한다.
+ */
+export const serializeChipText = (el: HTMLElement): string => {
+  let out = '';
+  el.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent || '';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const elNode = node as HTMLElement;
+    const jiraKey = elNode.getAttribute('data-jira');
+    const pageId = elNode.getAttribute('data-page');
+    const dateIso = elNode.getAttribute('data-docs-date');
+    if (jiraKey) out += `[[${jiraKey}]]`;
+    else if (pageId) out += `[[page:${pageId}]]`;
+    else if (dateIso) out += `[[date:${dateIso}]]`;
+    else out += elNode.textContent || '';
+  });
+  return out;
+};

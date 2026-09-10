@@ -200,7 +200,7 @@ const DocsSidebar = () => {
     <Aside $width={width} style={{ display: state.sidebarOpen ? 'flex' : 'none' }}>
       <ResizeHandle onMouseDown={onResizeStart} />
       <Header>
-        <img src="assets/lyra-icon.png" alt="" width={26} height={26} style={{ borderRadius: 8, boxShadow: '0 2px 7px rgba(0,0,0,.2)' }} />
+        <img src="images/logo.png" alt="" width={26} height={26} style={{ borderRadius: 8, boxShadow: '0 2px 7px rgba(0,0,0,.2)' }} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <WorkspaceName>내 워크스페이스</WorkspaceName>
         </div>

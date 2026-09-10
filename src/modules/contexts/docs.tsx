@@ -15,7 +15,11 @@ import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef,
 } from 'react';
 import { produce } from 'immer';
+import { integrationController } from 'controllers/account';
+import { useAccount } from 'modules/contexts/account';
+import { buildSearchJql, parseIssues } from 'lib/utils/jiraNormalizers';
 import { deleteMedia, getMedia, putMedia } from 'lib/utils/docsMediaStore';
+import { serializeChipText } from 'lib/utils/docsUtils';
 import {
   isDocsRowDraftUnchanged, type DocsRowDraftSnapshot,
 } from 'lib/utils/docsBoardGroups';
@@ -40,6 +44,14 @@ const STORAGE_KEY = 'lyraDocs.v1';
 const CLOUD_STORAGE_KEY = 'lyraDocs.cloud';
 const PERSIST_DEBOUNCE_MS = 450;
 const CLOUD_DEBOUNCE_MS = 1500;
+
+/** 로컬 타임존 기준 YYYY-MM-DD (toISOString은 UTC라 자정 근처에 날짜가 하루 밀릴 수 있음) */
+const toLocalIsoDate = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 /*
 	Reducer
@@ -127,7 +139,7 @@ const loadPersisted = (): { state: DocsState; text: Record<string, string>; uid:
 	Context
 */
 type MenuField = 'blockMenu' | 'mention' | 'fmtBar' | 'pageMenu' | 'cellEditor' | 'filterMenu' | 'pasteMenu' | 'slash'
-  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal';
+  | 'mediaMenu' | 'fieldTypeMenu' | 'tagMenu' | 'moveModal' | 'dateMenu' | 'bookmarkMenu' | 'jiraMenu';
 
 export interface DocsContextValue {
   state: DocsState;
@@ -195,6 +207,7 @@ export interface DocsContextValue {
   removeBlock: (id: string) => void;
   turnInto: (id: string, type: DocsBlockType) => void;
   setBlockMedia: (blockId: string, fields: { url?: string; mediaId?: string; title?: string }) => void;
+  setBlockBookmark: (blockId: string, url: string) => void;
   moveBlock: (src: string, target: string, after: boolean) => void;
   toggleCheck: (id: string) => void;
   ensureTrailing: (sid: string) => string;
@@ -207,6 +220,8 @@ export interface DocsContextValue {
   resolveIssueByKey: (k: string) => DocsJiraIssue | undefined;
   registerIssue: (issue: DocsJiraIssue) => DocsJiraIssue;
   setEmbedMode: (id: string, mode: 'card' | 'link') => void;
+  searchJiraIssues: (query: string) => Promise<DocsJiraIssue[]>;
+  chooseJiraIssue: (issue: DocsJiraIssue) => void;
 
   // ── DOM refs (paste/mention chip 삽입용) ──
   setEl: (id: string, el: HTMLElement | null) => void;
@@ -228,6 +243,8 @@ export interface DocsContextValue {
   removeComment: (blockId: string, commentId: string) => void;
   openMention: (id: string, query: string, el: HTMLElement) => void;
   chooseMention: (pageId: string) => void;
+  openDateMenu: (blockId: string, chipEl: HTMLElement) => void;
+  setChipDate: (iso: string) => void;
 
   // ── mention ──
   filteredPages: (q: string) => DocsPage[];
@@ -325,15 +342,16 @@ export const docsContext = createContext<DocsContextValue>({
   togglePalette: noop, closePalette: noop, setPaletteQuery: noop, setPaletteActive: noop,
   getBlocks: () => [], openRowNote: () => '', closeRowNote: noop,
   setBlocks: noop, addBelow: () => '', duplicateBlock: noop, removeBlock: noop,
-  turnInto: noop, setBlockMedia: noop, moveBlock: noop, toggleCheck: noop, ensureTrailing: () => '', insertBlockAfter: noop,
+  turnInto: noop, setBlockMedia: noop, setBlockBookmark: noop, moveBlock: noop, toggleCheck: noop, ensureTrailing: () => '', insertBlockAfter: noop,
   replaceBlock: noop,
   jiraType: () => ({ color: '#8c8582', letter: '•' }), hostOf: () => '', resolveIssueByKey: () => undefined,
-  registerIssue: (i) => i, setEmbedMode: noop,
+  registerIssue: (i) => i, setEmbedMode: noop, searchJiraIssues: async () => [], chooseJiraIssue: noop,
   setEl: noop, getEl: () => undefined, insertChip: noop, insertTextAt: noop, insertEmbedAfter: noop,
   onBlockPaste: noop, choosePaste: noop,
   focusBlock: noop, applyCmd: noop, applyFmt: noop, applyColor: noop, applySize: noop, applyLink: noop,
   getActiveBlockId: () => null, setBlockAlign: noop, addComment: noop, removeComment: noop,
   openMention: noop, chooseMention: noop,
+  openDateMenu: noop, setChipDate: noop,
   filteredPages: () => [], paletteResults: () => [],
   setDbView: noop, setSort: noop, clearSort: noop, addFilter: noop, updateFilter: noop, removeFilter: noop,
   setGroupBy: noop, addDbView: noop, removeDbView: noop, addBoardGroup: noop, removeBoardGroup: noop,
@@ -367,6 +385,7 @@ const insertAfter = (arr: string[], id: string, nid: string) => {
 };
 
 const DocsProvider = ({ children }: { children: React.ReactNode }) => {
+  const { activeAccount } = useAccount();
   const loadedRef = useRef(loadPersisted());
   const [state, dispatch] = useReducer(reducer, loadedRef.current.state);
 
@@ -971,6 +990,14 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     patch({ mediaMenu: null });
   }, [setBlocks, patch]);
 
+  const setBlockBookmark = useCallback((blockId: string, rawUrl: string) => {
+    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { /* noop */ }
+    setBlocks((bs) => bs.map((b) => (b.id === blockId ? { ...b, url, title: host, host } : b)));
+    patch({ bookmarkMenu: null });
+  }, [setBlocks, patch]);
+
   const moveBlock = useCallback((src: string, target: string, after: boolean) => {
     setBlocks((bs) => {
       const srcBlk = bs.find((b) => b.id === src);
@@ -1034,6 +1061,34 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, mode } : b)));
   }, [setBlocks]);
 
+  const searchJiraIssues = useCallback(async (query: string): Promise<DocsJiraIssue[]> => {
+    if (!activeAccount || !query.trim()) return [];
+    const baseUrl = (activeAccount.credentials as { baseUrl?: string } | undefined)?.baseUrl || '';
+    const jql = buildSearchJql(query, [], []);
+    if (!jql) return [];
+    try {
+      const result = await integrationController.invoke({
+        accountId: activeAccount.id,
+        serviceType: 'jira',
+        action: 'searchIssues',
+        params: { jql: `${jql} ORDER BY updated DESC`, maxResults: 8, skipCache: true },
+      });
+      return parseIssues(result).map((n) => ({
+        key: n.key,
+        summary: n.summary,
+        type: n.issueTypeName,
+        status: n.statusName,
+        priority: n.priorityName,
+        assignee: n.assigneeName,
+        url: baseUrl ? `${baseUrl.replace(/\/$/, '')}/browse/${n.key}` : '',
+        host: hostOf(baseUrl),
+      }));
+    } catch (e) {
+      return [];
+    }
+  }, [activeAccount, hostOf]);
+
+
   // ── DOM refs + paste/chip 삽입 ──
   const elsRef = useRef<Record<string, HTMLElement>>({});
   const setEl = useCallback((id: string, el: HTMLElement | null) => {
@@ -1064,7 +1119,7 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
       nr.setStartAfter(last); nr.collapse(true);
       sel.removeAllRanges(); sel.addRange(nr);
     }
-    textRef.current[blockId] = el.textContent || '';
+    textRef.current[blockId] = serializeChipText(el);
     schedulePersist();
   }, [schedulePersist]);
 
@@ -1134,8 +1189,8 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [resolveIssueByKey, registerIssue, hostOf, patch]);
 
-  const jiraRotRef = useRef(0);
   const mentionRangeRef = useRef<Range | null>(null);
+  const dateChipRef = useRef<HTMLElement | null>(null);
 
   const focusBlock = useCallback((id: string, atEnd: boolean) => {
     requestAnimationFrame(() => {
@@ -1151,9 +1206,23 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, []);
 
-  const makeDateChipHTMLInternal = useCallback(() => {
-    const d = new Date(2026, 6, 14);
-    return `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:#faf9f7;border:1px solid #e6e3df;color:#5d5957;font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;user-select:none;white-space:nowrap">📅 2026년 ${d.getMonth() + 1}월 ${d.getDate()}일</span>`;
+  const chooseJiraIssue = useCallback((issue: DocsJiraIssue) => {
+    const jm = stateRef.current.jiraMenu;
+    if (!jm) return;
+    registerIssue(issue);
+    if (jm.mode === 'inline') {
+      insertChip(jm.blockId, makeChipHTMLInternal(issue), null);
+    } else {
+      replaceBlock(jm.blockId, { id: jm.blockId, type: 'jira', issueKey: issue.key, mode: jm.mode });
+      const nid = ensureTrailing(jm.blockId);
+      focusBlock(nid, false);
+    }
+    patch({ jiraMenu: null });
+  }, [registerIssue, insertChip, makeChipHTMLInternal, replaceBlock, ensureTrailing, focusBlock, patch]);
+
+  const makeDateChipHTMLInternal = useCallback((iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return `<span contenteditable="false" data-docs-date="${iso}" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:#faf9f7;border:1px solid #e6e3df;color:#5d5957;font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap">📅 ${y}년 ${m}월 ${d}일</span>`;
   }, []);
 
   const applyCmd = useCallback((cmdId: string) => {
@@ -1166,26 +1235,23 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     if (cmdId.indexOf('jira') === 0) {
-      const issues = stateRef.current.jiraIssues;
-      const issue = issues[jiraRotRef.current++ % issues.length];
       clearText();
-      if (cmdId === 'jira-inline') {
-        patch({ slash: null });
-        insertChip(sid, makeChipHTMLInternal(issue), null);
-        return;
-      }
-      const mode = cmdId === 'jira-link' ? 'link' : 'card';
-      replaceBlock(sid, { id: sid, type: 'jira', issueKey: issue.key, mode });
-      patch({ slash: null });
-      const nid = ensureTrailing(sid);
-      focusBlock(nid, false);
+      const mode = cmdId === 'jira-inline' ? 'inline' : cmdId === 'jira-link' ? 'link' : 'card';
+      const el = elsRef.current[sid];
+      const rect = el?.getBoundingClientRect();
+      let y = (rect?.bottom || 0) + 6;
+      if (y + 320 > window.innerHeight) y = Math.max(10, (rect?.top || 0) - 326);
+      patch({
+        slash: null,
+        jiraMenu: { blockId: sid, mode, x: Math.min(rect?.left || 0, window.innerWidth - 320), y },
+      });
       return;
     }
 
     clearText();
     if (cmdId === 'date') {
       patch({ slash: null });
-      insertChip(sid, makeDateChipHTMLInternal(), null);
+      insertChip(sid, makeDateChipHTMLInternal(toLocalIsoDate(new Date())), null);
       return;
     }
     if (cmdId === 'pagemention') {
@@ -1221,13 +1287,15 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     let block: DocsBlock = { id: sid, type: cmdId as DocsBlockType, indent: 0 };
     if (cmdId === 'todo') block = { ...block, checked: false };
     if (cmdId === 'callout') block = { ...block, icon: '💡' };
-    if (cmdId === 'bookmark') block = { ...block, url: 'https://appflowy.io', title: 'AppFlowy', host: 'appflowy.io' };
-    if (cmdId === 'table') block = { ...block, cells: [['제목', '상태', '메모'], ['', '', ''], ['', '', '']] };
+    if (cmdId === 'table') {
+      block = { ...block, cells: [['제목', '상태', '메모'], ['', '', ''], ['', '', '']] };
+      ['제목', '상태', '메모'].forEach((label, ci) => { textRef.current[`${sid}:0:${ci}`] = label; });
+    }
     replaceBlock(sid, block);
     patch({ slash: null });
     if (isEditable) focusBlock(sid, false);
     else ensureTrailing(sid);
-  }, [patch, insertChip, makeChipHTMLInternal, makeDateChipHTMLInternal, replaceBlock, ensureTrailing, createSubpage, focusBlock]);
+  }, [patch, insertChip, makeDateChipHTMLInternal, replaceBlock, ensureTrailing, createSubpage, focusBlock]);
 
   // ── 선택 서식 툴바 ──
   const wrapInline = useCallback((css: string) => {
@@ -1379,6 +1447,32 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     patch({ mention: null });
     if (id && page) insertChip(id, makePageChipHTMLInternal(page), mentionRangeRef.current);
   }, [patch, insertChip, makePageChipHTMLInternal]);
+
+  // ── 날짜 칩 클릭 → 인라인 날짜 변경 팝업 ──
+  const openDateMenu = useCallback((blockId: string, chipEl: HTMLElement) => {
+    dateChipRef.current = chipEl;
+    const rect = chipEl.getBoundingClientRect();
+    let y = rect.bottom + 6;
+    if (y + 200 > window.innerHeight) y = Math.max(10, rect.top - 206);
+    patch({
+      dateMenu: {
+        blockId, iso: chipEl.getAttribute('data-docs-date') || toLocalIsoDate(new Date()),
+        x: Math.min(rect.left, window.innerWidth - 236), y,
+      },
+    });
+  }, [patch]);
+
+  const setChipDate = useCallback((iso: string) => {
+    const chipEl = dateChipRef.current;
+    const dm = stateRef.current.dateMenu;
+    if (!chipEl || !dm) return;
+    chipEl.setAttribute('data-docs-date', iso);
+    const [y, m, d] = iso.split('-').map(Number);
+    chipEl.textContent = `📅 ${y}년 ${m}월 ${d}일`;
+    const blockEl = elsRef.current[dm.blockId];
+    if (blockEl) { textRef.current[dm.blockId] = serializeChipText(blockEl); schedulePersist(); }
+    patch({ dateMenu: { ...dm, iso } });
+  }, [patch, schedulePersist]);
 
   // ── mention ──
   const filteredPages = useCallback((q: string) => {
@@ -2108,13 +2202,14 @@ const DocsProvider = ({ children }: { children: React.ReactNode }) => {
     openMenu, closeMenu, openPageMenu, openBlockMenu, openFilterMenu, openCellEditor, openPasteMenu,
     togglePalette, closePalette, setPaletteQuery, setPaletteActive,
     getBlocks, openRowNote, closeRowNote,
-    setBlocks, addBelow, duplicateBlock, removeBlock, turnInto, setBlockMedia, moveBlock, toggleCheck,
+    setBlocks, addBelow, duplicateBlock, removeBlock, turnInto, setBlockMedia, setBlockBookmark, moveBlock, toggleCheck,
     ensureTrailing, insertBlockAfter, replaceBlock,
-    jiraType, hostOf, resolveIssueByKey, registerIssue, setEmbedMode,
+    jiraType, hostOf, resolveIssueByKey, registerIssue, setEmbedMode, searchJiraIssues, chooseJiraIssue,
     setEl, getEl, insertChip, insertTextAt, insertEmbedAfter, onBlockPaste, choosePaste,
     focusBlock, applyCmd, applyFmt, applyColor, applySize, applyLink,
     getActiveBlockId, setBlockAlign, addComment, removeComment,
     openMention, chooseMention,
+    openDateMenu, setChipDate,
     filteredPages, paletteResults,
     setDbView, setSort, clearSort, addFilter, updateFilter, removeFilter, setGroupBy,
     addDbView, removeDbView, addBoardGroup, removeBoardGroup, setBoardGroupOrder, setBoardGroupColor,

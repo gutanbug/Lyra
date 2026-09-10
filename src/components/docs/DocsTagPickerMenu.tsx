@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import styled from 'styled-components';
-import { X } from 'lucide-react';
+import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { useDocs } from 'modules/contexts/docs';
 import { docsTheme } from 'lib/styles/docsTheme';
 import { DocsPopup, DocsMenuButton, DocsMenuDivider } from 'lib/styles/docsCommon';
 import { isImeComposing } from 'lib/utils/keyboard';
 
 const TAG_DND_MIME = 'application/x-docs-tag-id';
-const TAG_COLORS = ['#7a5af0', '#e8590c', '#c92a2a', '#0ca678', '#1971c2', '#d6336c', '#e67700', '#087f5b', '#495057'];
+const TAG_COLORS = [
+  '#e0dffb', '#ead9f7', '#fbdce6', '#fbe0d3', '#fcefcb',
+  '#f4f3c0', '#dcefd2', '#d3f1e4', '#d6e6fb', '#dfe3ee',
+  '#3b49df', '#7c3aed', '#7a1f2b', '#d2492a', '#a9781b',
+  '#5c6b1f', '#1f5c2e', '#1e8e5a', '#1d5fc2', '#445168',
+];
+
+const getContrastText = (hex: string) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#1f2430' : '#ffffff';
+};
 
 const DocsTagPickerMenu = () => {
   const {
@@ -17,6 +30,8 @@ const DocsTagPickerMenu = () => {
   } = useDocs();
   const [query, setQuery] = useState('');
   const [colorMenuId, setColorMenuId] = useState<string | null>(null);
+  const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const [renameDraft, setRenameDraft] = useState('');
   const { tagMenu } = state;
   const d = state.db[state.activeId];
   const menuKey = tagMenu ? `${tagMenu.target}:${tagMenu.targetId}:${tagMenu.x}:${tagMenu.y}` : '';
@@ -25,6 +40,24 @@ const DocsTagPickerMenu = () => {
     setQuery('');
     setColorMenuId(null);
   }, [menuKey]);
+
+  const colorMenuWidth = 216;
+
+  const openColorMenu = (id: string, label: string, anchorEl: HTMLElement) => {
+    if (colorMenuId === id) { setColorMenuId(null); return; }
+    const rect = anchorEl.getBoundingClientRect();
+    const fitsRight = rect.right + 8 + colorMenuWidth <= window.innerWidth - 8;
+    const left = fitsRight ? rect.right + 8 : Math.max(8, rect.left - 8 - colorMenuWidth);
+    const top = Math.max(8, Math.min(rect.top - 6, window.innerHeight - 340));
+    setColorMenuPos({ left, top });
+    setColorMenuId(id);
+    setRenameDraft(label);
+  };
+
+  const commitRename = (id: string) => {
+    const trimmed = renameDraft.trim();
+    if (trimmed) updateTagOption(id, { label: trimmed });
+  };
 
   if (!tagMenu || !d) return null;
   const { target, targetId, x, y } = tagMenu;
@@ -86,27 +119,64 @@ const DocsTagPickerMenu = () => {
         >
           <DragDots>⠿</DragDots>
           <Checkbox type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} />
-          <TagColorDot
-            style={{ background: t.color }}
-            onClick={(e) => { e.stopPropagation(); setColorMenuId((v) => (v === t.id ? null : t.id)); }}
-          />
-          <TagLabel onClick={() => toggle(t.id)}>{t.label}</TagLabel>
-          <TagDelBtn className="tag-del" onClick={(e) => { e.stopPropagation(); removeTagOption(t.id); }} title="태그 삭제">
-            <X size={11} />
-          </TagDelBtn>
-          {colorMenuId === t.id && (
-            <TagColorMenu data-docs-menu onClick={(e) => e.stopPropagation()}>
-              {TAG_COLORS.map((c) => (
-                <TagColorSwatch key={c} style={{ background: c }} onClick={() => { updateTagOption(t.id, { color: c }); setColorMenuId(null); }} />
-              ))}
-            </TagColorMenu>
-          )}
+          <TagBadge style={{ background: t.color, color: getContrastText(t.color) }} onClick={() => toggle(t.id)}>{t.label}</TagBadge>
+          <TagMoreBtn
+            className="tag-more"
+            onClick={(e) => { e.stopPropagation(); openColorMenu(t.id, t.label, e.currentTarget); }}
+            title="태그 편집"
+          >
+            <MoreHorizontal size={14} />
+          </TagMoreBtn>
         </TagRow>
       ))}
     </TagPopup>
   );
 
-  return createPortal(popup, document.body);
+  const colorMenuTag = colorMenuId ? d.tagOptions.find((t) => t.id === colorMenuId) : null;
+  const colorMenu = colorMenuTag && (
+    <TagColorMenu data-docs-menu style={{ left: colorMenuPos.left, top: colorMenuPos.top }} onClick={(e) => e.stopPropagation()}>
+      <TagRenameInput
+        autoFocus
+        value={renameDraft}
+        onChange={(e) => setRenameDraft(e.target.value)}
+        onBlur={() => commitRename(colorMenuTag.id)}
+        onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
+          if (e.key === 'Enter') { e.preventDefault(); commitRename(colorMenuTag.id); setColorMenuId(null); }
+        }}
+      />
+      <TagColorMenuTitle>색상</TagColorMenuTitle>
+      <TagColorGrid>
+        {TAG_COLORS.map((color) => {
+          const active = colorMenuTag.color === color;
+          return (
+            <TagColorSwatch
+              key={color}
+              type="button"
+              $active={active}
+              style={{ background: color }}
+              onClick={() => updateTagOption(colorMenuTag.id, { color })}
+            />
+          );
+        })}
+      </TagColorGrid>
+      <TagColorMenuDivider />
+      <TagDeleteRow
+        type="button"
+        onClick={() => { removeTagOption(colorMenuTag.id); setColorMenuId(null); }}
+      >
+        <Trash2 size={13} />
+        태그 삭제
+      </TagDeleteRow>
+    </TagColorMenu>
+  );
+
+  return (
+    <>
+      {createPortal(popup, document.body)}
+      {colorMenu && createPortal(colorMenu, document.body)}
+    </>
+  );
 };
 
 export default DocsTagPickerMenu;
@@ -134,7 +204,6 @@ const TagSearchInput = styled.input`
 `;
 
 const TagRow = styled.div`
-  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -142,7 +211,7 @@ const TagRow = styled.div`
   border-radius: 7px;
   cursor: grab;
   &:hover { background: ${docsTheme.hover}; }
-  &:hover .tag-del { opacity: 1; }
+  &:hover .tag-more { opacity: 1; }
 `;
 
 const DragDots = styled.span`
@@ -159,26 +228,21 @@ const Checkbox = styled.input`
   accent-color: ${docsTheme.accent};
 `;
 
-const TagColorDot = styled.span`
-  flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  cursor: pointer;
-`;
-
-const TagLabel = styled.span`
+const TagBadge = styled.span`
   flex: 1;
   min-width: 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 500;
   color: ${docsTheme.text};
+  padding: 3px 9px;
+  border-radius: 999px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
-const TagDelBtn = styled.button`
+const TagMoreBtn = styled.button`
   opacity: 0;
   transition: opacity .12s;
   flex: 0 0 auto;
@@ -189,33 +253,80 @@ const TagDelBtn = styled.button`
   color: ${docsTheme.faint};
   display: flex;
   align-items: center;
-  &:hover { color: ${docsTheme.danger}; }
+  padding: 2px;
+  border-radius: 4px;
+  &:hover { color: ${docsTheme.text}; background: ${docsTheme.border}; }
 `;
 
 const TagColorMenu = styled.div`
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 26px;
-  z-index: 20;
+  position: fixed;
+  z-index: 130;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 120px;
+  flex-direction: column;
+  width: 216px;
   background: ${docsTheme.surface};
   border: 1px solid ${docsTheme.border};
   border-radius: ${docsTheme.radius.ctl};
   box-shadow: ${docsTheme.shadow};
-  padding: 8px;
+  padding: 10px;
   cursor: default;
 `;
 
-const TagColorSwatch = styled.button`
+const TagRenameInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13px;
+  color: ${docsTheme.text};
+  background: ${docsTheme.surface};
+  border: 1px solid ${docsTheme.border};
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+  margin-bottom: 10px;
+  &:focus { border-color: ${docsTheme.accent}; box-shadow: 0 0 0 2px ${docsTheme.accentSoft}; }
+`;
+
+const TagColorMenuTitle = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  color: ${docsTheme.faint};
+  margin-bottom: 6px;
+`;
+
+const TagColorGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+`;
+
+const TagColorSwatch = styled.button<{ $active: boolean }>`
   appearance: none;
   border: none;
-  padding: 0;
   cursor: pointer;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  box-shadow: ${({ $active }) => ($active ? `0 0 0 2px ${docsTheme.surface}, 0 0 0 4px ${docsTheme.accent}` : 'none')};
   &:hover { opacity: .85; }
+`;
+
+const TagColorMenuDivider = styled.div`
+  height: 1px;
+  background: ${docsTheme.border};
+  margin: 10px -10px;
+`;
+
+const TagDeleteRow = styled.button`
+  appearance: none;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 12.5px;
+  color: ${docsTheme.faint};
+  cursor: pointer;
+  &:hover { color: ${docsTheme.danger}; }
 `;

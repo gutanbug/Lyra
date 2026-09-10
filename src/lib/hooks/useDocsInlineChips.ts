@@ -1,8 +1,13 @@
 import { useCallback } from 'react';
 import { useDocs } from 'modules/contexts/docs';
 import { docsTheme } from 'lib/styles/docsTheme';
-import { JIRA_KEY_RE, PAGE_MENTION_RE } from 'lib/utils/docsUtils';
+import { JIRA_KEY_RE, PAGE_MENTION_RE, DATE_MENTION_RE } from 'lib/utils/docsUtils';
 import type { DocsJiraIssue, DocsPage } from 'types/docs';
+
+const formatDateLabel = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${y}년 ${m}월 ${d}일`;
+};
 
 const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
@@ -20,10 +25,9 @@ export const useDocsInlineChips = () => {
     `<span contenteditable="false" data-page="${page.id}" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;font-weight:500;color:${docsTheme.accent};border-bottom:1px solid color-mix(in srgb,${docsTheme.accent} 45%,transparent);padding:0 1px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap"><span style="font-size:.95em">${page.icon || '📄'}</span>${escapeHtml(page.title || '제목 없음')}</span>`
   ), []);
 
-  const makeDateChipHTML = useCallback(() => {
-    const d = new Date(2026, 6, 14);
-    return `<span contenteditable="false" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:${docsTheme.surfaceSoft};border:1px solid ${docsTheme.border};color:${docsTheme.text2};font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;user-select:none;white-space:nowrap">📅 2026년 ${d.getMonth() + 1}월 ${d.getDate()}일</span>`;
-  }, []);
+  const makeDateChipHTML = useCallback((iso: string) => (
+    `<span contenteditable="false" data-docs-date="${iso}" style="display:inline-flex;align-items:center;gap:3px;vertical-align:baseline;background:${docsTheme.surfaceSoft};border:1px solid ${docsTheme.border};color:${docsTheme.text2};font-size:.88em;padding:0 7px;border-radius:6px;margin:0 1px;cursor:pointer;user-select:none;white-space:nowrap">📅 ${formatDateLabel(iso)}</span>`
+  ), []);
 
   return { makeChipHTML, makePageChipHTML, makeDateChipHTML };
 };
@@ -35,6 +39,7 @@ export const buildHydratedHtml = (
   resolvePage: (id: string) => DocsPage | undefined,
   makeChipHTML: (issue: DocsJiraIssue) => string,
   makePageChipHTML: (page: DocsPage) => string,
+  makeDateChipHTML: (iso: string) => string,
 ): string => {
   if (raw.indexOf('[[') === -1) return escapeHtml(raw);
   let out = escapeHtml(raw);
@@ -46,5 +51,6 @@ export const buildHydratedHtml = (
     const page = resolvePage(id);
     return page ? makePageChipHTML(page) : m;
   });
+  out = out.replace(DATE_MENTION_RE, (m, iso) => makeDateChipHTML(iso));
   return out;
 };

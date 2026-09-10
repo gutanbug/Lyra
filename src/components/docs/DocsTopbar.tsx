@@ -24,6 +24,7 @@ const DocsTopbar = () => {
   const isFav = state.favorites.includes(state.activeId);
   const savedLabel = '저장됨';
   const cloudDot = state.cloud.connected ? docsTheme.todo : docsTheme.faint;
+  const cloudLabel = state.cloud.connected ? '동기화됨 · 클릭하여 관리' : '동기화 안 됨 · 클릭하여 연결';
 
   return (
     <Bar>
@@ -51,7 +52,7 @@ const DocsTopbar = () => {
         >
           <Star size={16} fill={isFav ? '#f5a623' : 'none'} />
         </DocsIconButton>
-        <DocsIconButton title="Supabase 동기화" onClick={openCloud} style={{ position: 'relative' }}>
+        <DocsIconButton title={cloudLabel} onClick={openCloud} style={{ position: 'relative' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" /></svg>
           <Dot style={{ background: cloudDot }} />
         </DocsIconButton>

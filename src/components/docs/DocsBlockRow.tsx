@@ -6,7 +6,7 @@ import { EditableDiv } from 'lib/styles/docsCommon';
 import { useEditableRef } from 'lib/hooks/useEditableRef';
 import { useDocsMediaUrl } from 'lib/hooks/useDocsMediaUrl';
 import { useDocsInlineChips, buildHydratedHtml } from 'lib/hooks/useDocsInlineChips';
-import { matchMarkdown, filteredFlatCmds } from 'lib/utils/docsUtils';
+import { matchMarkdown, filteredFlatCmds, serializeChipText } from 'lib/utils/docsUtils';
 import { moveDocsCaretByArrow } from 'lib/utils/docsCaretNavigation';
 import { isImeComposing } from 'lib/utils/keyboard';
 import { renderMath } from 'lib/utils/katexLoader';
@@ -77,9 +77,9 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     state, getText, setText, setEl, getBlocks, addBelow, focusBlock, ensureTrailing,
     toggleCheck, toggleCollapse, replaceBlock, setBlocks, openMenu, closeMenu,
     openMention, chooseMention, onBlockPaste, applyCmd, resolveIssueByKey, schedulePersist,
-    openPage, filteredPages,
+    openPage, filteredPages, openDateMenu,
   } = useDocs();
-  const { makeChipHTML, makePageChipHTML } = useDocsInlineChips();
+  const { makeChipHTML, makePageChipHTML, makeDateChipHTML } = useDocsInlineChips();
   const dnd = useBlockDnd(block.id);
   const indent = block.indent || 0;
 
@@ -92,10 +92,11 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
       (id) => state.pagesById[id],
       makeChipHTML,
       makePageChipHTML,
+      makeDateChipHTML,
     );
-  }, [resolveIssueByKey, state.pagesById, makeChipHTML, makePageChipHTML]);
+  }, [resolveIssueByKey, state.pagesById, makeChipHTML, makePageChipHTML, makeDateChipHTML]);
 
-  const { setRef, onInput: onEditableInput, resync } = useEditableRef(getValue, onChange, renderValue);
+  const { setRef, resync } = useEditableRef(getValue, onChange, renderValue);
 
   const setElRef = useCallback((el: HTMLElement | null) => {
     setRef(el);
@@ -103,9 +104,9 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
   }, [setRef, setEl, block.id]);
 
   const onInput = (e: React.FormEvent<HTMLDivElement>) => {
-    onEditableInput(e);
     const el = e.currentTarget;
-    const txt = el.textContent || '';
+    const txt = serializeChipText(el);
+    setText(block.id, txt);
     schedulePersist();
 
     if (txt.startsWith('/')) {
@@ -195,9 +196,23 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     openMenu('mediaMenu', { blockId: block.id, x: Math.min(r.left, window.innerWidth - 340), y: r.bottom + 6 });
   };
+  const openBookmarkMenuFor = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openMenu('bookmarkMenu', { blockId: block.id, x: Math.min(r.left, window.innerWidth - 340), y: r.bottom + 6 });
+  };
+  const openBookmarkExternal = () => {
+    if (!block.url) return;
+    const api = (window as unknown as { electronAPI?: { openExternal?: (u: string) => void } }).electronAPI;
+    if (api?.openExternal) api.openExternal(block.url);
+    else window.open(block.url, '_blank', 'noopener');
+  };
   const onDocPageClick = (e: React.MouseEvent) => {
-    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-page]');
-    if (chip) { e.preventDefault(); openPage(chip.getAttribute('data-page')!); }
+    const target = e.target as HTMLElement;
+    const pageChip = target.closest<HTMLElement>('[data-page]');
+    if (pageChip) { e.preventDefault(); openPage(pageChip.getAttribute('data-page')!); return; }
+    const dateChip = target.closest<HTMLElement>('[data-docs-date]');
+    if (dateChip) { e.preventDefault(); e.stopPropagation(); openDateMenu(block.id, dateChip); }
   };
 
   // ── math (LaTeX 렌더링 미리보기 ↔ 편집 토글) ──
@@ -275,10 +290,21 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
 
   // ── bookmark ──
   if (block.type === 'bookmark') {
+    if (!block.url) {
+      return (
+        <BlockRowShell {...dnd} $align={block.align} data-block-id={block.id} style={{ padding: '5px 0' }}>
+          <BlockGutter id={block.id} top={12} />
+          <MediaPlaceholder $row onClick={openBookmarkMenuFor}>
+            <span style={{ fontSize: 26, flex: '0 0 auto' }}>🔖</span>
+            <span style={{ fontSize: 13.5 }}>웹 북마크를 추가하려면 클릭</span>
+          </MediaPlaceholder>
+        </BlockRowShell>
+      );
+    }
     return (
       <BlockRowShell {...dnd} $align={block.align} data-block-id={block.id} style={{ padding: '5px 0' }}>
         <BlockGutter id={block.id} top={12} />
-        <Bookmark>
+        <Bookmark onClick={openBookmarkExternal}>
           <div style={{ flex: 1, minWidth: 0, padding: '12px 15px' }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: docsTheme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{block.title || '웹 북마크'}</div>
             <div style={{ fontSize: 11.5, color: docsTheme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 4 }}>{block.url || ''}</div>
@@ -286,6 +312,7 @@ const DocsBlockRow = ({ block, numLabel, placeholder }: Props) => {
           <BookmarkThumb>
             <span style={{ width: 30, height: 30, borderRadius: 7, background: docsTheme.accent, color: '#fff', fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Sora' }}>{(block.host || 'W')[0].toUpperCase()}</span>
           </BookmarkThumb>
+          <BookmarkEditBtn title="링크 수정" onClick={openBookmarkMenuFor}>✎</BookmarkEditBtn>
         </Bookmark>
       </BlockRowShell>
     );
@@ -669,7 +696,28 @@ const Bookmark = styled.div`
   background: ${docsTheme.surface};
   cursor: pointer;
   width: 100%;
+  position: relative;
   &:hover { border-color: ${docsTheme.borderStrong}; box-shadow: ${docsTheme.shadow}; }
+`;
+
+const BookmarkEditBtn = styled.button`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  appearance: none;
+  border: 1px solid ${docsTheme.border};
+  background: ${docsTheme.surface};
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: ${docsTheme.text2};
+  display: none;
+  align-items: center;
+  justify-content: center;
+  ${Bookmark}:hover & { display: inline-flex; }
+  &:hover { background: ${docsTheme.hover}; }
 `;
 
 const BookmarkThumb = styled.div`

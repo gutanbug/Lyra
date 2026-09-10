@@ -740,6 +740,8 @@ const DocsDbBoard = ({ rows }: { rows: DocsDbRow[] }) => {
   const [settingsMenu, setSettingsMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const [renameKey, setRenameKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [cardDropTarget, setCardDropTarget] = useState<{ colKey: string; index: number } | null>(null);
   useEffect(() => {
     if (!settingsMenu) return undefined;
     const onDown = (e: MouseEvent) => {
@@ -827,6 +829,8 @@ const DocsDbBoard = ({ rows }: { rows: DocsDbRow[] }) => {
 
   const onDrop = (groupValue: string) => (e: React.DragEvent) => {
     const id = e.dataTransfer.getData(ROW_DND_MIME);
+    setDraggedRowId(null);
+    setCardDropTarget(null);
     if (!id) return;
     if (groupField === 'tag') {
       if (groupValue === NONE_GROUP) clearRowTags(id);
@@ -834,6 +838,21 @@ const DocsDbBoard = ({ rows }: { rows: DocsDbRow[] }) => {
       return;
     }
     setCell(id, groupField as 'status' | 'assignee' | 'priority' | 'due', groupValue === NONE_GROUP ? '' : groupValue);
+  };
+
+  const onCardDragOver = (colKey: string, index: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedRowId) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const idx = e.clientY < rect.top + rect.height / 2 ? index : index + 1;
+    setCardDropTarget((cur) => (cur?.colKey === colKey && cur.index === idx ? cur : { colKey, index: idx }));
+  };
+
+  const onColBodyDragOver = (colKey: string, count: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedRowId) return;
+    setCardDropTarget((cur) => (cur?.colKey === colKey && cur.index === count ? cur : { colKey, index: count }));
   };
 
   const onColDrop = (targetKey: string) => (e: React.DragEvent) => {
@@ -946,16 +965,29 @@ const DocsDbBoard = ({ rows }: { rows: DocsDbRow[] }) => {
             </ColAddBtn>
           </ColHead>
           <ColBody
-            onDragOver={(e) => e.preventDefault()}
+            onDragOver={onColBodyDragOver(key, cards.length)}
             onDrop={onDrop(key)}
             style={colColor ? { background: `${colColor}14`, borderRadius: 12, padding: '8px 6px 4px' } : undefined}
           >
-            {cards.map((r) => (
-              <BoardCard key={r.id} draggable onDragStart={(e) => e.dataTransfer.setData(ROW_DND_MIME, r.id)} onClick={() => openRowDetail(r.id)}>
-                <CardTitle>{r.title || '제목 없음'}</CardTitle>
-                <BoardCardProperties row={r} db={d} groupField={groupField} />
-              </BoardCard>
+            {cards.map((r, idx) => (
+              <Fragment key={r.id}>
+                {cardDropTarget?.colKey === key && cardDropTarget.index === idx && <CardDropPlaceholder />}
+                <BoardCard
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(ROW_DND_MIME, r.id);
+                    setDraggedRowId(r.id);
+                  }}
+                  onDragOver={onCardDragOver(key, idx)}
+                  onDragEnd={() => { setDraggedRowId(null); setCardDropTarget(null); }}
+                  onClick={() => openRowDetail(r.id)}
+                >
+                  <CardTitle>{r.title || '제목 없음'}</CardTitle>
+                  <BoardCardProperties row={r} db={d} groupField={groupField} />
+                </BoardCard>
+              </Fragment>
             ))}
+            {cardDropTarget?.colKey === key && cardDropTarget.index === cards.length && <CardDropPlaceholder />}
             {newCardKey === key ? (
               <NewCardInput
                 autoFocus
@@ -1371,8 +1403,10 @@ const PropRow = styled.div<{ $dragging: boolean }>`
   border-radius: 7px;
   cursor: grab;
   opacity: ${({ $dragging }) => ($dragging ? 0.48 : 1)};
+  filter: ${({ $dragging }) => ($dragging ? 'blur(1.5px)' : 'none')};
+  transform: ${({ $dragging }) => ($dragging ? 'scale(.97)' : 'scale(1)')};
   background: ${({ $dragging }) => ($dragging ? docsTheme.surfaceSoft : 'transparent')};
-  transition: opacity 120ms ease, background 120ms ease, transform 120ms ease;
+  transition: opacity 120ms ease, filter 120ms ease, background 120ms ease, transform 120ms ease;
 
   ${({ $dragging }) => $dragging && css`
     &::after {
@@ -1791,6 +1825,37 @@ const BoardCard = styled.div`
   cursor: grab;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   &:hover { border-color: ${docsTheme.borderStrong}; box-shadow: ${docsTheme.shadow}; }
+`;
+
+const cardPlaceholderIn = keyframes`
+  from { height: 0; opacity: 0; transform: scaleY(.9); }
+  to { height: 64px; opacity: 1; transform: scaleY(1); }
+`;
+
+const cardPlaceholderShimmer = keyframes`
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+`;
+
+const CardDropPlaceholder = styled.div`
+  position: relative;
+  height: 64px;
+  overflow: hidden;
+  border: 1.5px dashed ${docsTheme.accent};
+  border-radius: 11px;
+  background: ${docsTheme.accentSoft};
+  animation: ${cardPlaceholderIn} 140ms ease-out both;
+  transform-origin: top;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 45%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent);
+    animation: ${cardPlaceholderShimmer} 1.05s ease-in-out infinite;
+    pointer-events: none;
+  }
 `;
 
 const CardTitle = styled.div`
